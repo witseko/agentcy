@@ -1,4 +1,4 @@
-"""Expose the same conversation tools to every desktop MCP client."""
+"""Expose the same conversation tools to every MCP client, desktop app or CLI."""
 
 import asyncio
 import time
@@ -12,7 +12,7 @@ from agents_chat.mcp.transport import exchange
 
 
 def serve(workspace: str) -> None:
-    """Bind a stdio MCP connection to one desktop-configured workspace."""
+    """Bind a stdio MCP connection to one host-configured workspace."""
     server = FastMCP(
         "agents-chat",
         instructions=(

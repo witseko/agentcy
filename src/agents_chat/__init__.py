@@ -1,1 +1,1 @@
-"""Local desktop conversation bridge."""
+"""Local conversation bridge for agent chats."""

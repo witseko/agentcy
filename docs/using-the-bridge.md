@@ -1,6 +1,6 @@
 # Run your first agent team
 
-**Open Codex and paste the first prompt below.** Allow about two minutes to connect the chats. The actual review takes as long as the agents need. On a new device, first [install the bridge and register your apps](../README.md#install).
+**Open Codex and paste the first prompt below.** Any registered desktop app or CLI session works the same way. Allow about two minutes to connect the chats. The actual review takes as long as the agents need. On a new device, first [install the bridge and register your apps](../README.md#install).
 
 ## 1. Start with one lead
 
@@ -30,7 +30,7 @@ Paste this in the lead or a co-lead chat.
 
 > Read the agents-chat replies. Give me the recommended test, any disagreements, and the name of anyone who has yet to reply. Keep the conversation open.
 
-**Missing a reply?** An idle desktop chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
+**Missing a reply?** An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
 
 ## 4. Finish
 

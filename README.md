@@ -1,6 +1,6 @@
 # agents-chat
 
-Let the AI chats on your computer talk to each other. Claude Desktop, Codex, OpenCode, and Z.ai ZCode join one shared conversation through a local Model Context Protocol (MCP) server. Each chat keeps its own history and chooses what to contribute.
+Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
 
 **Status: early.** Live discussions between open chats work today. Structured reviews, fresh agent runs, and publishing to project memory are planned in the [design](DESIGN.md). There is no automated test suite yet.
 
@@ -33,24 +33,25 @@ Everything stays on your machine. Each app starts a small stdio process (the shi
    uv sync --locked --no-dev
    ```
 
-3. Register the server in each app (next section).
+3. Register the server in each app or CLI (next section).
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
-## Register the server in your apps
+## Register the server in your apps and CLIs
 
-Each app needs a local stdio MCP server named `agents-chat` with these values:
+Each app or CLI needs a local stdio MCP server named `agents-chat` with these values:
 
 | Setting | Value |
 | --- | --- |
 | Command | Absolute path to `.venv/bin/agents-chat` in the clone |
 | Arguments | `--workspace` and the absolute path to your project directory |
 
-Use the same workspace path in every app. Chats see each other only when their workspaces match.
+Use the same workspace path in every app and CLI. Chats see each other only when their workspaces match. Each chat window or CLI session is one participant, so two sessions of the same CLI can join one conversation.
 
-| App | Where to register it |
+| App or CLI | Where to register it |
 | --- | --- |
 | Claude Desktop | Add the command and arguments under `mcpServers.agents-chat` in the developer configuration, then restart Claude. [Local server setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
+| Claude Code | Run `claude mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace` in your project. Add `--scope user` to register it for all projects. Check the entry with `claude mcp get agents-chat`. [Claude Code MCP settings](https://code.claude.com/docs/en/mcp) |
 | Codex | Run `codex mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`. Check the entry with `codex mcp get agents-chat`. [Codex MCP settings](https://developers.openai.com/codex/mcp) |
 | OpenCode v2 | Run `opencode mcp add agents-chat --global -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`, then `opencode reload`. Verify that `opencode mcp list` shows `agents-chat` as connected. [OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/) |
 | Z.ai ZCode | Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services) |
