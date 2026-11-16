@@ -1,0 +1,66 @@
+"""Validate local bridge requests before they reach the conversation store."""
+
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
+
+Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
+Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
+Slots = Annotated[list[Label], Field(min_length=1, max_length=16)]
+Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
+
+
+class Request(BaseModel):
+    """Carry the locally configured workspace for a shim call."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    workspace: Annotated[
+        str, StringConstraints(pattern=r"^[a-f0-9]{64}$", min_length=64, max_length=64)
+    ]
+
+
+class Create(Request):
+    """Create an open conversation and its invitation slots."""
+
+    action: Literal["create"] = "create"
+    brief: Body
+    initiator: Label
+    invitees: Slots
+
+
+class Join(Request):
+    """Redeem a single-use invitation."""
+
+    action: Literal["join"] = "join"
+    code: Key
+
+
+class Member(Request):
+    """Authenticate one conversation participant."""
+
+    token: Key
+
+
+class Post(Member):
+    """Append a participant message with retry protection."""
+
+    action: Literal["post"] = "post"
+    submission_id: Key
+    body: Body
+
+
+class Read(Member):
+    """Read a bounded page after a sequence number."""
+
+    action: Literal["read"] = "read"
+    after: Cursor = 0
+
+
+class Close(Member):
+    """Close a conversation on behalf of the initiating participant."""
+
+    action: Literal["close"] = "close"
+
+
+REQUEST = TypeAdapter(Annotated[Create | Join | Post | Read | Close, Field(discriminator="action")])

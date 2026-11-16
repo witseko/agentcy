@@ -1,0 +1,158 @@
+"""Apply conversation operations in one transaction owned by the local core."""
+
+import hashlib
+import secrets
+import time
+
+from sqlalchemy import Connection, RowMapping, insert, select, update
+
+from agents_chat.conversations import models
+from agents_chat.conversations.tables import member, message, receipt, room
+
+
+def digest(value: str) -> str:
+    """Store only a digest of random bearer credentials."""
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def create(connection: Connection, request: models.Create) -> dict:
+    """Return the creator credential and a different invitation for each slot."""
+    names = [request.initiator, *request.invitees]
+    if len({name.casefold() for name in names}) != len(names):
+        raise ValueError("Use a different name for each participant")
+    room_id = secrets.token_hex(12)
+    token = secrets.token_urlsafe(32)
+    connection.execute(insert(room).values(id=room_id, brief=request.brief, open=1))
+    connection.execute(
+        insert(member).values(
+            room=room_id, label=request.initiator, creator=1, token_hash=digest(token)
+        )
+    )
+    invitations = {}
+    for label in request.invitees:
+        code = secrets.token_urlsafe(16)
+        invitations[label] = code
+        connection.execute(
+            insert(member).values(
+                room=room_id,
+                label=label,
+                creator=0,
+                invite_hash=digest(code),
+                expires=int(time.time()) + 3600,
+            )
+        )
+    return {"conversation": room_id, "token": token, "invitations": invitations}
+
+
+def join(connection: Connection, request: models.Join) -> dict:
+    """Consume an invitation and issue the participant's durable token."""
+    slot = (
+        connection.execute(
+            select(member, room.c.brief)
+            .join(room)
+            .where(member.c.invite_hash == digest(request.code), room.c.open == 1)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if slot is None or slot["expires"] <= time.time():
+        raise ValueError("Invalid or expired invitation")
+    if slot["token_hash"]:
+        raise ValueError(f"Invitation slot already taken: {slot['label']}")
+    token = secrets.token_urlsafe(32)
+    connection.execute(
+        update(member).where(member.c.id == slot["id"]).values(token_hash=digest(token))
+    )
+    return {
+        "conversation": slot["room"],
+        "participant": slot["label"],
+        "brief": slot["brief"],
+        "token": token,
+    }
+
+
+def authenticate(connection: Connection, token: str) -> RowMapping:
+    """Resolve membership and reject calls for closed or unknown conversations."""
+    participant = (
+        connection.execute(
+            select(member, room.c.brief)
+            .join(room)
+            .where(member.c.token_hash == digest(token), room.c.open == 1)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if participant is None:
+        raise ValueError("Invalid participant token or closed conversation")
+    return participant
+
+
+def post(connection: Connection, participant: RowMapping, request: models.Post) -> dict:
+    """Deduplicate submission IDs and recent identical messages from the same author."""
+    author = participant["id"]
+    previous = connection.execute(
+        select(message.c.id, message.c.body)
+        .join(receipt)
+        .where(receipt.c.author == author, receipt.c.key == request.submission_id)
+    ).one_or_none()
+    if previous:
+        if previous.body != request.body:
+            raise ValueError("Submission ID already used for a different message")
+        return {"message_id": previous.id}
+    now = int(time.time())
+    number = connection.scalar(
+        select(message.c.id)
+        .where(
+            message.c.author == author,
+            message.c.created >= now - 30,
+            message.c.body == request.body,
+        )
+        .order_by(message.c.id.desc())
+        .limit(1)
+    )
+    if number is None:
+        number = connection.execute(
+            insert(message).values(
+                room=participant["room"], author=author, body=request.body, created=now
+            )
+        ).inserted_primary_key[0]
+    connection.execute(
+        insert(receipt).values(author=author, key=request.submission_id, message_id=number)
+    )
+    return {"message_id": number}
+
+
+def apply(connection: Connection, request: models.Request) -> dict:
+    """Dispatch validated requests and derive the conversation from the credential."""
+    if isinstance(request, models.Create):
+        return create(connection, request)
+    if isinstance(request, models.Join):
+        return join(connection, request)
+    if not isinstance(request, models.Member):
+        raise TypeError("Unknown membership operation")
+    participant = authenticate(connection, request.token)
+    if isinstance(request, models.Post):
+        return post(connection, participant, request)
+    if isinstance(request, models.Read):
+        rows = (
+            connection.execute(
+                select(message.c.id, member.c.label, message.c.body)
+                .join(member, message.c.author == member.c.id)
+                .where(message.c.room == participant["room"], message.c.id > request.after)
+                .order_by(message.c.id)
+                .limit(17)
+            )
+            .mappings()
+            .all()
+        )
+        page = [dict(row) for row in rows[:16]]
+        return {
+            "brief": participant["brief"],
+            "messages": page,
+            "more": len(rows) > 16,
+            "cursor": page[-1]["id"] if page else request.after,
+        }
+    if isinstance(request, models.Close) and participant["creator"]:
+        connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
+        return {"closed": True}
+    raise ValueError("Only the initiating participant can close the conversation")
