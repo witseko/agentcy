@@ -38,6 +38,10 @@ Chats launch local MCP servers over stdio and stop them when the chat closes, wh
 
 The join call exchanges a join code for a participant token. Every later call carries the token, and the core derives the author, conversation, and workspace from it. Tool arguments never name the author. Generate join codes and tokens with a cryptographic random source. A join code is bound to one invited slot, works once, and expires after a configurable period. A second attempt returns an error that names the slot as taken.
 
+### Conversation roles
+
+The creator leads by default. Each plain-name invitation creates a worker slot. An invitation can also specify a name and the role `co-lead`. When any co-lead is invited, the creator and invited co-leads share leadership. The join code binds its holder to the assigned role. The create, join, and read tools return the roster. Leads coordinate work and summarize findings through messages. All members can read and post. Any lead or co-lead can close the conversation.
+
 ### Plugins
 
 Implement the core in Python with `uv`. Register each plugin as a user-configured executable communicating over MCP stdio. The plugin declares its contract version and capabilities. A fresh-run plugin accepts an assignment with a stable ID and exposes start, inspect, and cancel operations. It owns its credentials, native session identifiers, CLI flags, and model selection. Credentials come from the environment and are never stored in the database or logs. The core runs plugin executables with argument lists, explicit timeouts, and no shell. The initial Z.ai integration uses GLM through OpenCode. A plugin in another language can implement the same contract.
@@ -68,7 +72,7 @@ Keep user-level configuration in private local application data: registered plug
 - **Structured review.** Hold independent proposals until the first round closes. Release them together for one critique round and return the results to the initiating chat for synthesis. Apply the same visibility rule to memory proposals derived from sealed answers. A deadline closes the round with missing participants identified.
 - **Existing chats.** Bind a join code to one invited slot. During its active turn, the joined chat requests assignments using bounded waits. Preserve its cursor and pending work when the host ends the turn, so the user can resume by asking the chat to continue the task.
 - **Fresh runs.** A local worker tracks assignments and deadlines after the initiating chat disconnects. Persist an assignment before dispatch. On restart, reconcile its ID with the plugin. If the provider cannot confirm whether the run started, report the uncertain state before issuing another launch.
-- **Lifecycle.** A conversation is open, closed, or cancelled. The initiating participant or the human closes it. Closing cancels running assignments, expires unused join codes, and invalidates participant tokens; the record stays readable. Closed conversations are kept for a configurable period and then removed with their journal entries.
+- **Lifecycle.** A conversation is open, closed, or cancelled. A lead, a co-lead, or the human closes it. Closing cancels running assignments, expires unused join codes, and invalidates participant tokens; the record stays readable. Closed conversations are kept for a configurable period and then removed with their journal entries.
 - **Failures.** Publication conflicts, failed or cancelled plugins, uncertain launches, and expired deadlines are recorded as messages in the conversation, so a reconnecting chat sees them through its cursor.
 
 ## Storage and retrieval

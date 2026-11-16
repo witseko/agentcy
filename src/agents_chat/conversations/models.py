@@ -7,8 +7,19 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapte
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
-Slots = Annotated[list[Label], Field(min_length=1, max_length=16)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
+
+
+class Invitation(BaseModel):
+    """Reserve a worker or co-lead slot when creating a conversation."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: Label
+    role: Literal["worker", "co-lead"] = "worker"
+
+
+# A plain name retains the original worker invitation format.
+Slots = Annotated[list[Label | Invitation], Field(min_length=1, max_length=16)]
 
 
 class Request(BaseModel):
@@ -58,7 +69,7 @@ class Read(Member):
 
 
 class Close(Member):
-    """Close a conversation on behalf of the initiating participant."""
+    """Close a conversation on behalf of a lead or co-lead."""
 
     action: Literal["close"] = "close"
 

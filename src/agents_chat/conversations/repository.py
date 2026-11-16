@@ -7,6 +7,7 @@ import time
 from sqlalchemy import Connection, RowMapping, insert, select, update
 
 from agents_chat.conversations import models
+from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
 
@@ -15,33 +16,66 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def team_roles(request: models.Create) -> dict[str, Role]:
+    """Build one roster and select shared leadership when a co-lead was invited."""
+    roles = {request.initiator: Role.LEAD}
+    seen = {request.initiator.casefold()}
+    for slot in request.invitees:
+        invitation = models.Invitation(name=slot) if isinstance(slot, str) else slot
+        name = invitation.name.casefold()
+        if name in seen:
+            raise ValueError("Use a different name for each participant")
+        seen.add(name)
+        if invitation.role == "co-lead":
+            roles[request.initiator] = Role.CO_LEAD
+            roles[invitation.name] = Role.CO_LEAD
+        else:
+            roles[invitation.name] = Role.WORKER
+    return roles
+
+
+def roster(connection: Connection, room_id: str) -> dict[str, str]:
+    """List every slot and its role without exposing credentials."""
+    rows = connection.execute(select(member.c.label, member.c.role).where(member.c.room == room_id))
+    return {name: Role(role).label for name, role in rows}
+
+
 def create(connection: Connection, request: models.Create) -> dict:
     """Return the creator credential and a different invitation for each slot."""
-    names = [request.initiator, *request.invitees]
-    if len({name.casefold() for name in names}) != len(names):
-        raise ValueError("Use a different name for each participant")
+    roles = team_roles(request)
     room_id = secrets.token_hex(12)
     token = secrets.token_urlsafe(32)
     connection.execute(insert(room).values(id=room_id, brief=request.brief, open=1))
     connection.execute(
         insert(member).values(
-            room=room_id, label=request.initiator, creator=1, token_hash=digest(token)
+            room=room_id,
+            label=request.initiator,
+            role=roles[request.initiator],
+            token_hash=digest(token),
         )
     )
     invitations = {}
-    for label in request.invitees:
+    for label, role in roles.items():
+        if label == request.initiator:
+            continue
         code = secrets.token_urlsafe(16)
         invitations[label] = code
         connection.execute(
             insert(member).values(
                 room=room_id,
                 label=label,
-                creator=0,
+                role=role,
                 invite_hash=digest(code),
                 expires=int(time.time()) + 3600,
             )
         )
-    return {"conversation": room_id, "token": token, "invitations": invitations}
+    return {
+        "conversation": room_id,
+        "token": token,
+        "invitations": invitations,
+        "role": roles[request.initiator].label,
+        "roster": roster(connection, room_id),
+    }
 
 
 def join(connection: Connection, request: models.Join) -> dict:
@@ -66,6 +100,8 @@ def join(connection: Connection, request: models.Join) -> dict:
     return {
         "conversation": slot["room"],
         "participant": slot["label"],
+        "role": Role(slot["role"]).label,
+        "roster": roster(connection, slot["room"]),
         "brief": slot["brief"],
         "token": token,
     }
@@ -148,11 +184,13 @@ def apply(connection: Connection, request: models.Request) -> dict:
         page = [dict(row) for row in rows[:16]]
         return {
             "brief": participant["brief"],
+            "role": Role(participant["role"]).label,
+            "roster": roster(connection, participant["room"]),
             "messages": page,
             "more": len(rows) > 16,
             "cursor": page[-1]["id"] if page else request.after,
         }
-    if isinstance(request, models.Close) and participant["creator"]:
+    if isinstance(request, models.Close) and participant["role"] in (Role.LEAD, Role.CO_LEAD):
         connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
         return {"closed": True}
-    raise ValueError("Only the initiating participant can close the conversation")
+    raise ValueError("Only a lead or co-lead can close the conversation")

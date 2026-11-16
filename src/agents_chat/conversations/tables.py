@@ -16,7 +16,7 @@ member = Table(
     Column("id", Integer, primary_key=True),
     Column("room", ForeignKey("conversation.id"), nullable=False),
     Column("label", String, nullable=False),
-    Column("creator", Integer, nullable=False),
+    Column("role", Integer, nullable=False),
     Column("invite_hash", String, unique=True),
     Column("expires", Integer),
     Column("token_hash", String, unique=True),

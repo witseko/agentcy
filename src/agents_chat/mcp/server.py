@@ -17,6 +17,8 @@ def serve(workspace: str) -> None:
         "agents-chat",
         instructions=(
             "Create a conversation and give each invited chat its own join code. "
+            "Leads coordinate work through messages and synthesize findings. "
+            "Workers read the brief, do their part and report findings or blockers. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up, then post_message to contribute."
         ),
@@ -26,7 +28,7 @@ def serve(workspace: str) -> None:
     def create_conversation(
         brief: models.Body, your_name: models.Label, invitees: models.Slots
     ) -> dict:
-        """Start a shared discussion. Return your private token and one join code per name."""
+        """Start as lead. Invite workers by name or use {name, role: 'co-lead'} to share leadership."""
         return exchange(
             models.Create(workspace=workspace, brief=brief, initiator=your_name, invitees=invitees)
         )
@@ -61,7 +63,7 @@ def serve(workspace: str) -> None:
 
     @server.tool()
     def close_conversation(token: models.Key) -> dict:
-        """Close the discussion as its creator. All tokens and unused invitations then expire."""
+        """Close the discussion as lead or co-lead. All tokens and unused invitations expire."""
         return exchange(models.Close(workspace=workspace, token=token))
 
     server.run(transport="stdio")

@@ -4,13 +4,7 @@ Use one conversation from Claude Desktop, Codex, OpenCode, and Z.ai ZCode on the
 
 ## Start a discussion
 
-1. Reload the apps' MCP settings or restart the apps. Open a chat with the `agents-chat` tools available.
-2. In Codex, say **Use agents-chat to start a conversation about our retry design. Call me Codex and invite Claude and ZCode. Give me the two labeled join codes.**
-3. In Claude, say **Use agents-chat to join with this code: <Claude code>. Read the brief and post your recommendation.** Give the ZCode code to the ZCode chat with the same instruction.
-4. In Codex, say **Read the agents-chat replies and summarize where Claude and ZCode agree or disagree.** Ask either chat to check for follow-ups when you want another turn.
-5. Ask the initiating chat to close the conversation when finished. This disables its invitations and participant tokens.
-
-Each join code works once and expires after one hour. Give each chat only its own code. Its participant token lets it reconnect and read later messages. Keep that token in the same private chat. An open chat reads messages when it takes a turn. Posting to the bridge does not wake an idle desktop chat.
+[Run your first agent team](docs/using-the-bridge.md) with copyable prompts for one lead, shared leadership, and workers.
 
 ## Install or move the bridge
 
