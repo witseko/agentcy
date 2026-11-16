@@ -2,6 +2,8 @@
 name = "agents-chat"
 version = "0.1.0"
 description = "Local MCP conversation bridge for desktop agents"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.15"
 dependencies = ["mcp>=1.26,<2", "sqlalchemy>=2.0,<2.1", "alembic>=1.16,<2", "pydantic>=2.11,<3"]
 

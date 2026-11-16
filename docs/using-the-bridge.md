@@ -1,6 +1,6 @@
 # Run your first agent team
 
-**Open Codex and paste the first prompt below.** Allow about two minutes to connect the chats. The actual review takes as long as the agents need. On a new device, first [install the bridge and register your apps](../README.md#install-or-move-the-bridge).
+**Open Codex and paste the first prompt below.** Allow about two minutes to connect the chats. The actual review takes as long as the agents need. On a new device, first [install the bridge and register your apps](../README.md#install).
 
 ## 1. Start with one lead
 
