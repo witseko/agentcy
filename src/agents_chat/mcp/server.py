@@ -22,7 +22,10 @@ SETTLE_SECONDS = 2
 # A listening chat already holds these from create, join or a one-time read.
 CONTEXT_FIELDS = ("brief", "role", "roster")
 LISTEN = f"call read_messages again with your new cursor and wait_seconds={MAX_WAIT_SECONDS}"
-NEXT_AFTER_MESSAGES = f"Handle these messages and post a reply if one is needed. Then {LISTEN}."
+NEXT_AFTER_MESSAGES = (
+    "Handle these messages and post a reply if one is needed. If 'more' is true, "
+    f"read the remaining pages with wait_seconds=0. Then {LISTEN}."
+)
 NEXT_AFTER_CLOSE = (
     "The conversation is closed. If 'more' is true, read the remaining pages with wait_seconds=0. "
     "Stop listening and report the outcome to your user."
@@ -44,10 +47,12 @@ def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> st
         return f"No new messages. To keep listening, {LISTEN}."
     pending = lead_waiting_on(status, me)
     if not pending:
-        return "All members replied. Stop listening and summarize for your user."
+        return "All other members are done. Stop listening and summarize for your user."
     names = ", ".join(pending)
     if status["members"][pending[0]]["state"] == "invited":
         return f"Stop listening. Tell your user which join codes are unused: {names}."
+    if status["members"][pending[0]]["state"] == "blocked":
+        return f"Stop listening and tell your user who is blocked: {names}."
     if silent_waits >= LEAD_IDLE_WAITS:
         return f"Stop listening and tell your user who is still working: {names}."
     return f"Still working: {names}. To keep listening, {LISTEN}."
@@ -72,6 +77,22 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
     return page
 
 
+async def poll_for_wake(request: models.Read, page: dict, wait_seconds: int) -> dict:
+    """Hold the input cursor until a relevant message arrives, close, or timeout."""
+    if page["wake"] or page.get("closed"):
+        return page
+    deadline = time.monotonic() + wait_seconds
+    while (remaining := deadline - time.monotonic()) > 0:
+        await asyncio.sleep(min(0.5, remaining))
+        page = await asyncio.to_thread(exchange, request)
+        if page.get("closed"):
+            break
+        if page["wake"]:
+            await asyncio.sleep(SETTLE_SECONDS)
+            return await asyncio.to_thread(exchange, request)
+    return page
+
+
 def serve(workspace: str) -> None:
     """Bind a stdio MCP connection to one host-configured workspace."""
     silent_waits: dict[str, int] = {}
@@ -80,7 +101,8 @@ def serve(workspace: str) -> None:
         instructions=(
             "Create a conversation and give each invited chat its own join code. "
             "Leads coordinate work through messages and synthesize findings. "
-            "Workers read the brief, do their part and report findings or blockers. "
+            "Workers read the brief, do their part, and report findings or blockers. "
+            "Use kind='done' when your part is complete. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up, then post_message to contribute. "
             "Stay in the conversation during your turn: after you join or post, "
@@ -107,10 +129,30 @@ def serve(workspace: str) -> None:
         return exchange(models.Join(workspace=workspace, code=code))
 
     @server.tool()
-    def post_message(token: models.Key, submission_id: models.Key, body: models.Body) -> dict:
-        """Share text with all members. Pick a unique submission ID and reuse it on retries."""
+    def post_message(
+        token: models.Key,
+        submission_id: models.Key,
+        body: models.Body,
+        kind: models.PostKind = "note",
+        to: models.Label | None = None,
+        reply_to: models.MessageId | None = None,
+    ) -> dict:
+        """Share a note, question, finding, blocker, or done message with the conversation.
+
+        Use the exact roster name in 'to' to wake that member and the leads. A blocker wakes
+        the leads and any addressee. All members can read the message. 'reply_to' is the ID
+        of a message in this conversation. Pick a unique submission ID and reuse it on retries.
+        """
         result = exchange(
-            models.Post(workspace=workspace, token=token, submission_id=submission_id, body=body)
+            models.Post(
+                workspace=workspace,
+                token=token,
+                submission_id=submission_id,
+                body=body,
+                kind=kind,
+                to=to,
+                reply_to=reply_to,
+            )
         )
         silent_waits.pop(hashlib.sha256(token.encode()).hexdigest(), None)
         return result
@@ -125,8 +167,9 @@ def serve(workspace: str) -> None:
 
         A one-time read (wait_seconds=0) from cursor zero returns the brief, your role, the
         roster and every message. A later cursor returns only new messages from other members.
-        A waiting read returns when a message arrives, the conversation closes, or the wait ends.
-        Its 'next' field says what to do. Read any remaining pages before reporting the outcome.
+        A waiting read returns when relevant messages arrive, the conversation closes, or the
+        wait ends. Messages addressed to someone else remain in history. Its 'next' field says
+        what to do. Read any remaining pages before reporting the outcome.
         """
         request = models.Read(workspace=workspace, token=token, after=after)
         page = await asyncio.to_thread(exchange, request)
@@ -135,26 +178,17 @@ def serve(workspace: str) -> None:
             if page["messages"]:
                 silent_waits.pop(token_digest, None)
             return page
-        woken = not page["messages"]
-        deadline = time.monotonic() + wait_seconds
-        while (
-            not page["messages"]
-            and not page.get("closed")
-            and (remaining := deadline - time.monotonic()) > 0
-        ):
-            await asyncio.sleep(min(0.5, remaining))
-            page = await asyncio.to_thread(exchange, request)
-        if woken and page["messages"] and not page.get("closed"):
-            await asyncio.sleep(SETTLE_SECONDS)
-            page = await asyncio.to_thread(exchange, request)
+        page = await poll_for_wake(request, page, wait_seconds)
         status = await asyncio.to_thread(exchange, models.Status(workspace=workspace, token=token))
         if not status["open"] and not page.get("closed"):
             page = await asyncio.to_thread(exchange, request)
+        if not page["wake"] and not page.get("closed"):
+            page.update(messages=[], cursor=after, more=False)
         return finish_wait(page, status, silent_waits, token_digest)
 
     @server.tool()
     def conversation_status(token: models.Key) -> dict:
-        """See who was invited, joined, or replied, and when they last used the bridge.
+        """See who was invited, joined, replied, is blocked, or is done.
 
         A worker reading files might make no bridge calls for minutes. A large idle_seconds
         cannot tell you whether that worker's turn ended.
