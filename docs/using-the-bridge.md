@@ -30,6 +30,8 @@ Paste this in the lead or a co-lead chat.
 
 **Missing a reply?** After a chat joins or posts, it keeps listening for replies for about two minutes of silence, then it stops. You can interrupt it at any time. An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
 
+**Want independent proposals first?** Tell the lead to start a sealed conversation. Have the workers join before they send their proposals. Each uses `post_message` with `kind="proposal"` and waits for release. The proposals become visible when every joined worker submits, the deadline passes, or a lead calls `release_proposals`. The default deadline is 10 minutes.
+
 ## 4. Finish
 
 When you have the answer, tell a lead **“Close this agents-chat conversation with a summary of the outcome.”** Listening chats receive the summary and stop waiting. Members can still read the closed conversation. Closing disables posting and unused join codes.

@@ -11,7 +11,7 @@ from agents_chat.conversations import models, repository
 from agents_chat.storage.database import database
 
 
-@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("version", [2, 3, 4])
 def test_upgrade_legacy_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
 ) -> None:
@@ -48,6 +48,12 @@ def test_upgrade_legacy_database(
                 body TEXT NOT NULL,
                 created INTEGER NOT NULL
             );
+            CREATE TABLE submission (
+                author INTEGER REFERENCES participant(id),
+                key TEXT,
+                message_id INTEGER NOT NULL REFERENCES message(id),
+                PRIMARY KEY (author, key)
+            );
             INSERT INTO conversation VALUES ('room-1', 'Old brief', 1);
             """
         )
@@ -59,19 +65,36 @@ def test_upgrade_legacy_database(
             "INSERT INTO message VALUES (?, ?, ?, ?, ?)",
             (1, "room-1", 1, "Old reply", 1),
         )
-        if version == 3:
+        previous.execute("INSERT INTO submission VALUES (1, 'old-key', 1)")
+        if version >= 3:
             previous.execute("ALTER TABLE participant ADD COLUMN seen INTEGER")
             previous.execute("PRAGMA user_version=3")
+        if version == 4:
+            previous.execute("ALTER TABLE message ADD COLUMN kind TEXT")
+            previous.execute(
+                "ALTER TABLE message ADD COLUMN recipient INTEGER REFERENCES participant(id)"
+            )
+            previous.execute(
+                "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
+            )
+            previous.execute("PRAGMA user_version=4")
         previous.commit()
 
     engine = database(workspace)
     try:
         with engine.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 4
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 5
             result = repository.apply(connection, models.Read(workspace=workspace, token=token))
             assert result["brief"] == "Old brief"
             assert result["messages"] == [{"id": 1, "label": "Lead", "body": "Old reply"}]
             status = repository.apply(connection, models.Status(workspace=workspace, token=token))
             assert status["members"]["Lead"]["messages"] == 1
+            replay = repository.apply(
+                connection,
+                models.Post(
+                    workspace=workspace, token=token, body="Old reply", submission_id="old-key"
+                ),
+            )
+            assert replay == {"message_id": 1}
     finally:
         engine.dispose()
