@@ -4,11 +4,13 @@ import hashlib
 import secrets
 import time
 
-from sqlalchemy import Connection, RowMapping, insert, select, update
+from sqlalchemy import Connection, RowMapping, func, insert, select, update
 
 from agents_chat.conversations import models
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
+
+ACTIVITY_UPDATE_SECONDS = 10
 
 
 def digest(value: str) -> str:
@@ -123,6 +125,46 @@ def authenticate(connection: Connection, token: str) -> RowMapping:
     return participant
 
 
+def record_activity(connection: Connection, participant: RowMapping, now: int) -> None:
+    """Save the last authenticated activity at most once per interval."""
+    seen = participant["seen"]
+    if seen is None or now - seen > ACTIVITY_UPDATE_SECONDS:
+        connection.execute(update(member).where(member.c.id == participant["id"]).values(seen=now))
+
+
+def status(connection: Connection, participant: RowMapping, now: int) -> dict:
+    """Report activity and message counts for the authenticated participant's team."""
+    message_count = (
+        select(func.count())
+        .select_from(message)
+        .where(message.c.author == member.c.id, message.c.room == member.c.room)
+        .scalar_subquery()
+    )
+    rows = connection.execute(
+        select(
+            member.c.label,
+            member.c.role,
+            member.c.token_hash.is_not(None),
+            member.c.seen,
+            message_count,
+        )
+        .where(member.c.room == participant["room"])
+        .order_by(member.c.id)
+    )
+    members = {}
+    for label, role, joined, seen, count in rows:
+        entry = {"role": Role(role).label, "state": "invited"}
+        if joined:
+            entry["state"] = "joined"
+            if seen is not None:
+                entry["idle_seconds"] = max(0, now - seen)
+            if count:
+                entry["state"] = "replied"
+                entry["messages"] = count
+        members[label] = entry
+    return {"open": bool(participant["open"]), "members": members}
+
+
 def post(connection: Connection, participant: RowMapping, request: models.Post) -> dict:
     """Deduplicate submission IDs and recent identical messages from the same author."""
     author = participant["id"]
@@ -218,6 +260,11 @@ def apply(connection: Connection, request: models.Request) -> dict:
     if not isinstance(request, models.Member):
         raise TypeError("Unknown membership operation")
     participant = authenticate(connection, request.token)
+    now = int(time.time())
+    if participant["open"]:
+        record_activity(connection, participant, now)
+    if isinstance(request, models.Status):
+        return status(connection, participant, now)
     if isinstance(request, models.Post):
         if not participant["open"]:
             raise ValueError("Conversation is closed")

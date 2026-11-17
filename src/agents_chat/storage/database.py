@@ -10,7 +10,7 @@ from pathlib import Path
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.operations.ops import CreateTableOp
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Column, Engine, Integer, create_engine, event
 
 from agents_chat.conversations.tables import metadata
 
@@ -65,13 +65,15 @@ def database(key: str) -> Engine:
                 operations.invoke(CreateTableOp.from_table(table))
                 for index in table.indexes:
                     operations.create_index(index.name, table.name, list(index.columns.keys()))
-            connection.exec_driver_sql("PRAGMA user_version=2")
-        elif version == 1:
-            # The old creator flag already encodes worker (0) and lead (1).
+            connection.exec_driver_sql("PRAGMA user_version=3")
+        elif version in (1, 2):
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             operations = Operations(MigrationContext.configure(connection))
-            operations.alter_column("participant", "creator", new_column_name="role")
-            connection.exec_driver_sql("PRAGMA user_version=2")
-        elif version != 2:
+            if version == 1:
+                # The old creator flag already encodes worker (0) and lead (1).
+                operations.alter_column("participant", "creator", new_column_name="role")
+            operations.add_column("participant", Column("seen", Integer))
+            connection.exec_driver_sql("PRAGMA user_version=3")
+        elif version != 3:
             raise ValueError("Unsupported bridge database version")
     return engine

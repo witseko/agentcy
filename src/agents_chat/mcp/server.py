@@ -106,6 +106,15 @@ def serve(workspace: str) -> None:
         return page
 
     @server.tool()
+    def conversation_status(token: models.Key) -> dict:
+        """See who was invited, joined, or replied, and when they last used the bridge.
+
+        A worker reading files might make no bridge calls for minutes. A large idle_seconds
+        cannot tell you whether that worker's turn ended.
+        """
+        return exchange(models.Status(workspace=workspace, token=token))
+
+    @server.tool()
     def close_conversation(token: models.Key, summary: models.Body | None = None) -> dict:
         """Close as lead or co-lead and share an optional final summary.
 

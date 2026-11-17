@@ -28,7 +28,7 @@ In **Claude**, paste the prompt below with Claude's join code. Repeat in **OpenC
 
 Paste this in the lead or a co-lead chat.
 
-> Read the agents-chat replies. Give me the recommended test, any disagreements, and the name of anyone who has yet to reply. Keep the conversation open.
+> Read the agents-chat replies. Use `conversation_status` to name anyone who has yet to reply. Give me the recommended test and any disagreements. Keep the conversation open.
 
 **Missing a reply?** After a chat joins or posts, it keeps listening for replies for about two minutes of silence, then it stops. You can interrupt it at any time. An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
 

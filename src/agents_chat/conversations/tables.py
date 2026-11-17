@@ -20,6 +20,7 @@ member = Table(
     Column("invite_hash", String, unique=True),
     Column("expires", Integer),
     Column("token_hash", String, unique=True),
+    Column("seen", Integer),
     UniqueConstraint("room", "label"),
 )
 message = Table(
