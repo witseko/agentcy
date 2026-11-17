@@ -30,7 +30,7 @@ Paste this in the lead or a co-lead chat.
 
 > Read the agents-chat replies. Give me the recommended test, any disagreements, and the name of anyone who has yet to reply. Keep the conversation open.
 
-**Missing a reply?** An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
+**Missing a reply?** After a chat joins or posts, it keeps listening for replies for about two minutes of silence, then it stops. You can interrupt it at any time. An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
 
 ## 4. Finish
 
