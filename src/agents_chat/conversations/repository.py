@@ -15,11 +15,25 @@ ACTIVITY_UPDATE_SECONDS = 10
 EVENT_KIND = "event"
 PROGRESS_KINDS = ("done", "blocker")
 PAGE_SIZE = 16
+INVITE_LIFETIME_SECONDS = 3600
+JOIN_PROMPT = (
+    "Use agents-chat to join with CODE. Read the brief and tell me my role. "
+    "Do my part and post the result to the conversation."
+)
 
 
 def digest(value: str) -> str:
     """Store only a digest of random bearer credentials."""
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def new_join_code() -> tuple[str, dict[str, str | int]]:
+    """Return a private code and its stored digest and expiry."""
+    code = secrets.token_urlsafe(16)
+    return code, {
+        "invite_hash": digest(code),
+        "expires": int(time.time()) + INVITE_LIFETIME_SECONDS,
+    }
 
 
 def team_roles(request: models.Create) -> dict[str, Role]:
@@ -64,21 +78,21 @@ def create(connection: Connection, request: models.Create) -> dict:
     for label, role in roles.items():
         if label == request.initiator:
             continue
-        code = secrets.token_urlsafe(16)
+        code, invitation_fields = new_join_code()
         invitations[label] = code
         connection.execute(
             insert(member).values(
                 room=room_id,
                 label=label,
                 role=role,
-                invite_hash=digest(code),
-                expires=int(time.time()) + 3600,
+                **invitation_fields,
             )
         )
     return {
         "conversation": room_id,
         "token": token,
         "invitations": invitations,
+        "join_prompt": JOIN_PROMPT,
         "role": roles[request.initiator].label,
         "roster": roster(connection, room_id),
     }
@@ -111,6 +125,53 @@ def join(connection: Connection, request: models.Join) -> dict:
         "brief": slot["brief"],
         "token": token,
     }
+
+
+def invite(connection: Connection, actor: RowMapping, request: models.Invite) -> dict:
+    """Reserve a slot or replace an unused code within the actor's conversation."""
+    if actor["role"] not in (Role.LEAD, Role.CO_LEAD):
+        raise ValueError("Only a lead or co-lead can invite participants")
+    if not actor["open"]:
+        raise ValueError("Conversation is closed")
+    room_id = actor["room"]
+    slots = connection.execute(
+        select(
+            member.c.id,
+            member.c.label,
+            member.c.role,
+            member.c.token_hash.is_not(None).label("joined"),
+        ).where(member.c.room == room_id)
+    ).all()
+    name = request.name.casefold()
+    slot = next((slot for slot in slots if slot.label.casefold() == name), None)
+    if slot is None and len(slots) >= models.MAX_PARTICIPANTS:
+        raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
+    if slot is not None and slot.joined:
+        raise ValueError(f"Invitation slot already taken: {slot.label}")
+
+    label = request.name if slot is None else slot.label
+    role = Role.CO_LEAD if request.role == "co-lead" else Role.WORKER
+    if request.role is None and slot is not None:
+        role = Role(slot.role)
+    code, invitation_fields = new_join_code()
+    if slot is None:
+        connection.execute(
+            insert(member).values(room=room_id, label=label, role=role, **invitation_fields)
+        )
+        event = f"Invited {label} as {role.label}."
+    else:
+        connection.execute(
+            update(member).where(member.c.id == slot.id).values(role=role, **invitation_fields)
+        )
+        event = f"Reissued the invitation for {label} as {role.label}."
+    if role == Role.CO_LEAD:
+        connection.execute(
+            update(member)
+            .where(member.c.room == room_id, member.c.role == Role.LEAD)
+            .values(role=Role.CO_LEAD)
+        )
+    record_event(connection, actor, event)
+    return {"participant": label, "role": role.label, "code": code, "join_prompt": JOIN_PROMPT}
 
 
 def authenticate(connection: Connection, token: str) -> RowMapping:
@@ -364,6 +425,8 @@ def apply(connection: Connection, request: models.Request) -> dict:
         record_activity(connection, participant, now)
     if isinstance(request, models.Status):
         return status(connection, participant, now)
+    if isinstance(request, models.Invite):
+        return invite(connection, participant, request)
     if isinstance(request, models.Post):
         if not participant["open"]:
             raise ValueError("Conversation is closed")

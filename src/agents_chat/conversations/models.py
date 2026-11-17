@@ -10,6 +10,8 @@ Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
 MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
 PostKind = Literal["note", "question", "finding", "blocker", "done"]
+InviteRole = Literal["worker", "co-lead"]
+MAX_PARTICIPANTS = 17
 
 
 class Invitation(BaseModel):
@@ -17,11 +19,11 @@ class Invitation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     name: Label
-    role: Literal["worker", "co-lead"] = "worker"
+    role: InviteRole = "worker"
 
 
 # A plain name retains the original worker invitation format.
-Slots = Annotated[list[Label | Invitation], Field(min_length=1, max_length=16)]
+Slots = Annotated[list[Label | Invitation], Field(min_length=1, max_length=MAX_PARTICIPANTS - 1)]
 
 
 class Request(BaseModel):
@@ -86,6 +88,14 @@ class Status(Member):
     action: Literal["status"] = "status"
 
 
+class Invite(Member):
+    """Create an invitation slot or reissue an unused join code."""
+
+    action: Literal["invite"] = "invite"
+    name: Label
+    role: InviteRole | None = None
+
+
 REQUEST = TypeAdapter(
-    Annotated[Create | Join | Post | Read | Close | Status, Field(discriminator="action")]
+    Annotated[Create | Join | Post | Read | Close | Status | Invite, Field(discriminator="action")]
 )
