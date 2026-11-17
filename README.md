@@ -84,7 +84,7 @@ The server gives every chat the same five tools.
 | `create_conversation` | Start a conversation as lead. Returns a join code for each invited chat. |
 | `join_conversation` | Redeem a join code. Returns the brief, your role, and a private participant token. |
 | `post_message` | Share text with all members. A retry with the same submission ID records one message. |
-| `read_messages` | Read messages after your cursor. Can wait up to 45 seconds for new ones, and tells the chat how to keep listening. |
+| `read_messages` | Read messages after your cursor. A one-time read from cursor zero returns the brief, the roster, and every message. A later cursor returns only new messages from other members. Can wait up to 45 seconds for new ones, and tells the chat how to keep listening. |
 | `close_conversation` | Close the conversation. Leads and co-leads only. |
 
 Limits in this version:

@@ -158,6 +158,36 @@ def post(connection: Connection, participant: RowMapping, request: models.Post) 
     return {"message_id": number}
 
 
+def read(connection: Connection, participant: RowMapping, request: models.Read) -> dict:
+    """Return the full view from cursor zero, and only other members' new messages after it."""
+    catching_up = request.after == 0
+    unread = [message.c.room == participant["room"], message.c.id > request.after]
+    if not catching_up:
+        unread.append(message.c.author != participant["id"])
+    rows = (
+        connection.execute(
+            select(message.c.id, member.c.label, message.c.body)
+            .join(member, message.c.author == member.c.id)
+            .where(*unread)
+            .order_by(message.c.id)
+            .limit(17)
+        )
+        .mappings()
+        .all()
+    )
+    page = [dict(row) for row in rows[:16]]
+    result = {
+        "messages": page,
+        "more": len(rows) > 16,
+        "cursor": page[-1]["id"] if page else request.after,
+    }
+    if catching_up:
+        result["brief"] = participant["brief"]
+        result["role"] = Role(participant["role"]).label
+        result["roster"] = roster(connection, participant["room"])
+    return result
+
+
 def apply(connection: Connection, request: models.Request) -> dict:
     """Dispatch validated requests and derive the conversation from the credential."""
     if isinstance(request, models.Create):
@@ -170,26 +200,7 @@ def apply(connection: Connection, request: models.Request) -> dict:
     if isinstance(request, models.Post):
         return post(connection, participant, request)
     if isinstance(request, models.Read):
-        rows = (
-            connection.execute(
-                select(message.c.id, member.c.label, message.c.body)
-                .join(member, message.c.author == member.c.id)
-                .where(message.c.room == participant["room"], message.c.id > request.after)
-                .order_by(message.c.id)
-                .limit(17)
-            )
-            .mappings()
-            .all()
-        )
-        page = [dict(row) for row in rows[:16]]
-        return {
-            "brief": participant["brief"],
-            "role": Role(participant["role"]).label,
-            "roster": roster(connection, participant["room"]),
-            "messages": page,
-            "more": len(rows) > 16,
-            "cursor": page[-1]["id"] if page else request.after,
-        }
+        return read(connection, participant, request)
     if isinstance(request, models.Close) and participant["role"] in (Role.LEAD, Role.CO_LEAD):
         connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
         return {"closed": True}

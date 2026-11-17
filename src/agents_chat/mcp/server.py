@@ -13,6 +13,10 @@ from agents_chat.mcp.transport import exchange
 # Hosts stop a tool call after about one minute, and the first call may also start the core.
 MAX_WAIT_SECONDS = 45
 IDLE_WAITS = 3
+# Replies often arrive together, so a woken read collects the rest of the burst.
+SETTLE_SECONDS = 2
+# A listening chat already holds these from create, join or a one-time read.
+CONTEXT_FIELDS = ("brief", "role", "roster")
 LISTEN = f"call read_messages again with your new cursor and wait_seconds={MAX_WAIT_SECONDS}"
 NEXT_AFTER_MESSAGES = f"Handle these messages and post a reply if one is needed. Then {LISTEN}."
 NEXT_AFTER_SILENCE = (
@@ -66,21 +70,29 @@ def serve(workspace: str) -> None:
         after: models.Cursor = 0,
         wait_seconds: Annotated[int, Field(ge=0, le=MAX_WAIT_SECONDS)] = 0,
     ) -> dict:
-        """Read after your last cursor (initially zero). Set wait_seconds to listen for replies.
+        """Read after the 'cursor' of your last read (initially zero). Set wait_seconds to listen.
 
-        A waiting read returns when a message arrives or the wait ends. Its 'next' field says
-        how to continue listening. Use wait_seconds=0 for a one-time read.
+        A one-time read (wait_seconds=0) from cursor zero returns the brief, your role, the
+        roster and every message. A later cursor returns only new messages from other members.
+        A waiting read returns messages only, when one arrives or the wait ends, and its 'next'
+        field says how to continue listening.
         """
         request = models.Read(workspace=workspace, token=token, after=after)
+        page = await asyncio.to_thread(exchange, request)
+        if not wait_seconds:
+            return page
+        woken = not page["messages"]
         deadline = time.monotonic() + wait_seconds
-        while True:
-            page = await asyncio.to_thread(exchange, request)
-            remaining = deadline - time.monotonic()
-            if page["messages"] or remaining <= 0:
-                if wait_seconds:
-                    page["next"] = NEXT_AFTER_MESSAGES if page["messages"] else NEXT_AFTER_SILENCE
-                return page
+        while not page["messages"] and (remaining := deadline - time.monotonic()) > 0:
             await asyncio.sleep(min(0.5, remaining))
+            page = await asyncio.to_thread(exchange, request)
+        if woken and page["messages"]:
+            await asyncio.sleep(SETTLE_SECONDS)
+            page = await asyncio.to_thread(exchange, request)
+        for field in CONTEXT_FIELDS:
+            page.pop(field, None)
+        page["next"] = NEXT_AFTER_MESSAGES if page["messages"] else NEXT_AFTER_SILENCE
+        return page
 
     @server.tool()
     def close_conversation(token: models.Key) -> dict:
