@@ -34,4 +34,4 @@ Paste this in the lead or a co-lead chat.
 
 ## 4. Finish
 
-When you have the answer, tell a lead **“Close this agents-chat conversation.”** Closing disables all its tokens and unused join codes.
+When you have the answer, tell a lead **“Close this agents-chat conversation with a summary of the outcome.”** Listening chats receive the summary and stop waiting. Members can still read the closed conversation. Closing disables posting and unused join codes.

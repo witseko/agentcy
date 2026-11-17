@@ -23,6 +23,10 @@ NEXT_AFTER_SILENCE = (
     f"No new messages. To keep listening, {LISTEN}. "
     f"After {IDLE_WAITS} silent waits in a row, stop and tell your user that the conversation is quiet."
 )
+NEXT_AFTER_CLOSE = (
+    "The conversation is closed. If 'more' is true, read the remaining pages with wait_seconds=0. "
+    "Stop listening and report the outcome to your user."
+)
 
 
 def serve(workspace: str) -> None:
@@ -74,8 +78,8 @@ def serve(workspace: str) -> None:
 
         A one-time read (wait_seconds=0) from cursor zero returns the brief, your role, the
         roster and every message. A later cursor returns only new messages from other members.
-        A waiting read returns messages only, when one arrives or the wait ends, and its 'next'
-        field says how to continue listening.
+        A waiting read returns when a message arrives, the conversation closes, or the wait ends.
+        Its 'next' field says what to do. Read any remaining pages before reporting the outcome.
         """
         request = models.Read(workspace=workspace, token=token, after=after)
         page = await asyncio.to_thread(exchange, request)
@@ -83,20 +87,30 @@ def serve(workspace: str) -> None:
             return page
         woken = not page["messages"]
         deadline = time.monotonic() + wait_seconds
-        while not page["messages"] and (remaining := deadline - time.monotonic()) > 0:
+        while (
+            not page["messages"]
+            and not page.get("closed")
+            and (remaining := deadline - time.monotonic()) > 0
+        ):
             await asyncio.sleep(min(0.5, remaining))
             page = await asyncio.to_thread(exchange, request)
-        if woken and page["messages"]:
+        if woken and page["messages"] and not page.get("closed"):
             await asyncio.sleep(SETTLE_SECONDS)
             page = await asyncio.to_thread(exchange, request)
         for field in CONTEXT_FIELDS:
             page.pop(field, None)
-        page["next"] = NEXT_AFTER_MESSAGES if page["messages"] else NEXT_AFTER_SILENCE
+        if page.get("closed"):
+            page["next"] = NEXT_AFTER_CLOSE
+        else:
+            page["next"] = NEXT_AFTER_MESSAGES if page["messages"] else NEXT_AFTER_SILENCE
         return page
 
     @server.tool()
-    def close_conversation(token: models.Key) -> dict:
-        """Close the discussion as lead or co-lead. All tokens and unused invitations expire."""
-        return exchange(models.Close(workspace=workspace, token=token))
+    def close_conversation(token: models.Key, summary: models.Body | None = None) -> dict:
+        """Close as lead or co-lead and share an optional final summary.
+
+        Unused invitations expire. Members can still read the conversation and its outcome.
+        """
+        return exchange(models.Close(workspace=workspace, token=token, summary=summary))
 
     server.run(transport="stdio")
