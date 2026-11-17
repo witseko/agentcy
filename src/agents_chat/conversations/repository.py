@@ -108,18 +108,18 @@ def join(connection: Connection, request: models.Join) -> dict:
 
 
 def authenticate(connection: Connection, token: str) -> RowMapping:
-    """Resolve membership and reject calls for closed or unknown conversations."""
+    """Resolve membership and the current state of the conversation."""
     participant = (
         connection.execute(
-            select(member, room.c.brief)
+            select(member, room.c.brief, room.c.open)
             .join(room)
-            .where(member.c.token_hash == digest(token), room.c.open == 1)
+            .where(member.c.token_hash == digest(token))
         )
         .mappings()
         .one_or_none()
     )
     if participant is None:
-        raise ValueError("Invalid participant token or closed conversation")
+        raise ValueError("Invalid participant token")
     return participant
 
 
@@ -185,7 +185,28 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         result["brief"] = participant["brief"]
         result["role"] = Role(participant["role"]).label
         result["roster"] = roster(connection, participant["room"])
+    if not participant["open"]:
+        result["closed"] = True
     return result
+
+
+def close(connection: Connection, participant: RowMapping, request: models.Close) -> dict:
+    """Record the lead's final message and close the conversation once."""
+    if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
+        raise ValueError("Only a lead or co-lead can close the conversation")
+    if not participant["open"]:
+        return {"closed": True}
+    if request.summary is not None:
+        connection.execute(
+            insert(message).values(
+                room=participant["room"],
+                author=participant["id"],
+                body=request.summary,
+                created=int(time.time()),
+            )
+        )
+    connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
+    return {"closed": True}
 
 
 def apply(connection: Connection, request: models.Request) -> dict:
@@ -198,10 +219,11 @@ def apply(connection: Connection, request: models.Request) -> dict:
         raise TypeError("Unknown membership operation")
     participant = authenticate(connection, request.token)
     if isinstance(request, models.Post):
+        if not participant["open"]:
+            raise ValueError("Conversation is closed")
         return post(connection, participant, request)
     if isinstance(request, models.Read):
         return read(connection, participant, request)
-    if isinstance(request, models.Close) and participant["role"] in (Role.LEAD, Role.CO_LEAD):
-        connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
-        return {"closed": True}
-    raise ValueError("Only a lead or co-lead can close the conversation")
+    if isinstance(request, models.Close):
+        return close(connection, participant, request)
+    raise TypeError("Unknown membership operation")

@@ -85,7 +85,7 @@ The server gives every chat the same five tools.
 | `join_conversation` | Redeem a join code. Returns the brief, your role, and a private participant token. |
 | `post_message` | Share text with all members. A retry with the same submission ID records one message. |
 | `read_messages` | Read messages after your cursor. A one-time read from cursor zero returns the brief, the roster, and every message. A later cursor returns only new messages from other members. Can wait up to 45 seconds for new ones, and tells the chat how to keep listening. |
-| `close_conversation` | Close the conversation. Leads and co-leads only. |
+| `close_conversation` | Close the conversation with an optional final summary. Leads and co-leads only. |
 
 Limits in this version:
 
@@ -108,7 +108,7 @@ Know these properties before you use it:
 - **Local and single-user.** Any process that runs as your user can connect to the socket. There is no network access.
 - **Tokens live in chat transcripts.** The database stores only hashes of join codes and participant tokens. The chats hold the tokens themselves.
 - **Messages are untrusted input.** A message comes from another model. Treat it as data, and do not let it trigger actions you did not ask for.
-- **Closing is final.** A closed conversation stays in the database, but the tools cannot read it. Collect the replies before you close.
+- **Closing is final.** Members can read a closed conversation and its final summary. Closing disables posting and unused invitations.
 
 ## Development
 

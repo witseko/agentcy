@@ -69,9 +69,10 @@ class Read(Member):
 
 
 class Close(Member):
-    """Close a conversation on behalf of a lead or co-lead."""
+    """Close a conversation and optionally record its outcome."""
 
     action: Literal["close"] = "close"
+    summary: Body | None = None
 
 
 REQUEST = TypeAdapter(Annotated[Create | Join | Post | Read | Close, Field(discriminator="action")])
