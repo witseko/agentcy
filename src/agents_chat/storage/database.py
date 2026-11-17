@@ -12,7 +12,19 @@ from alembic.operations import Operations
 from alembic.operations.ops import CreateTableOp
 from sqlalchemy import Column, Engine, Integer, String, create_engine, event
 
-from agents_chat.conversations.tables import metadata
+from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
+
+
+def migrate_sealed_rounds(operations: Operations) -> None:
+    """Add private proposals and allow receipts to refer to them until release."""
+    operations.add_column("conversation", Column("round", String))
+    operations.add_column("conversation", Column("round_deadline", Integer))
+    operations.invoke(CreateTableOp.from_table(proposal))
+    with operations.batch_alter_table("submission", recreate="always") as batch:
+        batch.alter_column("message_id", existing_type=Integer, nullable=True)
+        batch.add_column(Column("proposal_id", String))
+        batch.create_foreign_key("submission_proposal_fk", "proposal", ["proposal_id"], ["id"])
+        batch.create_check_constraint("submission_target", SUBMISSION_TARGET)
 
 
 def data_dir() -> Path:
@@ -65,8 +77,8 @@ def database(key: str) -> Engine:
                 operations.invoke(CreateTableOp.from_table(table))
                 for index in table.indexes:
                     operations.create_index(index.name, table.name, list(index.columns.keys()))
-            connection.exec_driver_sql("PRAGMA user_version=4")
-        elif version in (1, 2, 3):
+            connection.exec_driver_sql("PRAGMA user_version=5")
+        elif version in (1, 2, 3, 4):
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             operations = Operations(MigrationContext.configure(connection))
             if version == 1:
@@ -74,14 +86,16 @@ def database(key: str) -> Engine:
                 operations.alter_column("participant", "creator", new_column_name="role")
             if version < 3:
                 operations.add_column("participant", Column("seen", Integer))
-            operations.add_column("message", Column("kind", String))
-            connection.exec_driver_sql(
-                "ALTER TABLE message ADD COLUMN recipient INTEGER REFERENCES participant(id)"
-            )
-            connection.exec_driver_sql(
-                "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
-            )
-            connection.exec_driver_sql("PRAGMA user_version=4")
-        elif version != 4:
+            if version < 4:
+                operations.add_column("message", Column("kind", String))
+                connection.exec_driver_sql(
+                    "ALTER TABLE message ADD COLUMN recipient INTEGER REFERENCES participant(id)"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
+                )
+            migrate_sealed_rounds(operations)
+            connection.exec_driver_sql("PRAGMA user_version=5")
+        elif version != 5:
             raise ValueError("Unsupported bridge database version")
     return engine

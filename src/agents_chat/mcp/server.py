@@ -8,7 +8,7 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from agents_chat.conversations import models
+from agents_chat.conversations import models, rounds
 from agents_chat.conversations.progress import lead_waiting_on, task_owners
 from agents_chat.conversations.roles import Role
 from agents_chat.mcp.transport import exchange
@@ -84,6 +84,8 @@ def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> st
     """Render the next action from the caller's role, progress, and recent waits."""
     if not status["open"]:
         return NEXT_AFTER_CLOSE
+    if status.get("round") == rounds.SEALED:
+        return sealed_guidance(status, me, has_messages)
     caller = status["members"][me]
     if caller["role"] != Role.WORKER.label:
         return lead_guidance(status, me, has_messages, silent_waits)
@@ -98,6 +100,22 @@ def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> st
     return f"No new messages. To keep listening, {LISTEN}."
 
 
+def sealed_guidance(status: dict, me: str, has_messages: bool) -> str:
+    """Tell participants how to contribute or wait during the sealed round."""
+    prefix = "Handle the visible messages. " if has_messages else ""
+    if status["members"][me]["role"] != Role.WORKER.label:
+        return (
+            f"{prefix}Wait for the proposals to be released, or use release_proposals "
+            f"to start critique early. To keep listening, {LISTEN}."
+        )
+    if status.get("proposal_submitted"):
+        return f"{prefix}Your proposal is sealed. To wait for release, {LISTEN}."
+    return (
+        f"{prefix}Prepare your independent proposal and send it with "
+        "post_message using kind='proposal'. Then wait for release."
+    )
+
+
 def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_digest: str) -> dict:
     """Update a listener's quiet count and attach guidance to a message page."""
     me = status["participant"]
@@ -108,7 +126,7 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
     else:
         count = silent_waits.get(token_digest, 0) + 1
         silent_waits[token_digest] = count
-        pending = lead_waiting_on(status, me)
+        pending = [] if status.get("round") == rounds.SEALED else lead_waiting_on(status, me)
         if pending:
             page["waiting_on"] = pending
     for field in CONTEXT_FIELDS:
@@ -144,6 +162,7 @@ def serve(workspace: str) -> None:
             "Workers read the brief, do their part, and report findings or blockers. "
             "Reply to a task ID with kind='done' when the task is complete or kind='blocker' "
             "when you need help. "
+            "If the round is sealed, submit proposals with kind='proposal' and wait for release. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up, then post_message to contribute. "
             "Stay in the conversation during your turn: after you join or post, "
@@ -157,14 +176,26 @@ def serve(workspace: str) -> None:
 
     @server.tool()
     def create_conversation(
-        brief: models.Body, your_name: models.Label, invitees: models.Slots
+        brief: models.Body,
+        your_name: models.Label,
+        invitees: models.Slots,
+        sealed: bool = False,
+        deadline_minutes: models.DeadlineMinutes | None = None,
     ) -> dict:
         """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
 
         Give each invited chat the returned join_prompt with CODE replaced by its join code.
+        Use sealed=True for independent proposals. The deadline defaults to 10 minutes.
         """
         return exchange(
-            models.Create(workspace=workspace, brief=brief, initiator=your_name, invitees=invitees)
+            models.Create(
+                workspace=workspace,
+                brief=brief,
+                initiator=your_name,
+                invitees=invitees,
+                sealed=sealed,
+                deadline_minutes=deadline_minutes,
+            )
         )
 
     @server.tool()
@@ -180,7 +211,11 @@ def serve(workspace: str) -> None:
 
     @server.tool()
     def join_conversation(code: models.Key) -> dict:
-        """Redeem your one-time invitation to get the brief and your private participant token."""
+        """Redeem a one-time invitation to get the brief and a private participant token.
+
+        If the round is sealed and your role is worker, post your independent proposal using
+        kind='proposal'. Then listen for the release before critiquing other proposals.
+        """
         return exchange(models.Join(workspace=workspace, code=code))
 
     @server.tool()
@@ -195,13 +230,16 @@ def serve(workspace: str) -> None:
         """Post a message, assign a task, or hand off work within the conversation.
 
         Use the exact roster name in 'to' to wake that member and the leads. A blocker wakes
-        the leads and any addressee. All members can read every message. Pick a unique
+        the leads and any addressee. All members can read published messages. Pick a unique
         submission ID and reuse it on retries.
 
         Leads assign kind='task' with 'to'. The owner replies to the task ID with kind='done'
         or kind='blocker'. To offer a transfer, the owner posts kind='handoff' with 'to' and
         the task ID in 'reply_to'. The receiver replies to the handoff ID with kind='accept'
         or kind='decline'.
+        During a sealed round, workers submit one proposal with kind='proposal' and omit
+        'to' and 'reply_to'. Save a returned proposal_id only as a receipt. Published proposals
+        get message IDs on release. If accepted is false, the round has already released.
         """
         result = exchange(
             models.Post(
@@ -240,7 +278,10 @@ def serve(workspace: str) -> None:
             return page
         page = await poll_for_wake(request, page, wait_seconds)
         status = await asyncio.to_thread(exchange, models.Status(workspace=workspace, token=token))
-        if not status["open"] and not page.get("closed"):
+        round_released = (
+            page.get("round") == rounds.SEALED and status.get("round") == rounds.CRITIQUE
+        )
+        if (not status["open"] and not page.get("closed")) or round_released:
             page = await asyncio.to_thread(exchange, request)
         if not page["wake"] and not page.get("closed"):
             page.update(messages=[], cursor=after, more=False)
@@ -252,10 +293,20 @@ def serve(workspace: str) -> None:
 
         A worker reading files might make no bridge calls for minutes. A large idle_seconds
         cannot tell you whether that worker's turn ended.
+        If your round is sealed, proposal_submitted reports only your own worker submission.
         """
         status = exchange(models.Status(workspace=workspace, token=token))
         status.pop("participant")
         return status
+
+    @server.tool()
+    def release_proposals(token: models.Key) -> dict:
+        """As lead or co-lead, publish held proposals and start critique.
+
+        Release also happens when all joined workers submit or the deadline passes.
+        Repeating release is safe.
+        """
+        return exchange(models.Release(workspace=workspace, token=token))
 
     @server.tool()
     def close_conversation(token: models.Key, summary: models.Body | None = None) -> dict:

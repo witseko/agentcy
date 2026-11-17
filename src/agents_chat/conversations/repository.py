@@ -7,7 +7,7 @@ import time
 from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_, select, update
 from sqlalchemy.sql import ColumnElement
 
-from agents_chat.conversations import models, tasks
+from agents_chat.conversations import models, rounds, tasks
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
@@ -65,7 +65,11 @@ def create(connection: Connection, request: models.Create) -> dict:
     roles = team_roles(request)
     room_id = secrets.token_hex(12)
     token = secrets.token_urlsafe(32)
-    connection.execute(insert(room).values(id=room_id, brief=request.brief, open=1))
+    round_state = {}
+    if request.sealed:
+        minutes = request.deadline_minutes or rounds.DEFAULT_DEADLINE_MINUTES
+        round_state = {"round": rounds.SEALED, "round_deadline": int(time.time()) + minutes * 60}
+    connection.execute(insert(room).values(id=room_id, brief=request.brief, open=1, **round_state))
     connection.execute(
         insert(member).values(
             room=room_id,
@@ -95,6 +99,7 @@ def create(connection: Connection, request: models.Create) -> dict:
         "join_prompt": JOIN_PROMPT,
         "role": roles[request.initiator].label,
         "roster": roster(connection, room_id),
+        **round_state,
     }
 
 
@@ -102,7 +107,7 @@ def join(connection: Connection, request: models.Join) -> dict:
     """Consume an invitation and issue the participant's durable token."""
     slot = (
         connection.execute(
-            select(member, room.c.brief)
+            select(member, room.c.brief, room.c.round, room.c.round_deadline)
             .join(room)
             .where(member.c.invite_hash == digest(request.code), room.c.open == 1)
         )
@@ -124,6 +129,7 @@ def join(connection: Connection, request: models.Join) -> dict:
         "roster": roster(connection, slot["room"]),
         "brief": slot["brief"],
         "token": token,
+        **rounds.fields(slot),
     }
 
 
@@ -178,7 +184,7 @@ def authenticate(connection: Connection, token: str) -> RowMapping:
     """Resolve membership and the current state of the conversation."""
     participant = (
         connection.execute(
-            select(member, room.c.brief, room.c.open)
+            select(member, room.c.brief, room.c.open, room.c.round, room.c.round_deadline)
             .join(room)
             .where(member.c.token_hash == digest(token))
         )
@@ -243,11 +249,15 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         if member_id in open_tasks:
             entry["open_tasks"] = open_tasks[member_id]
         members[label] = entry
-    return {
+    result = {
         "open": bool(participant["open"]),
         "members": members,
         "participant": participant["label"],
+        **rounds.fields(participant),
     }
+    if participant["round"] == rounds.SEALED and participant["role"] == Role.WORKER:
+        result["proposal_submitted"] = rounds.submitted(connection, participant)
+    return result
 
 
 def post_content(connection: Connection, room_id: str, request: models.Post) -> dict:
@@ -346,7 +356,12 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
     catching_up = request.after == 0
     unread = [message.c.room == participant["room"], message.c.id > request.after]
     if not catching_up:
-        unread.append(or_(message.c.author != participant["id"], message.c.kind == EVENT_KIND))
+        unread.append(
+            or_(
+                message.c.author != participant["id"],
+                message.c.kind.in_((EVENT_KIND, rounds.PROPOSAL)),
+            )
+        )
     recipient = member.alias("recipient")
     wake = wakes_listener(participant)
     rows = (
@@ -387,6 +402,7 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         "more": more,
         "cursor": page[-1]["id"] if page else request.after,
         "wake": has_wake,
+        **rounds.fields(participant),
     }
     if catching_up:
         result["brief"] = participant["brief"]
@@ -403,6 +419,8 @@ def close(connection: Connection, participant: RowMapping, request: models.Close
         raise ValueError("Only a lead or co-lead can close the conversation")
     if not participant["open"]:
         return {"closed": True}
+    if participant["round"] == rounds.SEALED:
+        rounds.discard(connection, participant["room"])
     if request.summary is not None:
         connection.execute(
             insert(message).values(
@@ -416,6 +434,65 @@ def close(connection: Connection, participant: RowMapping, request: models.Close
     return {"closed": True}
 
 
+def release_round(connection: Connection, participant: RowMapping, now: int) -> None:
+    """Record one release event after publishing the room's proposals."""
+    event = rounds.release(connection, participant["room"], now)
+    record_event(connection, participant, event)
+
+
+def release(connection: Connection, participant: RowMapping, now: int) -> dict:
+    """Allow a lead to publish the proposals early and retry release safely."""
+    if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
+        raise ValueError("Only a lead or co-lead can release proposals")
+    if not participant["open"]:
+        raise ValueError("Conversation is closed")
+    if participant["round"] is None:
+        raise ValueError("This conversation has no sealed proposal round")
+    if participant["round"] == rounds.SEALED:
+        release_round(connection, participant, now)
+    return {"round": rounds.CRITIQUE}
+
+
+def post_in_round(
+    connection: Connection, participant: RowMapping, request: models.Post, now: int
+) -> dict:
+    """Route an ordinary message or a proposal through the correct submission store."""
+    if not participant["open"]:
+        raise ValueError("Conversation is closed")
+    if request.kind != rounds.PROPOSAL:
+        if participant["round"] == rounds.SEALED and rounds.key_is_held(
+            connection, participant["id"], request.submission_id
+        ):
+            raise ValueError("Submission ID already used for a different message")
+        return post(connection, participant, request)
+    result = rounds.post(connection, participant, request)
+    if "proposal_id" in result and rounds.complete(connection, participant["room"]):
+        release_round(connection, participant, now)
+        number = connection.scalar(
+            select(receipt.c.message_id).where(
+                receipt.c.author == participant["id"], receipt.c.key == request.submission_id
+            )
+        )
+        return {"message_id": number}
+    return result
+
+
+def refresh_participant(connection: Connection, request: models.Member, now: int) -> RowMapping:
+    """Check activity and publish on deadline before any read or post observes the round."""
+    participant = authenticate(connection, request.token)
+    if not participant["open"]:
+        return participant
+    record_activity(connection, participant, now)
+    if (
+        isinstance(request, (models.Read, models.Post, models.Status))
+        and participant["round"] == rounds.SEALED
+        and now >= participant["round_deadline"]
+    ):
+        release_round(connection, participant, now)
+        return authenticate(connection, request.token)
+    return participant
+
+
 def apply(connection: Connection, request: models.Request) -> dict:
     """Dispatch validated requests and derive the conversation from the credential."""
     if isinstance(request, models.Create):
@@ -424,20 +501,18 @@ def apply(connection: Connection, request: models.Request) -> dict:
         return join(connection, request)
     if not isinstance(request, models.Member):
         raise TypeError("Unknown membership operation")
-    participant = authenticate(connection, request.token)
     now = int(time.time())
-    if participant["open"]:
-        record_activity(connection, participant, now)
+    participant = refresh_participant(connection, request, now)
     if isinstance(request, models.Status):
         return status(connection, participant, now)
     if isinstance(request, models.Invite):
         return invite(connection, participant, request)
     if isinstance(request, models.Post):
-        if not participant["open"]:
-            raise ValueError("Conversation is closed")
-        return post(connection, participant, request)
+        return post_in_round(connection, participant, request, now)
     if isinstance(request, models.Read):
         return read(connection, participant, request)
     if isinstance(request, models.Close):
         return close(connection, participant, request)
+    if isinstance(request, models.Release):
+        return release(connection, participant, now)
     raise TypeError("Unknown membership operation")

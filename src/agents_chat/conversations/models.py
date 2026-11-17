@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
@@ -10,9 +10,19 @@ Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
 MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
 PostKind = Literal[
-    "note", "question", "finding", "blocker", "done", "task", "handoff", "accept", "decline"
+    "note",
+    "question",
+    "finding",
+    "blocker",
+    "done",
+    "task",
+    "handoff",
+    "accept",
+    "decline",
+    "proposal",
 ]
 InviteRole = Literal["worker", "co-lead"]
+DeadlineMinutes = Annotated[int, Field(strict=True, ge=1, le=60)]
 MAX_PARTICIPANTS = 17
 
 
@@ -44,6 +54,15 @@ class Create(Request):
     brief: Body
     initiator: Label
     invitees: Slots
+    sealed: bool = False
+    deadline_minutes: DeadlineMinutes | None = None
+
+    @model_validator(mode="after")
+    def validate_deadline(self) -> "Create":
+        """Limit deadlines to sealed proposal rounds."""
+        if self.deadline_minutes is not None and not self.sealed:
+            raise ValueError("A proposal deadline requires a sealed round")
+        return self
 
 
 class Join(Request):
@@ -98,6 +117,15 @@ class Invite(Member):
     role: InviteRole | None = None
 
 
+class Release(Member):
+    """Release a sealed proposal round as a lead or co-lead."""
+
+    action: Literal["release"] = "release"
+
+
 REQUEST = TypeAdapter(
-    Annotated[Create | Join | Post | Read | Close | Status | Invite, Field(discriminator="action")]
+    Annotated[
+        Create | Join | Post | Read | Close | Status | Invite | Release,
+        Field(discriminator="action"),
+    ]
 )
