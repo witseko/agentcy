@@ -10,9 +10,17 @@ from pathlib import Path
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.operations.ops import CreateTableOp
-from sqlalchemy import Column, Engine, Integer, String, create_engine, event
+from sqlalchemy import Column, Engine, Integer, String, Table, create_engine, event
 
+from agents_chat.conversations.assignment_tables import assignment
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
+
+
+def create_table(operations: Operations, table: Table) -> None:
+    """Create a table and its declared indexes."""
+    operations.invoke(CreateTableOp.from_table(table))
+    for index in table.indexes:
+        operations.create_index(index.name, table.name, list(index.columns.keys()))
 
 
 def migrate_sealed_rounds(operations: Operations) -> None:
@@ -68,18 +76,14 @@ def database(key: str) -> Engine:
 
     with engine.begin() as connection:
         connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
         version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
         if version == 0:
-            # Start an actual SQLite transaction before the first DDL statement.
-            connection.exec_driver_sql("BEGIN IMMEDIATE")
             operations = Operations(MigrationContext.configure(connection))
             for table in metadata.sorted_tables:
-                operations.invoke(CreateTableOp.from_table(table))
-                for index in table.indexes:
-                    operations.create_index(index.name, table.name, list(index.columns.keys()))
-            connection.exec_driver_sql("PRAGMA user_version=5")
-        elif version in (1, 2, 3, 4):
-            connection.exec_driver_sql("BEGIN IMMEDIATE")
+                create_table(operations, table)
+            connection.exec_driver_sql("PRAGMA user_version=6")
+        elif version in (1, 2, 3, 4, 5):
             operations = Operations(MigrationContext.configure(connection))
             if version == 1:
                 # The old creator flag already encodes worker (0) and lead (1).
@@ -94,8 +98,10 @@ def database(key: str) -> Engine:
                 connection.exec_driver_sql(
                     "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
                 )
-            migrate_sealed_rounds(operations)
-            connection.exec_driver_sql("PRAGMA user_version=5")
-        elif version != 5:
+            if version < 5:
+                migrate_sealed_rounds(operations)
+            create_table(operations, assignment)
+            connection.exec_driver_sql("PRAGMA user_version=6")
+        elif version != 6:
             raise ValueError("Unsupported bridge database version")
     return engine

@@ -8,6 +8,7 @@ from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_,
 from sqlalchemy.sql import ColumnElement
 
 from agents_chat.conversations import models, rounds, tasks
+from agents_chat.conversations.assignment_tables import PENDING_STATES, assignment
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
@@ -154,6 +155,8 @@ def invite(connection: Connection, actor: RowMapping, request: models.Invite) ->
         raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
     if slot is not None and slot.joined:
         raise ValueError(f"Invitation slot already taken: {slot.label}")
+    if slot is not None and active_assignment(connection, slot.id):
+        raise ValueError(f"Invitation reserved for an active fresh run: {slot.label}")
 
     label = request.name if slot is None else slot.label
     role = Role.CO_LEAD if request.role == "co-lead" else Role.WORKER
@@ -178,6 +181,18 @@ def invite(connection: Connection, actor: RowMapping, request: models.Invite) ->
         )
     record_event(connection, actor, event)
     return {"participant": label, "role": role.label, "code": code, "join_prompt": JOIN_PROMPT}
+
+
+def active_assignment(connection: Connection, slot_id: int) -> bool:
+    """Protect the credential of a launch that has not consumed its invitation yet."""
+    return (
+        connection.scalar(
+            select(assignment.c.id).where(
+                assignment.c.slot == slot_id, assignment.c.state.in_(PENDING_STATES)
+            )
+        )
+        is not None
+    )
 
 
 def authenticate(connection: Connection, token: str) -> RowMapping:

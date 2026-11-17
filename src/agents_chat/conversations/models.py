@@ -8,6 +8,8 @@ Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
+MAX_WAIT_SECONDS = 45
+Wait = Annotated[int, Field(strict=True, ge=0, le=MAX_WAIT_SECONDS)]
 MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
 PostKind = Literal[
     "note",
@@ -94,6 +96,7 @@ class Read(Member):
 
     action: Literal["read"] = "read"
     after: Cursor = 0
+    wait_seconds: Wait = 0
 
 
 class Close(Member):
@@ -123,9 +126,18 @@ class Release(Member):
     action: Literal["release"] = "release"
 
 
+class Launch(Member):
+    """Reserve a worker slot and dispatch a configured local plugin."""
+
+    action: Literal["launch"] = "launch"
+    name: Label
+    plugin: Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9-]{1,64}$")]
+    directory: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+
+
 REQUEST = TypeAdapter(
     Annotated[
-        Create | Join | Post | Read | Close | Status | Invite | Release,
+        Create | Join | Post | Read | Close | Status | Invite | Release | Launch,
         Field(discriminator="action"),
     ]
 )

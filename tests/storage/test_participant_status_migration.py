@@ -83,7 +83,7 @@ def test_upgrade_legacy_database(
     engine = database(workspace)
     try:
         with engine.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 5
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 6
             result = repository.apply(connection, models.Read(workspace=workspace, token=token))
             assert result["brief"] == "Old brief"
             assert result["messages"] == [{"id": 1, "label": "Lead", "body": "Old reply"}]

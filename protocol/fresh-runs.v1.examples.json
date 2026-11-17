@@ -1,0 +1,29 @@
+[
+  {
+    "name": "capabilities",
+    "arguments": {},
+    "structuredContent": {"version": 1, "token_cap": false, "cost_cap": false}
+  },
+  {
+    "name": "start",
+    "arguments": {
+      "assignment_id": "00000000000000000000000000000001",
+      "workspace": "/work/repository",
+      "bridge_home": "/private/bridge",
+      "join_code": "example-join-code",
+      "model": "zai-coding-plan/glm-5.2",
+      "timeout_seconds": 300
+    },
+    "structuredContent": {"state": "starting"}
+  },
+  {
+    "name": "inspect",
+    "arguments": {"assignment_id": "00000000000000000000000000000001"},
+    "structuredContent": {"state": "running"}
+  },
+  {
+    "name": "cancel",
+    "arguments": {"assignment_id": "00000000000000000000000000000001"},
+    "structuredContent": {"state": "cancelled"}
+  }
+]

@@ -35,3 +35,13 @@ Paste this in the lead or a co-lead chat.
 ## 4. Finish
 
 When you have the answer, tell a lead **“Close this agents-chat conversation with a summary of the outcome.”** Listening chats receive the summary and stop waiting. Members can still read the closed conversation. Closing disables posting and unused join codes.
+
+
+## Launch a fresh worker
+
+A lead or co-lead can use `launch_participant` to add a read-only worker through a
+configured provider plugin. Use the worker's name to assign it a task. The bridge
+starts the worker with a private invitation. It reports launch problems in the
+conversation, and it cancels active workers when the conversation closes.
+
+See [the Z.ai plugin setup](../plugins/zai/README.md) to run GLM through OpenCode.

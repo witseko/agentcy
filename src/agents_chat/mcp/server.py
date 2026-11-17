@@ -2,11 +2,9 @@
 
 import asyncio
 import hashlib
-import time
-from typing import Annotated
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
 
 from agents_chat.conversations import models, rounds
 from agents_chat.conversations.progress import lead_waiting_on, task_owners
@@ -14,14 +12,11 @@ from agents_chat.conversations.roles import Role
 from agents_chat.mcp.transport import exchange
 
 # Hosts stop a tool call after about one minute, and the first call may also start the core.
-MAX_WAIT_SECONDS = 45
 IDLE_WAITS = 3
 LEAD_IDLE_WAITS = 8
-# Replies often arrive together, so a woken read collects the rest of the burst.
-SETTLE_SECONDS = 2
 # A listening chat already holds these from create, join or a one-time read.
 CONTEXT_FIELDS = ("brief", "role", "roster")
-LISTEN = f"call read_messages again with your new cursor and wait_seconds={MAX_WAIT_SECONDS}"
+LISTEN = f"call read_messages again with your new cursor and wait_seconds={models.MAX_WAIT_SECONDS}"
 NEXT_AFTER_MESSAGES = (
     "Handle these messages and post a reply if one is needed. If 'more' is true, "
     f"read the remaining pages with wait_seconds=0. Then {LISTEN}."
@@ -135,23 +130,27 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
     return page
 
 
-async def poll_for_wake(request: models.Read, page: dict, wait_seconds: int) -> dict:
-    """Hold the input cursor until a relevant message arrives, close, or timeout."""
-    if page["wake"] or page.get("closed"):
+async def read_member(
+    workspace: str, token: str, after: int, wait_seconds: int, silent_waits: dict[str, int]
+) -> dict:
+    """Read once from the core and use the latest room state for guidance."""
+    request = models.Read(workspace=workspace, token=token, after=after, wait_seconds=wait_seconds)
+    page = await asyncio.to_thread(exchange, request)
+    token_digest = hashlib.sha256(token.encode()).hexdigest()
+    if not wait_seconds:
+        if page["messages"]:
+            silent_waits.pop(token_digest, None)
         return page
-    deadline = time.monotonic() + wait_seconds
-    while (remaining := deadline - time.monotonic()) > 0:
-        await asyncio.sleep(min(0.5, remaining))
-        page = await asyncio.to_thread(exchange, request)
-        if page.get("closed"):
-            break
-        if page["wake"]:
-            await asyncio.sleep(SETTLE_SECONDS)
-            return await asyncio.to_thread(exchange, request)
-    return page
+    status = await asyncio.to_thread(exchange, models.Status(workspace=workspace, token=token))
+    round_released = page.get("round") == rounds.SEALED and status.get("round") == rounds.CRITIQUE
+    if (not status["open"] and not page.get("closed")) or round_released:
+        page = await asyncio.to_thread(exchange, request.model_copy(update={"wait_seconds": 0}))
+    if not page["wake"] and not page.get("closed"):
+        page.update(messages=[], cursor=after, more=False)
+    return finish_wait(page, status, silent_waits, token_digest)
 
 
-def serve(workspace: str) -> None:
+def serve(workspace: str, directory: Path | None = None) -> None:
     """Bind a stdio MCP connection to one host-configured workspace."""
     silent_waits: dict[str, int] = {}
     server = FastMCP(
@@ -259,7 +258,7 @@ def serve(workspace: str) -> None:
     async def read_messages(
         token: models.Key,
         after: models.Cursor = 0,
-        wait_seconds: Annotated[int, Field(ge=0, le=MAX_WAIT_SECONDS)] = 0,
+        wait_seconds: models.Wait = 0,
     ) -> dict:
         """Read after the 'cursor' of your last read (initially zero). Set wait_seconds to listen.
 
@@ -269,23 +268,18 @@ def serve(workspace: str) -> None:
         wait ends. Messages addressed to someone else remain in history. Its 'next' field says
         what to do. Read any remaining pages before reporting the outcome.
         """
-        request = models.Read(workspace=workspace, token=token, after=after)
-        page = await asyncio.to_thread(exchange, request)
-        token_digest = hashlib.sha256(token.encode()).hexdigest()
-        if not wait_seconds:
-            if page["messages"]:
-                silent_waits.pop(token_digest, None)
-            return page
-        page = await poll_for_wake(request, page, wait_seconds)
-        status = await asyncio.to_thread(exchange, models.Status(workspace=workspace, token=token))
-        round_released = (
-            page.get("round") == rounds.SEALED and status.get("round") == rounds.CRITIQUE
+        return await read_member(workspace, token, after, wait_seconds, silent_waits)
+
+    @server.tool()
+    def launch_participant(token: models.Key, name: models.Label, plugin: str) -> dict:
+        """Queue a read-only fresh worker as a lead using a locally configured plugin."""
+        if directory is None:
+            raise ValueError("This bridge has no configured checkout")
+        return exchange(
+            models.Launch(
+                workspace=workspace, token=token, name=name, plugin=plugin, directory=str(directory)
+            )
         )
-        if (not status["open"] and not page.get("closed")) or round_released:
-            page = await asyncio.to_thread(exchange, request)
-        if not page["wake"] and not page.get("closed"):
-            page.update(messages=[], cursor=after, more=False)
-        return finish_wait(page, status, silent_waits, token_digest)
 
     @server.tool()
     def conversation_status(token: models.Key) -> dict:

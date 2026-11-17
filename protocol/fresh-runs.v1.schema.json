@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agents-chat fresh-run MCP contract v1",
+  "$defs": {
+    "capabilities_result": {
+      "additionalProperties": false,
+      "description": "Declare the version and optional hard limits a plugin enforces.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "token_cap": {
+          "default": false,
+          "title": "Token Cap",
+          "type": "boolean"
+        },
+        "cost_cap": {
+          "default": false,
+          "title": "Cost Cap",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "Capabilities",
+      "type": "object"
+    },
+    "start_arguments": {
+      "additionalProperties": false,
+      "description": "Launch a worker bound to a local read-only workspace and bridge.",
+      "properties": {
+        "assignment_id": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Assignment Id",
+          "type": "string"
+        },
+        "workspace": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Workspace",
+          "type": "string"
+        },
+        "bridge_home": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Bridge Home",
+          "type": "string"
+        },
+        "join_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Join Code",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        },
+        "token_cap": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Cap"
+        },
+        "cost_cap_microusd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Cap Microusd"
+        }
+      },
+      "required": [
+        "assignment_id",
+        "workspace",
+        "bridge_home",
+        "join_code",
+        "model",
+        "timeout_seconds"
+      ],
+      "title": "Start",
+      "type": "object"
+    },
+    "inspect_arguments": {
+      "additionalProperties": false,
+      "description": "Identify an assignment consistently across all plugin calls.",
+      "properties": {
+        "assignment_id": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Assignment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assignment_id"
+      ],
+      "title": "AssignmentRef",
+      "type": "object"
+    },
+    "cancel_arguments": {
+      "additionalProperties": false,
+      "description": "Identify an assignment consistently across all plugin calls.",
+      "properties": {
+        "assignment_id": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Assignment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assignment_id"
+      ],
+      "title": "AssignmentRef",
+      "type": "object"
+    },
+    "run_result": {
+      "additionalProperties": false,
+      "description": "Report a provider state without returning native identifiers or content.",
+      "properties": {
+        "state": {
+          "enum": [
+            "starting",
+            "running",
+            "finished",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "RunResult",
+      "type": "object"
+    }
+  }
+}

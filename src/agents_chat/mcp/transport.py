@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from agents_chat.conversations.models import Request
+from agents_chat.conversations.models import MAX_WAIT_SECONDS, Request
 from agents_chat.storage.database import data_dir
 
 MAX_REQUEST = 128 * 1024
@@ -20,7 +20,7 @@ def connect(path: Path) -> socket.socket:
     """Open the private socket with a bounded response time."""
     client = socket.socket(socket.AF_UNIX)
     try:
-        client.settimeout(10)
+        client.settimeout(MAX_WAIT_SECONDS + 10)
         client.connect(str(path))
         return client
     except OSError:
