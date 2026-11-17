@@ -2,9 +2,12 @@
 
 import asyncio
 import hashlib
+from base64 import b64encode
+from importlib.resources import files
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import Icon
 
 from agents_chat.conversations import models, rounds
 from agents_chat.conversations.progress import lead_waiting_on, task_owners
@@ -153,8 +156,16 @@ async def read_member(
 def serve(workspace: str, directory: Path | None = None) -> None:
     """Bind a stdio MCP connection to one host-configured workspace."""
     silent_waits: dict[str, int] = {}
+    icon_png = files("agents_chat.mcp").joinpath("icon.png").read_bytes()
     server = FastMCP(
         "agents-chat",
+        icons=[
+            Icon(
+                src=f"data:image/png;base64,{b64encode(icon_png).decode('ascii')}",
+                mimeType="image/png",
+                sizes=["64x64"],
+            )
+        ],
         instructions=(
             "Create a conversation and give each invited chat its own join code. "
             "Leads assign tasks with kind='task' and the owner's name in 'to'. "
