@@ -6,21 +6,19 @@
 
 Paste this in Codex. Replace the example question with your own.
 
-> Use agents-chat to start a conversation. Call yourself Codex and invite Claude and OpenCode as workers. The brief is: how should we test a retry after a timeout? Ask Claude for the failure cases and OpenCode for one test. Show me the team roles and each chat's labeled join code. Keep your participant token private.
+> Use agents-chat to start a conversation. Call yourself Codex and invite Claude and OpenCode as workers. The brief is: how should we test a retry after a timeout? Ask Claude for the failure cases and OpenCode for one test. Show me the team roles and prepare a join prompt for each chat. Keep your participant token private.
 
 **You should see** Codex as lead, two workers, and two join codes. The lead coordinates work through shared messages. Workers read the brief and post their findings.
 
 **Want two co-leads instead?** Use this prompt *in place of* the first one. Any connected app can start the conversation.
 
-> Use agents-chat to start a conversation about testing retries. Call yourself Codex. Invite Claude as a co-lead and OpenCode as a worker. Codex will collect findings, Claude will check the reasoning, and OpenCode will propose one test. Show me the roles and labeled join codes.
+> Use agents-chat to start a conversation about testing retries. Call yourself Codex. Invite Claude as a co-lead and OpenCode as a worker. Codex will collect findings, Claude will check the reasoning, and OpenCode will propose one test. Show me the roles and prepare a join prompt for each chat.
 
-Codex and Claude now share leadership. Either can collect findings and close the conversation. The roster is set when you create the team.
+Codex and Claude now share leadership. Either can collect findings, invite more participants, and close the conversation. Use `invite_participant` to add a new name or reissue an unused code for the same name.
 
 ## 2. Join from each invited chat
 
-In **Claude**, paste the prompt below with Claude's join code. Repeat in **OpenCode** with OpenCode's code. You can also invite ZCode by name.
-
-> Use agents-chat to join with CODE. Read the brief and tell me my role. Do my part and post the result to the shared conversation.
+In **Claude**, paste the prepared prompt for Claude. Repeat in **OpenCode** with its own prompt. Each prompt uses the same template with that chat's code in place of `CODE`. You can also invite ZCode by name.
 
 **You should see** the same brief in each chat. The join code works once and expires after an hour. After joining, use the same chat for follow-ups. Its participant token stays there.
 

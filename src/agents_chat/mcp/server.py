@@ -118,10 +118,24 @@ def serve(workspace: str) -> None:
     def create_conversation(
         brief: models.Body, your_name: models.Label, invitees: models.Slots
     ) -> dict:
-        """Start as lead. Invite workers by name or use {name, role: 'co-lead'} to share leadership."""
+        """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
+
+        Give each invited chat the returned join_prompt with CODE replaced by its join code.
+        """
         return exchange(
             models.Create(workspace=workspace, brief=brief, initiator=your_name, invitees=invitees)
         )
+
+    @server.tool()
+    def invite_participant(
+        token: models.Key, name: models.Label, role: models.InviteRole | None = None
+    ) -> dict:
+        """As a lead or co-lead, add a participant or replace an unused join code.
+
+        New slots default to worker. Reissues keep the slot's role unless you supply a role.
+        Give the invited chat the join_prompt with CODE replaced by its new code.
+        """
+        return exchange(models.Invite(workspace=workspace, token=token, name=name, role=role))
 
     @server.tool()
     def join_conversation(code: models.Key) -> dict:
