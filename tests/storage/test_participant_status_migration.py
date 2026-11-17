@@ -1,4 +1,4 @@
-"""Verify that the participant activity migration preserves prior conversation data."""
+"""Verify that conversation migrations preserve prior participant and message data."""
 
 import sqlite3
 from contextlib import closing
@@ -11,8 +11,11 @@ from agents_chat.conversations import models, repository
 from agents_chat.storage.database import database
 
 
-def test_upgrade_version_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Read an existing conversation and its prior message after adding seen."""
+@pytest.mark.parametrize("version", [2, 3])
+def test_upgrade_legacy_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
+) -> None:
+    """Read existing participant status and messages after adding message metadata."""
     directory = tmp_path / "agents-chat"
     directory.mkdir(mode=0o700)
     monkeypatch.setenv("AGENTS_CHAT_HOME", str(directory))
@@ -56,12 +59,15 @@ def test_upgrade_version_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
             "INSERT INTO message VALUES (?, ?, ?, ?, ?)",
             (1, "room-1", 1, "Old reply", 1),
         )
+        if version == 3:
+            previous.execute("ALTER TABLE participant ADD COLUMN seen INTEGER")
+            previous.execute("PRAGMA user_version=3")
         previous.commit()
 
     engine = database(workspace)
     try:
         with engine.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 3
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 4
             result = repository.apply(connection, models.Read(workspace=workspace, token=token))
             assert result["brief"] == "Old brief"
             assert result["messages"] == [{"id": 1, "label": "Lead", "body": "Old reply"}]

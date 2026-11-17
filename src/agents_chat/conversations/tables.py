@@ -1,4 +1,4 @@
-"""Declare the initial bridge schema for conversations and private membership."""
+"""Declare the bridge schema for conversations and private membership."""
 
 from sqlalchemy import Column, ForeignKey, Index, Integer, MetaData, String, Table, UniqueConstraint
 
@@ -31,6 +31,9 @@ message = Table(
     Column("author", ForeignKey("participant.id"), nullable=False),
     Column("body", String, nullable=False),
     Column("created", Integer, nullable=False),
+    Column("kind", String),
+    Column("recipient", ForeignKey("participant.id")),
+    Column("reply_to", ForeignKey("message.id")),
 )
 Index("message_room_cursor", message.c.room, message.c.id)
 Index("message_author_recent", message.c.author, message.c.created)

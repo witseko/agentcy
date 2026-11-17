@@ -18,7 +18,9 @@ from agents_chat.mcp import server
     ("caller", "peer_state", "has_messages", "waits", "expected"),
     [
         ("lead", "invited", True, 8, "Handle these messages"),
-        ("lead", "replied", False, 1, "All members replied. Stop listening"),
+        ("lead", "done", False, 1, "All other members are done. Stop listening"),
+        ("lead", "replied", False, 1, "Still working: Peer. To keep listening"),
+        ("lead", "blocked", False, 1, "tell your user who is blocked: Peer"),
         ("lead", "joined", False, 7, "Still working: Peer. To keep listening"),
         ("co-lead", "joined", False, 8, "Stop listening and tell your user"),
         ("lead", "invited", False, 1, "join codes are unused: Peer"),
@@ -89,12 +91,52 @@ def test_waiting_on_matches_names_in_guidance(shim: tuple[server.FastMCP, Counte
     assert waiting["waiting_on"] == ["Worker"]
     assert "Still working: Worker" in waiting["next"]
 
-    post = tool(app, "post_message", token=worker["token"], body="Done", submission_id="result")
+    post = tool(
+        app, "post_message", token=worker["token"], body="Done", submission_id="result", kind="done"
+    )
     done = tool(app, "read_messages", token=team["token"], after=post["message_id"], wait_seconds=1)
     assert done["waiting_on"] == ["Missing"]
     assert "join codes are unused: Missing" in done["next"]
     assert calls["status"] == 2
     assert set(tool(app, "conversation_status", token=team["token"])) == {"open", "members"}
+
+
+def test_waiting_read_retains_non_waking_messages(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Leave an unrelated message unread and return it with the next relevant message."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Review retries",
+        your_name="Lead",
+        invitees=["Target", "Observer"],
+    )
+    observer = tool(app, "join_conversation", code=team["invitations"]["Observer"])["token"]
+    question = tool(
+        app,
+        "post_message",
+        token=team["token"],
+        body="Which test?",
+        submission_id="question",
+        kind="question",
+        to="Target",
+    )["message_id"]
+
+    quiet = tool(app, "read_messages", token=observer, wait_seconds=1)
+    assert quiet["wake"] is False
+    assert quiet["messages"] == []
+    assert quiet["cursor"] == 0
+    history = tool(app, "read_messages", token=observer)
+    assert [message["id"] for message in history["messages"]] == [question]
+
+    broadcast = tool(
+        app, "post_message", token=team["token"], body="Continue", submission_id="continue"
+    )["message_id"]
+    waking = tool(app, "read_messages", token=observer, after=quiet["cursor"], wait_seconds=1)
+    assert waking["wake"] is True
+    assert [message["id"] for message in waking["messages"]] == [question, broadcast]
 
 
 @pytest.mark.parametrize("reset_by", ["waiting read", "one-time read", "post"])

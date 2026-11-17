@@ -4,13 +4,17 @@ import hashlib
 import secrets
 import time
 
-from sqlalchemy import Connection, RowMapping, func, insert, select, update
+from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_, select, update
+from sqlalchemy.sql import ColumnElement
 
 from agents_chat.conversations import models
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
 ACTIVITY_UPDATE_SECONDS = 10
+EVENT_KIND = "event"
+PROGRESS_KINDS = ("done", "blocker")
+PAGE_SIZE = 16
 
 
 def digest(value: str) -> str:
@@ -137,7 +141,18 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     message_count = (
         select(func.count())
         .select_from(message)
-        .where(message.c.author == member.c.id, message.c.room == member.c.room)
+        .where(
+            message.c.author == member.c.id,
+            message.c.room == member.c.room,
+            message.c.kind.is_distinct_from(EVENT_KIND),
+        )
+        .scalar_subquery()
+    )
+    progress = (
+        select(message.c.kind)
+        .where(message.c.author == member.c.id, message.c.kind.in_(PROGRESS_KINDS))
+        .order_by(message.c.id.desc())
+        .limit(1)
         .scalar_subquery()
     )
     rows = connection.execute(
@@ -147,19 +162,20 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.token_hash.is_not(None),
             member.c.seen,
             message_count,
+            progress,
         )
         .where(member.c.room == participant["room"])
         .order_by(member.c.id)
     )
     members = {}
-    for label, role, joined, seen, count in rows:
+    for label, role, joined, seen, count, marker in rows:
         entry = {"role": Role(role).label, "state": "invited"}
         if joined:
             entry["state"] = "joined"
             if seen is not None:
                 entry["idle_seconds"] = max(0, now - seen)
             if count:
-                entry["state"] = "replied"
+                entry["state"] = {"done": "done", "blocker": "blocked"}.get(marker, "replied")
                 entry["messages"] = count
         members[label] = entry
     return {
@@ -169,34 +185,66 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     }
 
 
+def post_content(connection: Connection, room_id: str, request: models.Post) -> dict:
+    """Resolve recipient and reply IDs within the authenticated conversation."""
+    recipient = None
+    if request.to is not None:
+        recipient = connection.scalar(
+            select(member.c.id).where(member.c.room == room_id, member.c.label == request.to)
+        )
+        if recipient is None:
+            raise ValueError("Unknown recipient in this conversation")
+    if request.reply_to is not None:
+        parent = connection.scalar(
+            select(message.c.id).where(message.c.room == room_id, message.c.id == request.reply_to)
+        )
+        if parent is None:
+            raise ValueError("Unknown reply target in this conversation")
+    return {
+        "body": request.body,
+        "kind": None if request.kind == "note" else request.kind,
+        "recipient": recipient,
+        "reply_to": request.reply_to,
+    }
+
+
 def post(connection: Connection, participant: RowMapping, request: models.Post) -> dict:
-    """Deduplicate submission IDs and recent identical messages from the same author."""
+    """Deduplicate retries with the same text, kind, addressee, and reply target."""
     author = participant["id"]
-    previous = connection.execute(
-        select(message.c.id, message.c.body)
-        .join(receipt)
-        .where(receipt.c.author == author, receipt.c.key == request.submission_id)
-    ).one_or_none()
+    content = post_content(connection, participant["room"], request)
+    previous = (
+        connection.execute(
+            select(
+                message.c.id,
+                message.c.body,
+                message.c.kind,
+                message.c.recipient,
+                message.c.reply_to,
+            )
+            .join(receipt)
+            .where(receipt.c.author == author, receipt.c.key == request.submission_id)
+        )
+        .mappings()
+        .one_or_none()
+    )
     if previous:
-        if previous.body != request.body:
+        if any(previous[field] != value for field, value in content.items()):
             raise ValueError("Submission ID already used for a different message")
-        return {"message_id": previous.id}
+        return {"message_id": previous["id"]}
     now = int(time.time())
     number = connection.scalar(
         select(message.c.id)
         .where(
             message.c.author == author,
             message.c.created >= now - 30,
-            message.c.body == request.body,
         )
+        .filter_by(**content)
         .order_by(message.c.id.desc())
         .limit(1)
     )
     if number is None:
         number = connection.execute(
-            insert(message).values(
-                room=participant["room"], author=author, body=request.body, created=now
-            )
+            insert(message).values(room=participant["room"], author=author, created=now, **content)
         ).inserted_primary_key[0]
     connection.execute(
         insert(receipt).values(author=author, key=request.submission_id, message_id=number)
@@ -204,28 +252,75 @@ def post(connection: Connection, participant: RowMapping, request: models.Post) 
     return {"message_id": number}
 
 
+def record_event(connection: Connection, actor: RowMapping, body: str) -> int:
+    """Append a lifecycle event visible to the entire conversation."""
+    return connection.execute(
+        insert(message).values(
+            room=actor["room"],
+            author=actor["id"],
+            body=body,
+            kind=EVENT_KIND,
+            created=int(time.time()),
+        )
+    ).inserted_primary_key[0]
+
+
+def wakes_listener(participant: RowMapping) -> ColumnElement[bool]:
+    """Build the wake predicate without filtering the visible transcript."""
+    if participant["role"] in (Role.LEAD, Role.CO_LEAD):
+        return literal(True)
+    return or_(
+        message.c.recipient == participant["id"],
+        and_(message.c.recipient.is_(None), message.c.kind.is_distinct_from("blocker")),
+    )
+
+
 def read(connection: Connection, participant: RowMapping, request: models.Read) -> dict:
     """Return the full view from cursor zero, and only other members' new messages after it."""
     catching_up = request.after == 0
     unread = [message.c.room == participant["room"], message.c.id > request.after]
     if not catching_up:
-        unread.append(message.c.author != participant["id"])
+        unread.append(or_(message.c.author != participant["id"], message.c.kind == EVENT_KIND))
+    recipient = member.alias("recipient")
+    wake = wakes_listener(participant)
     rows = (
         connection.execute(
-            select(message.c.id, member.c.label, message.c.body)
+            select(
+                message.c.id,
+                member.c.label,
+                message.c.body,
+                message.c.kind,
+                recipient.c.label.label("to"),
+                message.c.reply_to,
+                wake.label("wake"),
+            )
             .join(member, message.c.author == member.c.id)
+            .outerjoin(recipient, message.c.recipient == recipient.c.id)
             .where(*unread)
             .order_by(message.c.id)
-            .limit(17)
+            .limit(PAGE_SIZE + 1)
         )
         .mappings()
         .all()
     )
-    page = [dict(row) for row in rows[:16]]
+    page = [
+        {field: value for field, value in row.items() if value is not None and field != "wake"}
+        for row in rows[:PAGE_SIZE]
+    ]
+    more = len(rows) > PAGE_SIZE
+    has_wake = any(row["wake"] for row in rows)
+    if more and not has_wake:
+        has_wake = (
+            connection.scalar(
+                select(message.c.id).where(*unread, wake, message.c.id > rows[-1]["id"]).limit(1)
+            )
+            is not None
+        )
     result = {
         "messages": page,
-        "more": len(rows) > 16,
+        "more": more,
         "cursor": page[-1]["id"] if page else request.after,
+        "wake": has_wake,
     }
     if catching_up:
         result["brief"] = participant["brief"]

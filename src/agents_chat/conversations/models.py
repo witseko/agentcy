@@ -8,6 +8,8 @@ Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
+MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
+PostKind = Literal["note", "question", "finding", "blocker", "done"]
 
 
 class Invitation(BaseModel):
@@ -59,6 +61,9 @@ class Post(Member):
     action: Literal["post"] = "post"
     submission_id: Key
     body: Body
+    kind: PostKind = "note"
+    to: Label | None = None
+    reply_to: MessageId | None = None
 
 
 class Read(Member):
