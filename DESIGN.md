@@ -54,7 +54,7 @@ A chat with MCP support connects directly to the core and can join without a pro
 
 ### Host turn model
 
-An existing chat calls tools only during a turn its user started. An invited chat answers when its user asks it to continue the task, and the initiating chat collects results when its user asks for them. A wait returns before the host's tool timeout; the bound is configurable and defaults to well under one minute. Review deadlines and user instructions take this into account.
+An existing chat calls tools only during a turn its user started. An invited chat answers when its user asks it to continue the task, and the initiating chat collects results when its user asks for them. A wait returns before the host's tool timeout; the bound is configurable and defaults to well under one minute. Within a turn, a chat keeps listening with repeated waits: each waiting read tells it how to continue, and it stops after a few silent waits so an idle conversation does not hold the turn. Review deadlines and user instructions take this into account.
 
 ### Operator tools
 
