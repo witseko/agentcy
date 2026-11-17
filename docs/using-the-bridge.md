@@ -22,6 +22,8 @@ In **Claude**, paste the prepared prompt for Claude. Repeat in **OpenCode** with
 
 **You should see** the same brief in each chat. The join code works once and expires after an hour. After joining, use the same chat for follow-ups. Its participant token stays there.
 
+**Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTS_CHAT_HOME`).
+
 ## 3. Collect the answer
 
 Paste this in the lead or a co-lead chat.
@@ -29,6 +31,8 @@ Paste this in the lead or a co-lead chat.
 > Read the agents-chat replies. Use `conversation_status` to name anyone who has yet to reply. Give me the recommended test and any disagreements. Keep the conversation open.
 
 **Missing a reply?** After a chat joins or posts, it keeps listening for replies for about two minutes of silence, then it stops. You can interrupt it at any time. An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
+
+Posting a task records it in the conversation. An existing chat starts work during a turn in its own app. If you need confirmation, ask the worker to acknowledge the task with a reply. A `done` reply to the task ID marks it complete.
 
 **Want independent proposals first?** Tell the lead to start a sealed conversation. Have the workers join before they send their proposals. Each uses `post_message` with `kind="proposal"` and waits for release. The proposals become visible when every joined worker submits, the deadline passes, or a lead calls `release_proposals`. The default deadline is 10 minutes.
 

@@ -1,14 +1,17 @@
 """Test late invitations, private join prompts, and the roster limit."""
 
+from pathlib import Path
 from secrets import token_urlsafe
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import Connection
+from sqlalchemy import Connection, update
 
 from agents_chat.conversations import models, repository
+from agents_chat.conversations.tables import member
+from agents_chat.storage.database import database, workspace_key
 
 
 def apply(connection: Connection, action: str, **fields: Any) -> dict:
@@ -24,6 +27,52 @@ def create(connection: Connection, invitees: list | None = None) -> dict:
     return apply(
         connection, "create", initiator="Lead", brief="Review", invitees=invitees or ["Worker"]
     )
+
+
+@pytest.mark.parametrize("late_invite", [False, True], ids=["create", "late-invite"])
+def test_join_reports_when_clients_use_different_workspaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_invite: bool
+) -> None:
+    """Identify a mismatched workspace so the worker can join with the same code."""
+    bridge = tmp_path / "bridge"
+    bridge.mkdir(mode=0o700)
+    monkeypatch.setenv("AGENTS_CHAT_HOME", str(bridge))
+    workspaces = [tmp_path / "lead", tmp_path / "worker"]
+    for directory in workspaces:
+        directory.mkdir()
+    lead_workspace, worker_workspace = map(workspace_key, workspaces)
+    lead_db = database(lead_workspace)
+    worker_db = database(worker_workspace)
+    try:
+        with lead_db.begin() as lead, worker_db.begin() as worker:
+            lead.info["workspace"] = lead_workspace
+            worker.info["workspace"] = worker_workspace
+            team = create(lead)
+            code = team["invitations"]["Worker"]
+            name = "Worker"
+            if late_invite:
+                name = "Analyst"
+                code = apply(lead, "invite", token=team["token"], name=name)["code"]
+
+            with pytest.raises(
+                ValueError, match="Join code does not match this workspace"
+            ) as error:
+                apply(worker, "join", code=code)
+            assert code not in str(error.value)
+            assert apply(lead, "join", code=code)["participant"] == name
+    finally:
+        lead_db.dispose()
+        worker_db.dispose()
+
+
+def test_existing_unprefixed_join_code_still_works(conversation_db: Connection) -> None:
+    """Redeem an invitation that an earlier core version issued."""
+    create(conversation_db)
+    code = token_urlsafe(16)
+    conversation_db.execute(
+        update(member).where(member.c.label == "Worker").values(invite_hash=repository.digest(code))
+    )
+    assert apply(conversation_db, "join", code=code)["participant"] == "Worker"
 
 
 def test_late_invite_returns_a_prompt_and_the_joiner_reads_full_history(

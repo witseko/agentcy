@@ -38,6 +38,8 @@ Chats launch local MCP servers over stdio and stop them when the chat closes, wh
 
 The join call exchanges a join code for a participant token. Every later call carries the token, and the core derives the author, conversation, and workspace from it. Tool arguments never name the author. Generate join codes and tokens with a cryptographic random source. A join code is bound to one invited slot, works once, and expires after one hour. A second attempt returns an error that names the slot as taken.
 
+New join codes carry a per-code tag that detects a workspace mismatch before the core looks up the invitation in the configured workspace. The core authenticates the invitation by its full code digest.
+
 ### Conversation roles
 
 The creator leads by default. Each plain-name invitation creates a worker slot. An invitation can also specify a name and the role `co-lead`. When any co-lead is invited, the creator and invited co-leads share leadership. The join code binds its holder to the assigned role. The create and join tools and a one-time read from cursor zero return the roster. Any member can call `conversation_status` to see who was invited, who joined, and who replied. Status shows time since the last recorded authenticated bridge call when known. Leads coordinate work and summarize findings through messages. All members can read and post. Any lead or co-lead can close the conversation.
