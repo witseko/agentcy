@@ -46,6 +46,7 @@ def test_worker_sees_invited_joined_and_replied_members(
     )
     assert result == {
         "open": True,
+        "participant": "Worker",
         "members": {
             "Lead": {"role": "lead", "state": "replied", "idle_seconds": 0, "messages": 2},
             "Worker": {"role": "worker", "state": "joined", "idle_seconds": 0},

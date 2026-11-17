@@ -162,7 +162,11 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
                 entry["state"] = "replied"
                 entry["messages"] = count
         members[label] = entry
-    return {"open": bool(participant["open"]), "members": members}
+    return {
+        "open": bool(participant["open"]),
+        "members": members,
+        "participant": participant["label"],
+    }
 
 
 def post(connection: Connection, participant: RowMapping, request: models.Post) -> dict:
