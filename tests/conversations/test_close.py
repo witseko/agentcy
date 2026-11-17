@@ -113,13 +113,14 @@ def test_waiting_read_stops_on_close(
     def exchange(request: models.Request) -> dict[str, Any]:
         """Close between the first and second reads on the same test connection."""
         nonlocal poll_count
-        poll_count += 1
-        assert poll_count <= 2
-        if poll_count == 2:
-            repository.apply(
-                conversation_db,
-                models.Close(workspace=workspace, token=lead_token, summary=summary),
-            )
+        if isinstance(request, models.Read):
+            poll_count += 1
+            assert poll_count <= 2
+            if poll_count == 2:
+                repository.apply(
+                    conversation_db,
+                    models.Close(workspace=workspace, token=lead_token, summary=summary),
+                )
         return repository.apply(conversation_db, request)
 
     def invoke(app: server.FastMCP, transport: str) -> None:
