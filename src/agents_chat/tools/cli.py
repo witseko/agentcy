@@ -16,4 +16,5 @@ def main() -> None:
     )
     options = parser.parse_args()
     os.umask(0o077)
-    serve(workspace_key(options.workspace))
+    directory = options.workspace.resolve(strict=True)
+    serve(workspace_key(directory), directory)

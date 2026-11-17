@@ -3,8 +3,6 @@
 import asyncio
 import json
 from collections import Counter
-from itertools import count
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -63,7 +61,6 @@ def shim(
         registered.append(app)
 
     monkeypatch.setattr(server, "exchange", exchange)
-    monkeypatch.setattr(server, "time", SimpleNamespace(monotonic=count(0, 2).__next__))
     monkeypatch.setattr(server.FastMCP, "run", capture)
     server.serve(conversation_db.info["workspace"])
     return registered[0], calls

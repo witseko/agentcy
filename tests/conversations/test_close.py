@@ -105,22 +105,22 @@ def test_waiting_read_stops_on_close(
     monkeypatch: pytest.MonkeyPatch,
     summary: str | None,
 ) -> None:
-    """Poll until close and return the outcome without another wait or a settle delay."""
+    """Return the closed outcome from one bounded core read."""
     workspace = conversation_db.info["workspace"]
     lead_token, worker_token, _ = team
-    poll_count = 0
+    read_count = 0
 
     def exchange(request: models.Request) -> dict[str, Any]:
-        """Close between the first and second reads on the same test connection."""
-        nonlocal poll_count
+        """Return the final page that a waiting core call receives on close."""
+        nonlocal read_count
         if isinstance(request, models.Read):
-            poll_count += 1
-            assert poll_count <= 2
-            if poll_count == 2:
-                repository.apply(
-                    conversation_db,
-                    models.Close(workspace=workspace, token=lead_token, summary=summary),
-                )
+            read_count += 1
+            assert request.wait_seconds == 15
+            assert read_count == 1
+            repository.apply(
+                conversation_db,
+                models.Close(workspace=workspace, token=lead_token, summary=summary),
+            )
         return repository.apply(conversation_db, request)
 
     def invoke(app: server.FastMCP, transport: str) -> None:
@@ -137,4 +137,4 @@ def test_waiting_read_stops_on_close(
     monkeypatch.setattr(server, "exchange", exchange)
     monkeypatch.setattr(server.FastMCP, "run", invoke)
     server.serve(workspace)
-    assert poll_count == 2
+    assert read_count == 1
