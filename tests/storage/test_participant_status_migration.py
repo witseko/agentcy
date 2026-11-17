@@ -1,0 +1,71 @@
+"""Verify that the participant activity migration preserves prior conversation data."""
+
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from secrets import token_hex
+
+import pytest
+
+from agents_chat.conversations import models, repository
+from agents_chat.storage.database import database
+
+
+def test_upgrade_version_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Read an existing conversation and its prior message after adding seen."""
+    directory = tmp_path / "agents-chat"
+    directory.mkdir(mode=0o700)
+    monkeypatch.setenv("AGENTS_CHAT_HOME", str(directory))
+    workspace = token_hex(32)
+    token = token_hex(32)
+    with closing(sqlite3.connect(directory / f"{workspace}.sqlite3")) as previous:
+        previous.executescript(
+            """
+            PRAGMA foreign_keys=ON;
+            PRAGMA user_version=2;
+            CREATE TABLE conversation (
+                id TEXT PRIMARY KEY,
+                brief TEXT NOT NULL,
+                open INTEGER NOT NULL
+            );
+            CREATE TABLE participant (
+                id INTEGER PRIMARY KEY,
+                room TEXT NOT NULL REFERENCES conversation(id),
+                label TEXT NOT NULL,
+                role INTEGER NOT NULL,
+                invite_hash TEXT UNIQUE,
+                expires INTEGER,
+                token_hash TEXT UNIQUE,
+                UNIQUE (room, label)
+            );
+            CREATE TABLE message (
+                id INTEGER PRIMARY KEY,
+                room TEXT NOT NULL REFERENCES conversation(id),
+                author INTEGER NOT NULL REFERENCES participant(id),
+                body TEXT NOT NULL,
+                created INTEGER NOT NULL
+            );
+            INSERT INTO conversation VALUES ('room-1', 'Old brief', 1);
+            """
+        )
+        previous.execute(
+            "INSERT INTO participant (id, room, label, role, token_hash) VALUES (?, ?, ?, ?, ?)",
+            (1, "room-1", "Lead", 1, repository.digest(token)),
+        )
+        previous.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?, ?)",
+            (1, "room-1", 1, "Old reply", 1),
+        )
+        previous.commit()
+
+    engine = database(workspace)
+    try:
+        with engine.begin() as connection:
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 3
+            result = repository.apply(connection, models.Read(workspace=workspace, token=token))
+            assert result["brief"] == "Old brief"
+            assert result["messages"] == [{"id": 1, "label": "Lead", "body": "Old reply"}]
+            status = repository.apply(connection, models.Status(workspace=workspace, token=token))
+            assert status["members"]["Lead"]["messages"] == 1
+    finally:
+        engine.dispose()

@@ -75,4 +75,12 @@ class Close(Member):
     summary: Body | None = None
 
 
-REQUEST = TypeAdapter(Annotated[Create | Join | Post | Read | Close, Field(discriminator="action")])
+class Status(Member):
+    """Read the current activity of conversation members."""
+
+    action: Literal["status"] = "status"
+
+
+REQUEST = TypeAdapter(
+    Annotated[Create | Join | Post | Read | Close | Status, Field(discriminator="action")]
+)
