@@ -9,7 +9,9 @@ Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
 MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
-PostKind = Literal["note", "question", "finding", "blocker", "done"]
+PostKind = Literal[
+    "note", "question", "finding", "blocker", "done", "task", "handoff", "accept", "decline"
+]
 InviteRole = Literal["worker", "co-lead"]
 MAX_PARTICIPANTS = 17
 

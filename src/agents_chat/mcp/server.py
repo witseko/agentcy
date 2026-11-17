@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from agents_chat.conversations import models
-from agents_chat.conversations.progress import lead_waiting_on
+from agents_chat.conversations.progress import lead_waiting_on, task_owners
 from agents_chat.conversations.roles import Role
 from agents_chat.mcp.transport import exchange
 
@@ -32,19 +32,41 @@ NEXT_AFTER_CLOSE = (
 )
 
 
-def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> str:
-    """Render the next action from the caller's role, progress, and recent waits."""
-    if not status["open"]:
-        return NEXT_AFTER_CLOSE
+def lead_task_guidance(
+    owners: dict[str, dict], me: str, has_messages: bool, silent_waits: int
+) -> str:
+    """Name each open task and choose whether to work, listen, or report."""
+    descriptions = []
+    working = set()
+    for name, member in owners.items():
+        for task in member["open_tasks"]:
+            blocked = task.get("blocked", False)
+            awaiting_join = member["state"] == "invited"
+            detail = f"#{task['id']} for {name}"
+            if blocked:
+                detail += " (blocked)"
+            elif awaiting_join:
+                detail += " (invitation unused)"
+            else:
+                working.add(name)
+            descriptions.append(detail)
+    summary = f"Open tasks are {', '.join(descriptions)}."
+    if has_messages:
+        return f"{summary} {NEXT_AFTER_MESSAGES}"
+    if me in working:
+        return f"{summary} Continue your tasks. Reply to each task with kind='done' or 'blocker'."
+    if working and silent_waits < LEAD_IDLE_WAITS:
+        return f"{summary} To keep listening, {LISTEN}."
+    return f"{summary} Stop listening and tell your user which tasks are still open."
+
+
+def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> str:
+    """Use task ownership when present and otherwise use member activity."""
+    owners = task_owners(status)
+    if owners:
+        return lead_task_guidance(owners, me, has_messages, silent_waits)
     if has_messages:
         return NEXT_AFTER_MESSAGES
-    caller = status["members"][me]
-    if caller["role"] == Role.WORKER.label:
-        if caller["state"] == "joined":
-            return "You have not posted your part. Do the work and post your findings or blockers."
-        if silent_waits >= IDLE_WAITS:
-            return "Stop listening and tell your user that the conversation is quiet."
-        return f"No new messages. To keep listening, {LISTEN}."
     pending = lead_waiting_on(status, me)
     if not pending:
         return "All other members are done. Stop listening and summarize for your user."
@@ -56,6 +78,24 @@ def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> st
     if silent_waits >= LEAD_IDLE_WAITS:
         return f"Stop listening and tell your user who is still working: {names}."
     return f"Still working: {names}. To keep listening, {LISTEN}."
+
+
+def guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> str:
+    """Render the next action from the caller's role, progress, and recent waits."""
+    if not status["open"]:
+        return NEXT_AFTER_CLOSE
+    caller = status["members"][me]
+    if caller["role"] != Role.WORKER.label:
+        return lead_guidance(status, me, has_messages, silent_waits)
+    if has_messages:
+        return NEXT_AFTER_MESSAGES
+    if any(not task.get("blocked") for task in caller.get("open_tasks", [])):
+        return "Continue your open tasks. Reply to each task with kind='done' or 'blocker'."
+    if caller["state"] == "joined":
+        return "You have not posted your part. Do the work and post your findings or blockers."
+    if silent_waits >= IDLE_WAITS:
+        return "Stop listening and tell your user that the conversation is quiet."
+    return f"No new messages. To keep listening, {LISTEN}."
 
 
 def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_digest: str) -> dict:
@@ -100,9 +140,10 @@ def serve(workspace: str) -> None:
         "agents-chat",
         instructions=(
             "Create a conversation and give each invited chat its own join code. "
-            "Leads coordinate work through messages and synthesize findings. "
+            "Leads assign tasks with kind='task' and the owner's name in 'to'. "
             "Workers read the brief, do their part, and report findings or blockers. "
-            "Use kind='done' when your part is complete. "
+            "Reply to a task ID with kind='done' when the task is complete or kind='blocker' "
+            "when you need help. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up, then post_message to contribute. "
             "Stay in the conversation during your turn: after you join or post, "
@@ -151,11 +192,16 @@ def serve(workspace: str) -> None:
         to: models.Label | None = None,
         reply_to: models.MessageId | None = None,
     ) -> dict:
-        """Share a note, question, finding, blocker, or done message with the conversation.
+        """Post a message, assign a task, or hand off work within the conversation.
 
         Use the exact roster name in 'to' to wake that member and the leads. A blocker wakes
-        the leads and any addressee. All members can read the message. 'reply_to' is the ID
-        of a message in this conversation. Pick a unique submission ID and reuse it on retries.
+        the leads and any addressee. All members can read every message. Pick a unique
+        submission ID and reuse it on retries.
+
+        Leads assign kind='task' with 'to'. The owner replies to the task ID with kind='done'
+        or kind='blocker'. To offer a transfer, the owner posts kind='handoff' with 'to' and
+        the task ID in 'reply_to'. The receiver replies to the handoff ID with kind='accept'
+        or kind='decline'.
         """
         result = exchange(
             models.Post(
@@ -202,7 +248,7 @@ def serve(workspace: str) -> None:
 
     @server.tool()
     def conversation_status(token: models.Key) -> dict:
-        """See who was invited, joined, replied, is blocked, or is done.
+        """See member activity and the IDs of open tasks by current owner.
 
         A worker reading files might make no bridge calls for minutes. A large idle_seconds
         cannot tell you whether that worker's turn ended.

@@ -7,7 +7,7 @@ import time
 from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_, select, update
 from sqlalchemy.sql import ColumnElement
 
-from agents_chat.conversations import models
+from agents_chat.conversations import models, tasks
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
@@ -199,6 +199,7 @@ def record_activity(connection: Connection, participant: RowMapping, now: int) -
 
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     """Report activity and message counts for the authenticated participant's team."""
+    open_tasks = tasks.open_tasks(connection, participant["room"])
     message_count = (
         select(func.count())
         .select_from(message)
@@ -218,6 +219,7 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     )
     rows = connection.execute(
         select(
+            member.c.id,
             member.c.label,
             member.c.role,
             member.c.token_hash.is_not(None),
@@ -229,7 +231,7 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         .order_by(member.c.id)
     )
     members = {}
-    for label, role, joined, seen, count, marker in rows:
+    for member_id, label, role, joined, seen, count, marker in rows:
         entry = {"role": Role(role).label, "state": "invited"}
         if joined:
             entry["state"] = "joined"
@@ -238,6 +240,8 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             if count:
                 entry["state"] = {"done": "done", "blocker": "blocked"}.get(marker, "replied")
                 entry["messages"] = count
+        if member_id in open_tasks:
+            entry["open_tasks"] = open_tasks[member_id]
         members[label] = entry
     return {
         "open": bool(participant["open"]),
@@ -304,6 +308,7 @@ def post(connection: Connection, participant: RowMapping, request: models.Post) 
         .limit(1)
     )
     if number is None:
+        tasks.validate_transition(connection, participant, content)
         number = connection.execute(
             insert(message).values(room=participant["room"], author=author, created=now, **content)
         ).inserted_primary_key[0]
