@@ -1,6 +1,7 @@
 """Apply conversation operations in one transaction owned by the local core."""
 
 import hashlib
+import re
 import secrets
 import time
 
@@ -17,6 +18,8 @@ EVENT_KIND = "event"
 PROGRESS_KINDS = ("done", "blocker")
 PAGE_SIZE = 16
 INVITE_LIFETIME_SECONDS = 3600
+JOIN_CODE_PATTERN = re.compile(r"([A-Za-z0-9_-]{22})\.([0-9a-f]{12})")
+JOIN_WORKSPACE_HELP = "Set both clients to the same --workspace and reconnect."
 JOIN_PROMPT = (
     "Use agents-chat to join with CODE. Read the brief and tell me my role. "
     "Do my part and post the result to the conversation."
@@ -28,9 +31,15 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def new_join_code() -> tuple[str, dict[str, str | int]]:
-    """Return a private code and its stored digest and expiry."""
-    code = secrets.token_urlsafe(16)
+def join_workspace_tag(workspace: str, nonce: str) -> str:
+    """Derive a per-code workspace tag without embedding a filesystem path."""
+    return digest(f"{workspace}:{nonce}")[:12]
+
+
+def new_join_code(workspace: str) -> tuple[str, dict[str, str | int]]:
+    """Return a workspace-tagged code and its stored digest and expiry."""
+    nonce = secrets.token_urlsafe(16)
+    code = f"{nonce}.{join_workspace_tag(workspace, nonce)}"
     return code, {
         "invite_hash": digest(code),
         "expires": int(time.time()) + INVITE_LIFETIME_SECONDS,
@@ -83,7 +92,7 @@ def create(connection: Connection, request: models.Create) -> dict:
     for label, role in roles.items():
         if label == request.initiator:
             continue
-        code, invitation_fields = new_join_code()
+        code, invitation_fields = new_join_code(request.workspace)
         invitations[label] = code
         connection.execute(
             insert(member).values(
@@ -106,6 +115,9 @@ def create(connection: Connection, request: models.Create) -> dict:
 
 def join(connection: Connection, request: models.Join) -> dict:
     """Consume an invitation and issue the participant's durable token."""
+    tagged = JOIN_CODE_PATTERN.fullmatch(request.code)
+    if tagged and tagged[2] != join_workspace_tag(request.workspace, tagged[1]):
+        raise ValueError(f"Join code does not match this workspace. {JOIN_WORKSPACE_HELP}")
     slot = (
         connection.execute(
             select(member, room.c.brief, room.c.round, room.c.round_deadline)
@@ -116,6 +128,8 @@ def join(connection: Connection, request: models.Join) -> dict:
         .one_or_none()
     )
     if slot is None or slot["expires"] <= time.time():
+        if not tagged:
+            raise ValueError(f"Invalid or expired invitation. {JOIN_WORKSPACE_HELP}")
         raise ValueError("Invalid or expired invitation")
     if slot["token_hash"]:
         raise ValueError(f"Invitation slot already taken: {slot['label']}")
@@ -162,7 +176,7 @@ def invite(connection: Connection, actor: RowMapping, request: models.Invite) ->
     role = Role.CO_LEAD if request.role == "co-lead" else Role.WORKER
     if request.role is None and slot is not None:
         role = Role(slot.role)
-    code, invitation_fields = new_join_code()
+    code, invitation_fields = new_join_code(request.workspace)
     if slot is None:
         connection.execute(
             insert(member).values(room=room_id, label=label, role=role, **invitation_fields)
