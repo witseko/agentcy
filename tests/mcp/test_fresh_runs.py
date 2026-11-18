@@ -11,9 +11,12 @@ from sqlalchemy import select, update
 
 from agents_chat.conversations import models
 from agents_chat.conversations.assignment_tables import assignment
+from agents_chat.mcp import assignment_worker, plugin_client
 from agents_chat.mcp.assignment_worker import AssignmentWorker
 from agents_chat.mcp.concurrency import Notifications, transaction
 from agents_chat.mcp.core import Core
+from agents_chat.mcp.plugin_contract import RunResult, Start
+from agents_chat.mcp.plugin_settings import Plugin
 from agents_chat.storage.database import workspace_key
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "fake_run_plugin.py"
@@ -111,23 +114,199 @@ def test_fresh_worker_survives_restart_and_stops_on_close(team: Team) -> None:
     assert any("cancelled" in entry["body"] for entry in page["messages"])
 
 
+@pytest.mark.parametrize(("stop", "outcome"), [("close", "cancelled"), ("deadline", "timed_out")])
+def test_transient_provider_failure_reconciles_same_id_after_restart(
+    team: Team, monkeypatch: pytest.MonkeyPatch, stop: str, outcome: str
+) -> None:
+    """Keep a known run pending through inspection and cancellation failures."""
+    result = launch(team)
+    dispatch(team)
+    provider = plugin_client.run_operation
+    attempts = []
+
+    def fail_each_operation_once(plugin: Plugin, tool: str, request: Start | str) -> RunResult:
+        """Simulate a temporary transport problem on each operation's first call."""
+        assert request == result["assignment_id"]
+        if tool not in attempts:
+            attempts.append(tool)
+            raise plugin_client.PluginError("Provider is temporarily unavailable")
+        attempts.append(tool)
+        return provider(plugin, tool, request)
+
+    monkeypatch.setattr(plugin_client, "run_operation", fail_each_operation_once)
+    team.core.worker.scan()
+    assert state(team) == "running"
+    assert launch(team) == {"assignment_id": result["assignment_id"], "state": "running"}
+    assert team.core.worker.jobs.empty()
+    if stop == "close":
+        team.core.apply(models.Close(workspace=team.workspace, token=team.lead))
+    else:
+        with transaction(team.workspace) as connection:
+            connection.execute(update(assignment).values(deadline=int(time.time()) - 1))
+    team.core.worker.scan()
+    assert state(team) == "running"
+
+    restarted = AssignmentWorker(team.core.notifications)
+    restarted.scan(restart=True)
+
+    assert state(team) == outcome
+    assert attempts == ["inspect", "cancel", "cancel"]
+    page = team.core.apply(models.Read(workspace=team.workspace, token=team.lead))
+    assert any(
+        "could not confirm the fresh-run state" in entry["body"] for entry in page["messages"]
+    )
+    assert any("could not confirm cancellation" in entry["body"] for entry in page["messages"])
+    assert not any("uncertain fresh-run state" in entry["body"] for entry in page["messages"])
+
+
+def test_inspection_retries_when_provider_cannot_confirm_running_assignment(
+    team: Team, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retain the stable ID when a known running assignment cannot be inspected once."""
+    result = launch(team)
+    dispatch(team)
+    attempts = []
+    now = 100.0
+
+    def recover(plugin: Plugin, tool: str, request: Start | str) -> RunResult:
+        """Return unknown briefly and then confirm that the original run finished."""
+        attempts.append((tool, request))
+        return RunResult(state="unknown" if len(attempts) == 1 else "finished")
+
+    monkeypatch.setattr(assignment_worker, "monotonic", lambda: now)
+    monkeypatch.setattr(plugin_client, "run_operation", recover)
+    team.core.worker.scan()
+    team.core.worker.scan()
+    assert state(team) == "running"
+    assert attempts == [("inspect", result["assignment_id"])]
+
+    now += 10
+    team.core.worker.scan()
+
+    assert state(team) == "finished"
+    assert attempts == [("inspect", result["assignment_id"])] * 2
+
+
+@pytest.mark.parametrize("unknown_inspect", [False, True], ids=["lost-inspect", "unknown-inspect"])
+def test_lost_start_response_is_reconciled_without_second_start(
+    team: Team, monkeypatch: pytest.MonkeyPatch, unknown_inspect: bool
+) -> None:
+    """Recover a run when both start and the first inspection are unconfirmed."""
+    result = launch(team)
+    provider = plugin_client.run_operation
+    attempts = []
+
+    def lose_responses(plugin: Plugin, tool: str, request: Start | str) -> RunResult:
+        """Run each operation through the real fixture and drop its first responses."""
+        attempts.append(tool)
+        assignment_id = request.assignment_id if isinstance(request, Start) else request
+        assert assignment_id == result["assignment_id"]
+        response = provider(plugin, tool, request)
+        if len(attempts) == 2 and unknown_inspect:
+            return RunResult(state="unknown")
+        if len(attempts) <= 2:
+            raise plugin_client.PluginError("Provider response was lost")
+        return response
+
+    monkeypatch.setattr(plugin_client, "run_operation", lose_responses)
+    dispatch(team)
+    assert state(team) == "starting"
+    assert launch(team) == {"assignment_id": result["assignment_id"], "state": "starting"}
+    assert team.core.worker.jobs.empty()
+
+    restarted = AssignmentWorker(team.core.notifications)
+    restarted.scan(restart=True)
+
+    assert state(team) == "running"
+    assert attempts == ["start", "inspect", "inspect"]
+
+
+def test_cancel_retries_are_bounded_when_provider_stays_unavailable(
+    team: Team, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Report uncertainty once and stop polling after persistent cancel failures."""
+    result = launch(team)
+    dispatch(team)
+    team.core.apply(models.Close(workspace=team.workspace, token=team.lead))
+    attempts = []
+    now = 100.0
+
+    def unavailable(plugin: Plugin, tool: str, request: Start | str) -> RunResult:
+        """Track idempotent cancel calls while the provider remains unavailable."""
+        attempts.append((tool, request))
+        raise plugin_client.PluginError("Provider is unavailable")
+
+    monkeypatch.setattr(assignment_worker, "monotonic", lambda: now)
+    monkeypatch.setattr(plugin_client, "run_operation", unavailable)
+    for _ in range(10):
+        team.core.worker.scan()
+        now += 10
+
+    assert state(team) == "unknown"
+    assert 1 < len(attempts) < 10
+    assert all(call == ("cancel", result["assignment_id"]) for call in attempts)
+    page = team.core.apply(models.Read(workspace=team.workspace, token=team.lead))
+    assert sum("could not confirm cancellation" in entry["body"] for entry in page["messages"]) == 1
+    assert sum("uncertain fresh-run state" in entry["body"] for entry in page["messages"]) == 1
+
+
+@pytest.mark.parametrize("outcome", ["cancelled", "unknown"])
+def test_active_cancel_acknowledgments_remain_pending_until_stop_or_deadline(
+    team: Team, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """Keep polling a stopping provider past the limit for failed checks."""
+    result = launch(team)
+    dispatch(team)
+    team.core.apply(models.Close(workspace=team.workspace, token=team.lead))
+    attempts = []
+    elapsed = 0.0
+    started = time.time()
+    stopped = False
+
+    def cancel(plugin: Plugin, tool: str, request: Start | str) -> RunResult:
+        """Acknowledge cancellation even while the provider process remains active."""
+        attempts.append((tool, request))
+        return RunResult(state="cancelled" if stopped else "running")
+
+    monkeypatch.setattr(assignment_worker, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(assignment_worker, "time", lambda: started + elapsed)
+    monkeypatch.setattr(plugin_client, "run_operation", cancel)
+    for poll in range(7):
+        team.core.worker.scan()
+        team.core.worker.scan()
+        assert len(attempts) == poll + 1
+        assert state(team) == "running"
+        elapsed += 10
+
+    if outcome == "cancelled":
+        stopped = True
+    else:
+        elapsed += 200
+    team.core.worker.scan()
+    elapsed += 10
+    team.core.worker.scan()
+
+    assert state(team) == outcome
+    assert attempts == [("cancel", result["assignment_id"])] * 8
+
+
 @pytest.mark.parametrize(
-    ("outcome", "text"),
+    ("outcome", "expected_state", "text"),
     [
-        ("failed", "could not complete the fresh run"),
-        ("unknown", "uncertain fresh-run state"),
+        ("failed", "failed", "could not complete the fresh run"),
+        ("unknown", "starting", "could not confirm the fresh-run state"),
     ],
 )
 def test_dispatch_failure_is_visible_and_reissue_is_safe(
-    team: Team, monkeypatch: pytest.MonkeyPatch, outcome: str, text: str
+    team: Team, monkeypatch: pytest.MonkeyPatch, outcome: str, expected_state: str, text: str
 ) -> None:
     """Show the failure to the lead and preserve the original ID on retries."""
     monkeypatch.setenv("TEST_FRESH_RESULT", outcome)
     result = launch(team)
     dispatch(team)
-    assert state(team) == outcome
+    assert state(team) == expected_state
     retry = launch(team)
-    assert retry == {"assignment_id": result["assignment_id"], "state": outcome}
+    assert retry == {"assignment_id": result["assignment_id"], "state": expected_state}
     assert team.core.worker.jobs.empty()
     page = team.core.apply(models.Read(workspace=team.workspace, token=team.lead))
     assert any(entry.get("kind") == "event" and text in entry["body"] for entry in page["messages"])
@@ -155,7 +334,6 @@ def test_close_during_capability_check_prevents_dispatch(
     team: Team, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Recheck close after a plugin capability call and never start the worker."""
-    from agents_chat.mcp import plugin_client
 
     def close_before_start(plugin) -> None:
         """Close the room while the worker is checking the provider contract."""

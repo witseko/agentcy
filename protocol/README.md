@@ -13,6 +13,10 @@ A configured plugin runs as a local MCP stdio server. It exposes four tools.
 
 The core can reconnect in a new process before any call. The plugin keeps the assignment
 ID and state across connections and enforces the run timeout even when the core disconnects.
+After the plugin acknowledges `cancel` with an active state, the core checks again through
+the run deadline and a short grace period. Unconfirmed checks have a separate limit on
+consecutive failures. Both paths use the same assignment ID.
+
 Provider credentials belong to the plugin environment. Keep credentials and join codes
 out of arguments to subprocesses, persistent state, and logs. Join codes are passed to
 the local worker at launch. The worker redeems the code through a bridge shim. The plugin
