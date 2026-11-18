@@ -52,14 +52,16 @@ def workspace_key(workspace: Path) -> str:
     git = shutil.which("git")
     if git:
         common = subprocess.run(  # noqa: S603 - fixed git arguments, no shell
-            [git, "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            [git, "-C", str(root), "rev-parse", "--git-common-dir"],
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
         )
         if common.returncode == 0:
-            root = Path(common.stdout.rstrip("\n")).resolve()
+            # Git older than 2.31 has no --path-format, and a main checkout
+            # answers with a path relative to the directory given to -C.
+            root = (root / common.stdout.rstrip("\n")).resolve()
     return hashlib.sha256(os.fsencode(root)).hexdigest()
 
 
