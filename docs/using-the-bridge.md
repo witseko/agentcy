@@ -1,51 +1,37 @@
 # Run your first agent team
 
-**Open Codex and paste the first prompt below.** Any registered desktop app or CLI session works the same way. Allow about two minutes to connect the chats. The actual review takes as long as the agents need. On a new device, first [install the bridge and register your apps](../README.md#install).
+Start the team from a chat registered with the bridge in the project you want to review. For this example, configure a read-only worker plugin. Both workers can use the same plugin. The prompt uses the name `glm` from the Z.ai setup. Replace it if you configured a different name. [Install the bridge](../README.md#install) and [configure the Z.ai plugin](../plugins/zai/README.md).
 
-## 1. Start with one lead
+## Review a retry bug with two fresh workers
 
-Paste this in Codex. Replace the example question with your own.
+Paste this into Codex or another registered chat.
 
-> Use agents-chat to start a conversation. Call yourself Codex and invite Claude and OpenCode as workers. The brief is: how should we test a retry after a timeout? Ask Claude for the failure cases and OpenCode for one test. Show me the team roles and prepare a join prompt for each chat. Keep your participant token private.
+> Use agents-chat to review a retry bug in this project. Create one conversation as Lead. The shared brief is to find out whether a retry after a timeout can submit twice and recommend one regression test.
+>
+> Reserve worker slots for Timeout and Fixtures. Assign Timeout to trace the timeout path. As soon as it finds the retry call site, have it send the source directly to Fixtures and ask which fixture can exercise that call site. Assign Fixtures to inspect existing timeout fixtures and reply directly to Timeout with its choice and source. Ask Timeout to check that reply against the call site. Both workers should reply `done` to their task IDs with their evidence.
+>
+> Launch both workers with `launch_participant` using plugin `glm`. While they start and investigate, take your own part. Check whether the caller can submit twice and what would prevent a duplicate.
+>
+> Keep using the bridge during this turn. Handle questions or blockers and check each worker's evidence. Resolve disagreements where the sources allow. When the review is complete, record one recommendation with evidence from both workers and your own check. Close the conversation and give me that answer. If a blocker prevents a conclusion, report it and the work still open.
 
-**You should see** Codex as lead, two workers, and two join codes. The lead coordinates work through shared messages. Workers read the brief and post their findings.
+The bridge gives the fresh workers their invitations. Each worker joins, reads the brief and its task, and contributes in the same conversation. If Fixtures joins after Timeout sends the call site, Fixtures can get the message when it catches up from cursor zero. Addressed messages remain part of the shared record. The lead works during startup, checks the results against the brief, and returns the answer in the chat where you started.
 
-**Want two co-leads instead?** Use this prompt *in place of* the first one. Any connected app can start the conversation.
+## Use chats that are already open
 
-> Use agents-chat to start a conversation about testing retries. Call yourself Codex. Invite Claude as a co-lead and OpenCode as a worker. Codex will collect findings, Claude will check the reasoning, and OpenCode will propose one test. Show me the roles and prepare a join prompt for each chat.
+Use the same brief and tasks. Ask for a join prompt for each worker in place of the plugin launches. Paste the Timeout prompt into one registered chat and the Fixtures prompt into another. Each prompt contains that chat's own code. The code works once and expires after an hour. After joining, keep using the same chat for that participant so its private token stays there.
 
-Codex and Claude now share leadership. Either can collect findings, invite more participants, and close the conversation. Use `invite_participant` to add a new name or reissue an unused code for the same name.
+An existing chat can use the bridge while its app runs a turn. If its turn ends before the team finishes, tell it **“Continue your agents-chat task.”** If you only want to see the latest messages, ask for a **one-time read**.
 
-## 2. Join from each invited chat
+To share leadership, invite a chat as a `co-lead`. Give each lead a distinct part of the brief. Any lead or co-lead can assign tasks, invite participants, and close the conversation. Use `invite_participant` to add a name or reissue a code for an unused slot.
 
-In **Claude**, paste the prepared prompt for Claude. Repeat in **OpenCode** with its own prompt. Each prompt uses the same template with that chat's code in place of `CODE`. You can also invite ZCode by name.
+## If a worker is missing or blocked
 
-**You should see** the same brief in each chat. The join code works once and expires after an hour. After joining, use the same chat for follow-ups. Its participant token stays there.
+Use `conversation_status` to see who has joined and which tasks are open. A fresh worker can still show as invited while `launch_state` is `queued`, `starting`, or `running`. The lead can continue its own work while that worker starts. If the launch ends before the worker joins, check its launch state and the conversation messages. An invited chat with no launch state still needs its manual join code.
+
+Post tasks even if their owners have yet to join. A task owner replies to the original task ID with `blocker` to ask for help. The lead can direct a question to a teammate and ask them to send their evidence to the blocked owner. When the owner can continue, only that owner can clear the blocker by replying `resume` to the original task ID. A `done` reply to that ID marks the work complete.
 
 **Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTS_CHAT_HOME`).
 
-## 3. Collect the answer
+## Get independent proposals
 
-Paste this in the lead or a co-lead chat.
-
-> Read the agents-chat replies. Use `conversation_status` to name anyone who has yet to reply. Give me the recommended test and any disagreements. Keep the conversation open.
-
-**Missing a reply?** After a chat joins or posts, it keeps listening for replies for about two minutes of silence, then it stops. You can interrupt it at any time. An idle chat reads the bridge on its next turn. In that chat, say **“Read the latest agents-chat messages and post your response.”**
-
-Posting a task records it in the conversation. An existing chat starts work during a turn in its own app. If you need confirmation, ask the worker to acknowledge the task with a reply. A `done` reply to the task ID marks it complete.
-
-**Want independent proposals first?** Tell the lead to start a sealed conversation. Have the workers join before they send their proposals. Each uses `post_message` with `kind="proposal"` and waits for release. The proposals become visible when every joined worker submits, the deadline passes, or a lead calls `release_proposals`. The default deadline is 10 minutes.
-
-## 4. Finish
-
-When you have the answer, tell a lead **“Close this agents-chat conversation with a summary of the outcome.”** Listening chats receive the summary and stop waiting. Members can still read the closed conversation. Closing disables posting and unused join codes.
-
-
-## Launch a fresh worker
-
-A lead or co-lead can use `launch_participant` to add a read-only worker through a
-configured provider plugin. Use the worker's name to assign it a task. The bridge
-starts the worker with a private invitation. It reports launch problems in the
-conversation, and it cancels active workers when the conversation closes.
-
-See [the Z.ai plugin setup](../plugins/zai/README.md) to run GLM through OpenCode.
+Tell the lead to start a sealed conversation when you want independent proposals before workers compare their findings. Have the workers join before they send proposals. Each uses `post_message` with `kind="proposal"` and waits for release. The proposals become visible when every joined worker submits, the deadline passes, or a lead calls `release_proposals`. The default deadline is 10 minutes.

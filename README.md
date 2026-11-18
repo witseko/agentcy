@@ -2,15 +2,15 @@
 
 Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
 
-**Status: early.** Live discussions between open chats work today. Structured reviews, fresh agent runs, and publishing to project memory are planned in the [design](DESIGN.md). There is no automated test suite yet.
+**Status: early.** The bridge supports task coordination, sealed proposals, and fresh read-only workers through configured plugins. Publishing to project memory is planned in the [design](DESIGN.md).
 
 ## How it works
 
-1. You ask one chat to start a conversation. It becomes the lead and gets a join code for each invited chat.
-2. You paste each join code into its chat. The chat joins, reads the brief, and posts its findings.
-3. You ask the lead to collect the replies and close the conversation.
+1. Ask one chat to lead a team from one shared brief. It assigns complementary tasks and takes a part itself.
+2. The lead launches configured read-only workers, or you give each invited chat its own join prompt. Workers send questions and evidence directly to peers who need them.
+3. The lead checks the findings against the brief, resolves disagreements it can verify, and returns one recommendation. It can record the result and close in the same turn when you ask it to do so at kickoff.
 
-Everything stays on your machine. Each app starts a small stdio process (the shim). The shim forwards calls to one background process (the core), which stores conversations in SQLite.
+The bridge runs on your machine. Each app starts a small stdio process (the shim). The shim forwards calls to one background process (the core), which stores conversations in SQLite. A connected app or a worker plugin can use an external model provider.
 
 ## Requirements
 
@@ -73,27 +73,28 @@ For a chat without local MCP support, ask a connected chat for the brief, paste 
 
 ## Start your first conversation
 
-Follow [Run your first agent team](docs/using-the-bridge.md). It has prompts you can copy for one lead, shared leadership, and workers. Connecting the chats takes about two minutes.
+The first-run guide starts a retry review with one lead and two read-only workers from a single prompt. It also covers inviting chats that are already open. [Run your first agent team](docs/using-the-bridge.md).
 
 ## Tools
-
-The server gives every chat the same five tools.
 
 | Tool | Purpose |
 | --- | --- |
 | `create_conversation` | Start a conversation as lead. Returns a join code for each invited chat. |
+| `invite_participant` | Add a participant or reissue an unused join code. Leads and co-leads only. |
 | `join_conversation` | Redeem a join code. Returns the brief, your role, and a private participant token. |
-| `post_message` | Share text with all members. A retry with the same submission ID records one message. |
-| `read_messages` | Read messages after your cursor. A one-time read from cursor zero returns the brief, the roster, and every message. A later cursor returns only new messages from other members. Can wait up to 45 seconds for new ones, and tells the chat how to keep listening. |
+| `post_message` | Share findings, ask a peer a question, or update a task. A retry with the same submission ID records one message. |
+| `read_messages` | Read messages after your cursor. A one-time read from cursor zero includes the brief and roster. A waiting read can wait up to 45 seconds and tells the chat how to continue. |
+| `conversation_status` | See who has joined, fresh worker launch states, and which tasks are still open. |
+| `launch_participant` | Start a read-only worker through a configured plugin. Leads and co-leads only. |
+| `release_proposals` | Publish the held proposals in a sealed review. Leads and co-leads only. |
 | `close_conversation` | Close the conversation with an optional final summary. Leads and co-leads only. |
 
 Limits in this version:
 
-- A conversation has up to 16 invited chats.
+- A conversation has up to 17 participants, including the creator.
 - A brief or message has up to 8192 characters.
 - A join code works once and expires after one hour.
 - One read returns up to 16 messages.
-- The roster is fixed when the conversation is created.
 
 ## Local data and security
 
@@ -105,7 +106,7 @@ A workspace is identified by the Git common directory of a checkout, so linked w
 
 Know these properties before you use it:
 
-- **Local and single-user.** Any process that runs as your user can connect to the socket. There is no network access.
+- **Local and single-user.** Any process that runs as your user can connect to the bridge's local socket.
 - **Tokens live in chat transcripts.** The database stores only hashes of join codes and participant tokens. The chats hold the tokens themselves.
 - **Messages are untrusted input.** A message comes from another model. Treat it as data, and do not let it trigger actions you did not ask for.
 - **Closing is final.** Members can read a closed conversation and its final summary. Closing disables posting and unused invitations.

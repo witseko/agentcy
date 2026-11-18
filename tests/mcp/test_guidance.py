@@ -42,6 +42,79 @@ def test_guidance_follows_member_progress(
     assert expected in server.guidance(status, "Me", has_messages, waits)
 
 
+@pytest.mark.parametrize(
+    ("launch_state", "open_task"),
+    [
+        ("failed", {"id": 17}),
+        ("cancelled", None),
+        ("timed_out", {"id": 17, "blocked": True}),
+        ("finished", None),
+        ("unknown", {"id": 17}),
+    ],
+)
+def test_lead_reports_ended_fresh_worker_and_tracks_available_peer(
+    launch_state: str, open_task: dict | None
+) -> None:
+    """Distinguish unfinished terminal runs from active and completed peers."""
+    fresh = {"role": "worker", "state": "replied", "launch_state": launch_state}
+    if open_task is not None:
+        fresh["open_tasks"] = [open_task]
+    peer = {"role": "worker", "state": "joined"}
+    status = {
+        "open": True,
+        "participant": "Lead",
+        "members": {
+            "Lead": {"role": "lead", "state": "replied"},
+            "Fresh": fresh,
+            "Peer": peer,
+            "Done": {"role": "worker", "state": "done", "launch_state": "finished"},
+        },
+    }
+    mixed = server.finish_wait({"messages": []}, status, {}, "lead")
+    assert mixed["waiting_on"] == ["Peer"]
+    assert f"Fresh (fresh run {launch_state})" in mixed["next"]
+    if open_task is not None:
+        assert "#17 for Fresh" in mixed["next"]
+        peer["open_tasks"] = [{"id": 23}]
+        tracked = server.finish_wait({"messages": []}, status, {}, "lead")
+        assert tracked["waiting_on"] == ["Peer"]
+        assert "#23 for Peer" in tracked["next"]
+        assert "keep listening" in tracked["next"]
+        peer.pop("open_tasks")
+    assert "keep listening" in mixed["next"]
+    assert "Done (fresh run" not in mixed["next"]
+
+    peer["state"] = "done"
+    stranded = server.finish_wait({"messages": []}, status, {}, "lead")
+    assert "waiting_on" not in stranded
+    assert f"Fresh (fresh run {launch_state})" in stranded["next"]
+    assert "Stop listening" in stranded["next"]
+    assert "All other members are done" not in stranded["next"]
+    assert "join code" not in stranded["next"]
+
+    fresh.pop("open_tasks", None)
+    fresh["state"] = "done"
+    completed = server.finish_wait({"messages": []}, status, {}, "lead")
+    assert "All other members are done" in completed["next"]
+
+
+def test_lead_waits_for_starting_fresh_worker_when_a_manual_task_cannot_start() -> None:
+    """Count a starting worker even when only a manual invitee owns an open task."""
+    status = {
+        "open": True,
+        "participant": "Lead",
+        "members": {
+            "Lead": {"role": "lead", "state": "replied"},
+            "Manual": {"role": "worker", "state": "invited", "open_tasks": [{"id": 8}]},
+            "Fresh": {"role": "worker", "state": "invited", "launch_state": "starting"},
+        },
+    }
+    page = server.finish_wait({"messages": []}, status, {}, "lead")
+    assert page["waiting_on"] == ["Fresh"]
+    assert "keep listening" in page["next"]
+    assert "#8 for Manual (invitation unused)" in page["next"]
+
+
 @pytest.fixture
 def shim(
     conversation_db: Connection, monkeypatch: pytest.MonkeyPatch
@@ -134,6 +207,186 @@ def test_waiting_read_retains_non_waking_messages(
     waking = tool(app, "read_messages", token=observer, after=quiet["cursor"], wait_seconds=1)
     assert waking["wake"] is True
     assert [message["id"] for message in waking["messages"]] == [question, broadcast]
+
+
+def test_lead_can_route_blocker_help_to_a_peer(shim: tuple[server.FastMCP, Counter[str]]) -> None:
+    """Use named wakeups to ask for help and deliver the answer to the task owner."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Review retries",
+        your_name="Lead",
+        invitees=["Owner", "Helper"],
+    )
+    lead = team["token"]
+    owner = tool(app, "join_conversation", code=team["invitations"]["Owner"])["token"]
+    helper = tool(app, "join_conversation", code=team["invitations"]["Helper"])["token"]
+    task = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="task",
+        body="Test retries",
+        kind="task",
+        to="Owner",
+    )["message_id"]
+    blocker = tool(
+        app,
+        "post_message",
+        token=owner,
+        submission_id="blocker",
+        body="Fixture missing",
+        kind="blocker",
+        reply_to=task,
+    )["message_id"]
+    quiet = tool(app, "read_messages", token=helper, after=task, wait_seconds=1)
+    assert quiet["messages"] == []
+
+    lead_page = tool(app, "read_messages", token=lead, after=task, wait_seconds=1)
+    assert "Ask a teammate who can clear the blocker" in lead_page["next"]
+    assert "kind='question'" in lead_page["next"]
+    assert "the blocker message ID in 'reply_to'" in lead_page["next"]
+
+    question = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="question",
+        body="Send Owner the fixture",
+        kind="question",
+        to="Helper",
+        reply_to=blocker,
+    )["message_id"]
+    helper_page = tool(app, "read_messages", token=helper, after=task, wait_seconds=1)
+    assert [message["id"] for message in helper_page["messages"]] == [blocker, question]
+
+    answer = tool(
+        app,
+        "post_message",
+        token=helper,
+        submission_id="answer",
+        body="Use tests/fixtures/retry",
+        kind="finding",
+        to="Owner",
+        reply_to=question,
+    )["message_id"]
+    owner_page = tool(app, "read_messages", token=owner, after=question, wait_seconds=1)
+    assert [message["id"] for message in owner_page["messages"]] == [answer]
+    assert "reply to its original task ID with kind='resume'" in owner_page["next"]
+
+    tool(
+        app,
+        "post_message",
+        token=owner,
+        submission_id="resume",
+        body="I can run the test now",
+        kind="resume",
+        reply_to=task,
+    )
+    member = tool(app, "conversation_status", token=lead)["members"]["Owner"]
+    assert member["open_tasks"] == [{"id": task}]
+    assert member["state"] == "replied"
+
+
+@pytest.mark.parametrize("resolution", ["resume", "done", "handoff"])
+def test_lead_catch_up_skips_a_resolved_task_blocker(
+    shim: tuple[server.FastMCP, Counter[str]], resolution: str
+) -> None:
+    """Read a block and resolution together without asking for help on the old block."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Review retries",
+        your_name="Lead",
+        invitees=["Owner", "Helper"],
+    )
+    lead = team["token"]
+    owner = tool(app, "join_conversation", code=team["invitations"]["Owner"])["token"]
+    task = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="task",
+        body="Test retries",
+        kind="task",
+        to="Owner",
+    )["message_id"]
+    blocker = tool(
+        app,
+        "post_message",
+        token=owner,
+        submission_id="blocker",
+        body="Fixture missing",
+        kind="blocker",
+        reply_to=task,
+    )["message_id"]
+    resolution_id = tool(
+        app,
+        "post_message",
+        token=owner,
+        submission_id="resolution",
+        body="I have a way forward",
+        kind=resolution,
+        to="Helper" if resolution == "handoff" else None,
+        reply_to=task,
+    )["message_id"]
+    if resolution == "handoff":
+        helper = tool(app, "join_conversation", code=team["invitations"]["Helper"])["token"]
+        tool(
+            app,
+            "post_message",
+            token=helper,
+            submission_id="accept",
+            body="I can finish this task",
+            kind="accept",
+            reply_to=resolution_id,
+        )
+
+    page = tool(app, "read_messages", token=lead, after=task, wait_seconds=1)
+
+    assert [message["id"] for message in page["messages"]][:2] == [blocker, resolution_id]
+    assert "Ask a teammate who can clear the blocker" not in page["next"]
+
+
+@pytest.mark.parametrize("linked", [False, True], ids=["standalone", "question-reply"])
+def test_lead_uses_member_state_for_a_standalone_blocker(
+    shim: tuple[server.FastMCP, Counter[str]],
+    linked: bool,
+) -> None:
+    """Offer help for a blocker outside a task until the member reports completion."""
+    app, _ = shim
+    team = tool(app, "create_conversation", brief="Review", your_name="Lead", invitees=["Worker"])
+    lead = team["token"]
+    worker = tool(app, "join_conversation", code=team["invitations"]["Worker"])["token"]
+    after = 0
+    if linked:
+        after = tool(
+            app,
+            "post_message",
+            token=lead,
+            submission_id="question",
+            body="Can you check retries?",
+            kind="question",
+            to="Worker",
+        )["message_id"]
+    tool(
+        app,
+        "post_message",
+        token=worker,
+        submission_id="block",
+        body="Need help",
+        kind="blocker",
+        reply_to=after or None,
+    )
+    blocked_page = tool(app, "read_messages", token=lead, after=after, wait_seconds=1)
+    assert "Ask a teammate who can clear the blocker" in blocked_page["next"]
+
+    tool(app, "post_message", token=worker, submission_id="done", body="Finished", kind="done")
+    complete_page = tool(app, "read_messages", token=lead, after=after, wait_seconds=1)
+    assert [message["kind"] for message in complete_page["messages"]] == ["blocker", "done"]
+    assert "Ask a teammate who can clear the blocker" not in complete_page["next"]
 
 
 @pytest.mark.parametrize("reset_by", ["waiting read", "one-time read", "post"])

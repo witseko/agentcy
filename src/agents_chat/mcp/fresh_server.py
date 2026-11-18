@@ -43,7 +43,10 @@ def serve(workspace: str, code: str) -> None:
         to: models.Label | None = None,
         reply_to: models.MessageId | None = None,
     ) -> dict:
-        """Post a finding, blocker, or completion. Reply to the task ID to finish a task."""
+        """Post a finding, blocker, or completion. Reply to the task ID to finish a task.
+
+        When you can continue a blocked task, reply to its original ID with kind='resume'.
+        """
         result = await asyncio.to_thread(
             exchange,
             models.Post(
@@ -66,7 +69,7 @@ def serve(workspace: str, code: str) -> None:
 
     @app.tool()
     async def conversation_status() -> dict:
-        """See member and task progress in the assigned conversation."""
+        """See member activity, fresh-run launch states and open tasks in this conversation."""
         status = await asyncio.to_thread(
             exchange, models.Status(workspace=workspace, token=credential())
         )

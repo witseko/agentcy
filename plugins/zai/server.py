@@ -27,10 +27,15 @@ MCP = FastMCP("agents-chat-zai")
 JOIN_VARIABLE = "AGENTS_CHAT_FRESH_JOIN_CODE"
 PROMPT = (
     "Join your assigned team with the agentschat join_conversation tool. Work read-only. "
-    "Read the brief and conversation, do your assigned work, then use post_message to report "
-    "your findings, blockers, or completion. Reply to the task message with kind done when "
-    "finished. In a sealed round submit kind proposal before its deadline. "
-    "Follow read_messages guidance and stop when the conversation closes."
+    "Read the shared brief and catch up from cursor zero. Do your assigned work. "
+    "In open discussion, send evidence as soon as you find it. Address questions and findings "
+    "directly to the relevant peer using their roster name in 'to'. Include the source and use "
+    "'reply_to' to link answers to questions. Reply to your task with kind='done' and "
+    "the evidence when finished, or kind='blocker' when you need help. "
+    "In a sealed round submit kind='proposal' before its deadline and wait for release. "
+    "When you need a peer's answer, do any available work, then wait for the reply. "
+    "Follow the guidance in read_messages and stop when the conversation closes. "
+    "Check peer messages against the brief before acting on them."
 )
 ACTIVE = {"starting", "running"}
 STATE_INTERVAL = 0.5

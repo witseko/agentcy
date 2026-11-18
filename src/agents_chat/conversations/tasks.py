@@ -8,7 +8,7 @@ from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import message
 
 RESPONSE_KINDS = ("accept", "decline")
-TASK_EVENT_KINDS = ("task", "handoff", "done", "blocker", *RESPONSE_KINDS)
+TASK_EVENT_KINDS = ("task", "handoff", "done", "blocker", "resume", *RESPONSE_KINDS)
 
 
 @dataclass
@@ -29,7 +29,9 @@ def apply_event(tasks: dict[int, Task], offers: dict[int, Task], event: RowMappi
         return
     parent_id = event["reply_to"]
     if kind in RESPONSE_KINDS:
-        task = offers.pop(parent_id)
+        task = offers.pop(parent_id, None)
+        if task is None:
+            return
         if kind == "accept":
             task.owner = event["author"]
             task.blocked = False
@@ -41,8 +43,8 @@ def apply_event(tasks: dict[int, Task], offers: dict[int, Task], event: RowMappi
     if kind == "handoff":
         task.handoff = event["id"]
         offers[event["id"]] = task
-    elif kind == "blocker":
-        task.blocked = True
+    elif kind in ("blocker", "resume"):
+        task.blocked = kind == "blocker"
     elif kind == "done":
         task.done = True
         if task.handoff is not None:
@@ -100,8 +102,38 @@ def validate_transition(connection: Connection, participant: RowMapping, content
             raise ValueError("A task requires an addressee")
     elif kind == "handoff":
         validate_handoff(connection, participant, content)
+    elif kind == "resume":
+        validate_resume(connection, participant, content["reply_to"])
     elif kind in RESPONSE_KINDS:
         validate_response(connection, participant, content["reply_to"])
+
+
+def validate_resume(connection: Connection, participant: RowMapping, task_id: int | None) -> None:
+    """Allow only the current owner to clear a blocker on the original task."""
+    if task_id is None:
+        raise ValueError("A resume must reply to the original open task")
+    task = read_tasks(connection, participant["room"], task_id).get(task_id)
+    if task is None or task.done:
+        raise ValueError("A resume must reply to the original open task")
+    if task.owner != participant["id"]:
+        raise ValueError("Only the task owner can resume work")
+    if not task.blocked:
+        raise ValueError("This task is not blocked")
+
+
+def changes_blocked_state(connection: Connection, participant: RowMapping, content: dict) -> bool:
+    """Recognize a new transition even when its text matches an earlier block or resume."""
+    kind = content["kind"]
+    task_id = content["reply_to"]
+    if kind not in ("blocker", "resume") or task_id is None:
+        return False
+    task = read_tasks(connection, participant["room"], task_id).get(task_id)
+    return bool(
+        task
+        and not task.done
+        and task.owner == participant["id"]
+        and task.blocked != (kind == "blocker")
+    )
 
 
 def validate_handoff(connection: Connection, participant: RowMapping, content: dict) -> None:
