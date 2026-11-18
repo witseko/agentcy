@@ -24,8 +24,9 @@ create `plugins.json` with mode `0600`.
 }
 ```
 
-Set `ZAI_API_KEY` in the core's launch environment and ensure `opencode` is
-on its `PATH`. Pick an available GLM model from the OpenCode provider catalog.
+Set `ZAI_API_KEY` in the core's launch environment and put `opencode` in an
+absolute directory on its `PATH`. Pick an available GLM model from the OpenCode
+provider catalog.
 The worker uses a private CLI process and can write only to disposable scratch
 space. The plugin keeps assignment IDs and states locally for restart recovery.
 Its capabilities exclude token and cost caps.

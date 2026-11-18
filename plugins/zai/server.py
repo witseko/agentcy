@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from agents_chat.executables import absolute_search_path, find_on_path
 from agents_chat.mcp.plugin_contract import (
     AssignmentId,
     Capabilities,
@@ -82,20 +83,19 @@ def cancel(assignment_id: AssignmentId) -> RunResult:
     return result
 
 
-def sandbox_command(executable: str, runtime: Path) -> list[str]:
+def sandbox_profile(runtime: Path) -> str:
     """Restrict child writes to private scratch and shield the bridge store."""
     writable = json.dumps(str(runtime))
     root = data_dir()
     private_bridge = json.dumps(str(root))
     socket_path = json.dumps(str(root / "core.sock"))
-    profile = (
+    return (
         f"(version 1) (allow default) "
         f"(deny file-write* (require-all (require-not (subpath {writable})) "
         '(require-not (literal "/dev/null")))) '
         f"(deny file-read-data (require-all (subpath {private_bridge}) "
         f"(require-not (subpath {writable})) (require-not (literal {socket_path}))))"
     )
-    return ["/usr/bin/sandbox-exec", "-p", profile, executable]
 
 
 def platform_sandbox() -> bool:
@@ -121,6 +121,8 @@ def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str,
                     "type": "local",
                     "command": [
                         sys.executable,
+                        "-E",
+                        "-P",
                         "-m",
                         "agents_chat.mcp.fresh_server",
                         str(workspace),
@@ -136,11 +138,12 @@ def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str,
     config.write_text(json.dumps(settings), encoding="utf-8")
     environment = {
         name: os.environ[name]
-        for name in ("PATH", "LANG", "LC_ALL", "ZAI_API_KEY", JOIN_VARIABLE)
+        for name in ("LANG", "LC_ALL", "ZAI_API_KEY", JOIN_VARIABLE)
         if name in os.environ
     }
     return {
         **environment,
+        "PATH": absolute_search_path(),
         "AGENTS_CHAT_HOME": str(data_dir()),
         "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
@@ -181,7 +184,7 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
     """Launch the isolated headless CLI, then publish only its lifecycle result."""
     path = run_path(assignment_id)
     runtime = path / "runtime"
-    executable = shutil.which("opencode")
+    executable = find_on_path("opencode")
     sandbox = platform_sandbox()
     result = RunResult(state="failed")
     try:
@@ -189,9 +192,19 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
             result = RunResult(state="cancelled")
         elif executable and sandbox:
             runtime.mkdir(mode=0o700)
-            args = sandbox_command(executable, runtime)
-            process = subprocess.Popen(  # noqa: S603 - fixed command, configured model only
-                [*args, "--standalone", "run", "--auto", "--model", model, PROMPT],
+            process = subprocess.Popen(  # noqa: S603 - fixed sandbox launcher, no shell
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    sandbox_profile(runtime),
+                    executable,
+                    "--standalone",
+                    "run",
+                    "--auto",
+                    "--model",
+                    model,
+                    PROMPT,
+                ],
                 cwd=workspace,
                 env=prepare_environment(workspace, runtime, model),
                 stdin=subprocess.DEVNULL,
@@ -241,7 +254,7 @@ def start(
         or request.cost_cap_microusd is not None
         or not platform_sandbox()
         or not os.getenv("ZAI_API_KEY")
-        or not shutil.which("opencode")
+        or not find_on_path("opencode")
     ):
         return RunResult(state="failed")
     return detach(request, checkout)
@@ -258,9 +271,12 @@ def detach(request: Start, checkout: Path) -> RunResult:
     result = RunResult(state="starting")
     save(path, result)
     try:
-        subprocess.Popen(  # noqa: S603 - trusted local Python path, no shell
+        # nosemgrep: dangerous-subprocess-use-audit
+        subprocess.Popen(  # noqa: S603 - current interpreter with a safe import path, no shell
             [
                 sys.executable,
+                "-E",
+                "-P",
                 __file__,
                 "--monitor",
                 request.assignment_id,
