@@ -10,9 +10,7 @@ import pytest
 from agents_chat.mcp import transport
 
 
-def test_cold_start_uses_safe_python_import_path(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Start with the current interpreter and ignore workspace-relative import paths."""
     home = tmp_path / "bridge"
     home.mkdir(mode=0o700)
@@ -29,9 +27,9 @@ def test_cold_start_uses_safe_python_import_path(
         assert transport.core_connection() is sentinel.connection
     start.assert_called_once()
     command = start.call_args.args[0]
-    assert command == [sys.executable, "-E", "-P", "-m", "agents_chat.mcp.core"]
+    assert command == [sys.executable, "-I", "-m", "agents_chat.mcp.core"]
     probe = subprocess.run(  # noqa: S603 - current interpreter with fixed probe code
-        [*command[:3], "-c", "import sys\nprint(*sys.path, sep=chr(10))"],
+        [*command[:2], "-c", "import sys\nprint(sys.flags.no_user_site, *sys.path, sep='\\n')"],
         cwd=workspace,
         env=start.call_args.kwargs["env"],
         capture_output=True,
@@ -39,4 +37,6 @@ def test_cold_start_uses_safe_python_import_path(
         text=True,
         timeout=5,
     )
-    assert str(workspace) not in probe.stdout.splitlines()
+    no_user_site, *search_paths = probe.stdout.splitlines()
+    assert no_user_site == "1"
+    assert str(workspace) not in search_paths

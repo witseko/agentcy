@@ -68,10 +68,10 @@ def test_launch_preserves_installed_opencode_symlink_in_workspace(
     assert zai_plugin.inspect(ASSIGNMENT_ID) == RunResult(state="finished", exit_code=0)
 
 
-def test_start_detaches_monitor_with_python_safe_path(
+def test_start_detaches_monitor_in_python_isolated_mode(
     zai_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Launch the monitor with safe-path mode and the active interpreter."""
+    """Launch the monitor in isolated mode with the active interpreter."""
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     bridge = tmp_path / "bridge"
@@ -93,8 +93,7 @@ def test_start_detaches_monitor_with_python_safe_path(
     assert commands == [
         [
             sys.executable,
-            "-E",
-            "-P",
+            "-I",
             str(PLUGIN_SCRIPT),
             "--monitor",
             ASSIGNMENT_ID,

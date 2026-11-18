@@ -36,7 +36,7 @@ def bridge_home() -> Iterator[Path]:
         log_path = home / "core.log"
         with log_path.open("w") as log:
             core = subprocess.Popen(
-                [sys.executable, "-m", "agents_chat.mcp.core"],
+                [sys.executable, "-I", "-m", "agents_chat.mcp.core"],
                 cwd=home,
                 env={"AGENTS_CHAT_HOME": directory, "PATH": os.defpath},
                 stdin=subprocess.DEVNULL,
