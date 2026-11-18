@@ -16,6 +16,7 @@ PostKind = Literal[
     "question",
     "finding",
     "blocker",
+    "resume",
     "done",
     "task",
     "handoff",

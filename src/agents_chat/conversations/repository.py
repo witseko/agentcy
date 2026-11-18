@@ -15,14 +15,17 @@ from agents_chat.conversations.tables import member, message, receipt, room
 
 ACTIVITY_UPDATE_SECONDS = 10
 EVENT_KIND = "event"
-PROGRESS_KINDS = ("done", "blocker")
+PROGRESS_KINDS = ("done", "blocker", "resume")
 PAGE_SIZE = 16
 INVITE_LIFETIME_SECONDS = 3600
 JOIN_CODE_PATTERN = re.compile(r"([A-Za-z0-9_-]{22})\.([0-9a-f]{12})")
 JOIN_WORKSPACE_HELP = "Set both clients to the same --workspace and reconnect."
 JOIN_PROMPT = (
-    "Use agents-chat to join with CODE. Read the brief and tell me my role. "
-    "Do my part and post the result to the conversation."
+    "Use agents-chat to join with CODE. Read the shared brief and say which role you joined as. "
+    "Catch up from cursor zero. "
+    "Do your assigned part. In open discussion, send evidence and questions directly to the "
+    "peer who can act on them. Reply to your task with the result when it is complete. "
+    "Follow the bridge's guidance during this turn."
 )
 
 
@@ -261,13 +264,23 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.seen,
             message_count,
             progress,
+            assignment.c.state,
+        )
+        .outerjoin(
+            assignment,
+            and_(
+                assignment.c.slot == member.c.id, assignment.c.invite_hash == member.c.invite_hash
+            ),
         )
         .where(member.c.room == participant["room"])
         .order_by(member.c.id)
     )
     members = {}
-    for member_id, label, role, joined, seen, count, marker in rows:
+    for member_id, label, role, joined, seen, count, marker, launch_state in rows:
+        owned_tasks = open_tasks.get(member_id, [])
         entry = {"role": Role(role).label, "state": "invited"}
+        if launch_state is not None:
+            entry["launch_state"] = launch_state
         if joined:
             entry["state"] = "joined"
             if seen is not None:
@@ -275,8 +288,10 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             if count:
                 entry["state"] = {"done": "done", "blocker": "blocked"}.get(marker, "replied")
                 entry["messages"] = count
-        if member_id in open_tasks:
-            entry["open_tasks"] = open_tasks[member_id]
+            if any(task.get("blocked") for task in owned_tasks):
+                entry["state"] = "blocked"
+        if owned_tasks:
+            entry["open_tasks"] = owned_tasks
         members[label] = entry
     result = {
         "open": bool(participant["open"]),
@@ -346,7 +361,7 @@ def post(connection: Connection, participant: RowMapping, request: models.Post) 
         .order_by(message.c.id.desc())
         .limit(1)
     )
-    if number is None:
+    if number is None or tasks.changes_blocked_state(connection, participant, content):
         tasks.validate_transition(connection, participant, content)
         number = connection.execute(
             insert(message).values(room=participant["room"], author=author, created=now, **content)
@@ -392,6 +407,7 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
             )
         )
     recipient = member.alias("recipient")
+    task = message.alias("blocker_task")
     wake = wakes_listener(participant)
     rows = (
         connection.execute(
@@ -403,9 +419,19 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
                 recipient.c.label.label("to"),
                 message.c.reply_to,
                 wake.label("wake"),
+                task.c.id.is_not(None).label("task_blocker"),
             )
             .join(member, message.c.author == member.c.id)
             .outerjoin(recipient, message.c.recipient == recipient.c.id)
+            .outerjoin(
+                task,
+                and_(
+                    message.c.kind == "blocker",
+                    task.c.id == message.c.reply_to,
+                    task.c.room == message.c.room,
+                    task.c.kind == "task",
+                ),
+            )
             .where(*unread)
             .order_by(message.c.id)
             .limit(PAGE_SIZE + 1)
@@ -414,7 +440,11 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         .all()
     )
     page = [
-        {field: value for field, value in row.items() if value is not None and field != "wake"}
+        {
+            field: value
+            for field, value in row.items()
+            if value is not None and field not in ("wake", "task_blocker")
+        }
         for row in rows[:PAGE_SIZE]
     ]
     more = len(rows) > PAGE_SIZE
@@ -433,6 +463,9 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         "wake": has_wake,
         **rounds.fields(participant),
     }
+    task_blockers = [row["id"] for row in rows[:PAGE_SIZE] if row["task_blocker"]]
+    if task_blockers:
+        result["_task_blockers"] = task_blockers
     if catching_up:
         result["brief"] = participant["brief"]
         result["role"] = Role(participant["role"]).label

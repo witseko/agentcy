@@ -74,6 +74,115 @@ def test_task_requires_lead_and_addressee(
         post(conversation_db, task_team["Lead"], "No recipient", "task")
 
 
+def test_resume_clears_only_its_task_and_deduplicates_retries(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Keep other blockers and expose the owner's renewed activity after the last clears."""
+    lead, alpha, bravo = (task_team[name] for name in ("Lead", "Alpha", "Bravo"))
+    first = post(conversation_db, lead, "Review retry limits", "task", to="Alpha")
+    second = post(conversation_db, lead, "Review retry timing", "task", to="Alpha")
+    blocker = post(conversation_db, alpha, "I need a fixture", "blocker", reply_to=first)
+    post(conversation_db, alpha, "I need timing data", "blocker", reply_to=second)
+    post(conversation_db, bravo, "Here is the fixture", "finding", to="Alpha", reply_to=blocker)
+
+    resume = models.Post(
+        workspace=conversation_db.info["workspace"],
+        token=alpha,
+        body="The fixture lets me continue",
+        submission_id="resume-first",
+        kind="resume",
+        reply_to=first,
+    )
+    result = repository.apply(conversation_db, resume)
+    assert repository.apply(conversation_db, resume) == result
+    assert (
+        repository.apply(
+            conversation_db, resume.model_copy(update={"submission_id": "retry-first"})
+        )
+        == result
+    )
+    owner = team_status(conversation_db, lead)["members"]["Alpha"]
+    assert owner["open_tasks"] == [{"id": first}, {"id": second, "blocked": True}]
+    assert owner["state"] == "blocked"
+    assert owner["messages"] == 3
+
+    post(conversation_db, alpha, "I recovered the timing data", "resume", reply_to=second)
+    owner = team_status(conversation_db, lead)["members"]["Alpha"]
+    assert owner["open_tasks"] == [{"id": first}, {"id": second}]
+    assert owner["state"] == "replied"
+
+
+def test_task_can_block_and_resume_again_with_the_same_text(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Repeat both state changes without treating a new cycle as an earlier submission."""
+    lead, owner = (task_team[name] for name in ("Lead", "Alpha"))
+    task = post(conversation_db, lead, "Review retry limits", "task", to="Alpha")
+    state_changes = (
+        ("blocker", "Need a fixture", True),
+        ("resume", "Proceeding with the fixture", False),
+    )
+    previous_ids = {}
+    for cycle in (1, 2):
+        for kind, body, blocked in state_changes:
+            request = models.Post(
+                workspace=conversation_db.info["workspace"],
+                token=owner,
+                submission_id=f"{kind}-{cycle}",
+                body=body,
+                kind=kind,
+                reply_to=task,
+            )
+            result = repository.apply(conversation_db, request)
+            assert result["message_id"] != previous_ids.get(kind)
+            assert repository.apply(conversation_db, request) == result
+            previous_ids[kind] = result["message_id"]
+            status = team_status(conversation_db, lead)["members"]["Alpha"]
+            assert status["open_tasks"][0].get("blocked", False) is blocked
+
+
+def test_resume_requires_current_owner_and_original_blocked_task(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Reject a resume on an invalid target or a blocked task owned by someone else."""
+    lead, alpha, bravo = (task_team[name] for name in ("Lead", "Alpha", "Bravo"))
+    task = post(conversation_db, lead, "Review retry limits", "task", to="Alpha")
+    with pytest.raises(ValueError, match="original open task"):
+        post(conversation_db, alpha, "No target", "resume")
+    with pytest.raises(ValueError, match="task is not blocked"):
+        post(conversation_db, alpha, "Already open", "resume", reply_to=task)
+
+    blocker = post(conversation_db, alpha, "I need a fixture", "blocker", reply_to=task)
+    with pytest.raises(ValueError, match="original open task"):
+        post(conversation_db, alpha, "Wrong reply target", "resume", reply_to=blocker)
+    with pytest.raises(ValueError, match="Only the task owner"):
+        post(conversation_db, bravo, "I resolved it for Alpha", "resume", reply_to=task)
+
+    post(conversation_db, alpha, "Retry limits checked", "done", reply_to=task)
+    with pytest.raises(ValueError, match="original open task"):
+        post(conversation_db, alpha, "Already closed", "resume", reply_to=task)
+
+
+def test_resume_leaves_pending_handoff_in_place(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Keep the existing offer so its receiver can still take over the task."""
+    lead, alpha, bravo = (task_team[name] for name in ("Lead", "Alpha", "Bravo"))
+    task = post(conversation_db, lead, "Review retry limits", "task", to="Alpha")
+    post(conversation_db, alpha, "I need a fixture", "blocker", reply_to=task)
+    offer = post(conversation_db, alpha, "Please finish", "handoff", to="Bravo", reply_to=task)
+    post(conversation_db, alpha, "I found the fixture", "resume", reply_to=task)
+
+    accepted = post(conversation_db, bravo, "I can finish", "accept", reply_to=offer)
+    with pytest.raises(ValueError, match="original open task"):
+        post(conversation_db, bravo, "Wrong reply target", "resume", reply_to=accepted)
+    post(conversation_db, bravo, "I need the test command", "blocker", reply_to=task)
+    with pytest.raises(ValueError, match="Only the task owner"):
+        post(conversation_db, alpha, "Late update", "resume", reply_to=task)
+    post(conversation_db, bravo, "I found the test command", "resume", reply_to=task)
+    assert team_status(conversation_db, lead)["members"]["Bravo"]["open_tasks"] == [{"id": task}]
+
+
 def test_guidance_names_only_open_tasks(
     conversation_db: Connection, task_team: dict[str, str]
 ) -> None:
@@ -97,7 +206,11 @@ def test_guidance_names_only_open_tasks(
     assert blocked["members"]["Bravo"]["open_tasks"] == [{"id": second, "blocked": True}]
     next_step = server.guidance(blocked, "Lead", has_messages=False, silent_waits=1)
     assert f"#{second} for Bravo (blocked)" in next_step
-    assert "Stop listening" in next_step
+    assert "If a teammate is checking a blocker" in next_step
+    expired = server.guidance(
+        blocked, "Lead", has_messages=False, silent_waits=server.LEAD_IDLE_WAITS
+    )
+    assert "Stop listening" in expired
 
 
 def test_accept_transfers_task_and_preserves_retries(
