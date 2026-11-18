@@ -272,11 +272,10 @@ def detach(request: Start, checkout: Path) -> RunResult:
     save(path, result)
     try:
         # nosemgrep: dangerous-subprocess-use-audit
-        subprocess.Popen(  # noqa: S603 - current interpreter with a safe import path, no shell
+        subprocess.Popen(  # noqa: S603 - current interpreter in isolated mode, no shell
             [
                 sys.executable,
-                "-E",
-                "-P",
+                "-I",
                 __file__,
                 "--monitor",
                 request.assignment_id,

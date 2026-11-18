@@ -37,6 +37,8 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
+The background core and the Z.ai monitor use the bridge's virtual environment. Both start in Python isolated mode, which ignores `PYTHONPATH` and skips the per-user package directory.
+
 ## Register the server in your apps and CLIs
 
 Each app or CLI needs a local stdio MCP server named `agents-chat` with these values:

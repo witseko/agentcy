@@ -44,11 +44,11 @@ def core_connection() -> socket.socket:
             pass
         env = {**os.environ, "AGENTS_CHAT_HOME": str(root)}
         with (root / "core.log").open("a") as log:
-            # Reuse the shim's installed packages. Ignore Python environment overrides
-            # and keep the host's working directory out of the implicit import path.
+            # Reuse the shim's interpreter for its installed packages. Isolated mode
+            # ignores Python environment settings, the working directory, and user site-packages.
             # nosemgrep: dangerous-subprocess-use-audit
             process = subprocess.Popen(
-                [sys.executable, "-E", "-P", "-m", "agents_chat.mcp.core"],
+                [sys.executable, "-I", "-m", "agents_chat.mcp.core"],
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
