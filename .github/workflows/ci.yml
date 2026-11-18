@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  UV_PYTHON: '3.12'
+
+jobs:
+  source-security:
+    name: Source vulnerability scan (Semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out Semgrep Python, SQLAlchemy, and MCP security rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: semgrep/semgrep-rules
+          ref: a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2
+          path: .semgrep-rules
+          sparse-checkout: |
+            python/lang/security
+            python/sqlalchemy/security
+            ai/ai-best-practices/mcp-command-injection
+            ai/ai-best-practices/mcp-ssrf
+          persist-credentials: false
+      - name: Scan application and plugin source
+        run: |
+          # Semgrep Community Edition 1.186.0
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" --workdir /workspace \
+            --entrypoint semgrep \
+            semgrep/semgrep@sha256:6e1b04340e60e910fbb4ddbf3c857ab0918f064417ad5ac530014ccb3cf8c8f1 \
+            scan --config .semgrep-rules/python/lang/security \
+            --config .semgrep-rules/python/sqlalchemy/security \
+            --config .semgrep-rules/ai/ai-best-practices/mcp-command-injection/mcp-command-injection.yaml \
+            --config .semgrep-rules/ai/ai-best-practices/mcp-ssrf/mcp-ssrf.yaml \
+            --error --strict --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore \
+            src/ plugins/
+
+  security:
+    name: Dependency audit (pip-audit) and Ruff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.1'
+          enable-cache: false
+      - name: Install locked dependencies
+        run: uv sync --locked --no-install-project
+      - name: Audit locked dependencies
+        run: |
+          uv export --locked --format requirements.txt --no-emit-project --quiet \
+            --output-file "$RUNNER_TEMP/locked-dependencies.txt"
+          uv run --no-sync pip-audit --strict --require-hashes --disable-pip \
+            --requirement "$RUNNER_TEMP/locked-dependencies.txt"
+      - name: Run Ruff with configured security rules
+        run: uv run --no-sync ruff check .
+
+  tests:
+    name: Test suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.1'
+          enable-cache: false
+      - name: Run tests
+        run: uv run --locked pytest --ignore=tests/e2e tests
+
+  e2e:
+    name: End-to-end tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.1'
+          enable-cache: false
+      - name: Run end-to-end tests
+        run: uv run --locked pytest tests/e2e
