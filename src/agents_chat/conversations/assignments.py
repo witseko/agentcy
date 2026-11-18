@@ -123,6 +123,16 @@ def has_pending(connection: Connection) -> bool:
     )
 
 
+def report_unconfirmed(connection: Connection, row: RowMapping, operation: str) -> None:
+    """Record a temporary provider failure while the assignment remains pending."""
+    label = row["label"]
+    if operation == "cancel":
+        body = f"The bridge could not confirm cancellation of the fresh run for {label}. It will retry."
+    else:
+        body = f"The bridge could not confirm the fresh-run state for {label}. It will retry inspection."
+    repository.record_event(connection, {"room": row["room"], "id": row["slot"]}, body)
+
+
 def record(
     connection: Connection, row: RowMapping, state: str, exit_code: int | None = None
 ) -> bool:
