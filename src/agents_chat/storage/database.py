@@ -2,7 +2,6 @@
 
 import hashlib
 import os
-import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -14,6 +13,7 @@ from sqlalchemy import Column, Engine, Integer, String, Table, create_engine, ev
 
 from agents_chat.conversations.assignment_tables import assignment
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
+from agents_chat.executables import find_on_path
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -49,10 +49,16 @@ def workspace_key(workspace: Path) -> str:
     root = workspace.resolve(strict=True)
     if not root.is_dir():
         raise ValueError("Workspace must be a directory")
-    git = shutil.which("git")
+    git = find_on_path("git")
     if git:
-        common = subprocess.run(  # noqa: S603 - fixed git arguments, no shell
+        env = os.environ.copy()
+        for variable in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+            env.pop(variable, None)
+        # Git comes from an absolute PATH entry and receives a fixed argument list.
+        # nosemgrep: dangerous-subprocess-use-audit
+        common = subprocess.run(  # noqa: S603 - absolute Git path and fixed arguments, no shell
             [git, "-C", str(root), "rev-parse", "--git-common-dir"],
+            env=env,
             capture_output=True,
             text=True,
             timeout=5,
