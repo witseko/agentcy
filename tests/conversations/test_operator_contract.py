@@ -27,7 +27,7 @@ def test_examples_cover_every_action_and_validate() -> None:
         get_args(request.model_fields["action"].annotation)[0]: result
         for request, result in CONTRACT.items()
     }
-    assert sorted(item["action"] for item in examples) == sorted(results)
+    assert {item["action"] for item in examples} == set(results)
     for item in examples:
         Draft202012Validator(schema).validate(item["request"])
         assert REQUEST.validate_python(item["request"]).action == item["action"]

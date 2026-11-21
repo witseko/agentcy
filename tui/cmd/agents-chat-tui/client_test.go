@@ -215,6 +215,8 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_launch":  {reflect.TypeFor[LaunchRequest](), reflect.TypeFor[LaunchQueued]()},
 	"operator_post":    {reflect.TypeFor[PostRequest](), reflect.TypeFor[PostedMessage]()},
 	"operator_close":   {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
+	"operator_archive": {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},
+	"operator_search":  {reflect.TypeFor[SearchRequest](), reflect.TypeFor[SearchResults]()},
 }
 
 // example is one exchange from protocol/operator.v1.examples.json.

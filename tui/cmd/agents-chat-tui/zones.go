@@ -29,8 +29,11 @@ func place(spans []span, x int, y int) []zone {
 func (m model) zones() []zone {
 	bodyHeight := max(m.height-2, 1)
 	help := m.mainHelp()
-	if m.screen == screenNew {
+	switch m.screen {
+	case screenNew:
 		help = m.formHelp()
+	case screenSearch:
+		help = m.searchHelp()
 	}
 	_, hintSpans := m.hintBar(help)
 	zones := place(hintSpans, 1, m.height-1)
@@ -42,8 +45,10 @@ func (m model) zones() []zone {
 	}
 	list, center, team := m.columnWidths()
 	if list > 0 {
-		_, spans := m.buttons(button{id: "new", label: "+ New chat"})
-		zones = append(zones, place(spans, 1, bodyHeight)...)
+		_, views := m.viewButtons()
+		_, actions := m.listButtons()
+		zones = append(zones, place(visibleSpans(views, list-1), 1, 1)...)
+		zones = append(zones, place(visibleSpans(actions, list-1), 1, bodyHeight)...)
 	}
 	if m.screen != screenChat {
 		return zones
@@ -73,6 +78,17 @@ func (m model) zones() []zone {
 		}
 	}
 	return zones
+}
+
+// visibleSpans keeps the spans that fit completely within width columns.
+func visibleSpans(spans []span, width int) []span {
+	var visible []span
+	for _, item := range spans {
+		if item.x1 <= width {
+			visible = append(visible, item)
+		}
+	}
+	return visible
 }
 
 // buttonsWidth returns the width a row of buttons takes.
@@ -170,6 +186,10 @@ func (m model) hoverAt(x int, y int) string {
 		if index, found := m.listItemAt(row, bodyHeight); found {
 			return fmt.Sprintf("chat:%d", index)
 		}
+	case regionCenter:
+		if index, found := m.searchHitAt(row, bodyHeight); found && m.screen == screenSearch {
+			return fmt.Sprintf("hit:%d", index)
+		}
 	case regionTeam:
 		for _, block := range m.teamRows() {
 			if row >= block.top && row < block.top+block.size && m.chat.view.Status.Members[block.name].Role != "human" {
@@ -190,6 +210,12 @@ func (m model) clickZone(id string) (tea.Model, tea.Cmd) {
 		}
 	case "new":
 		return m.openForm()
+	case "search":
+		return m.openSearch()
+	case "view":
+		return m.showArchive(argument == "archived")
+	case "archive":
+		return m, m.archive(m.chat.id, !m.chat.view.Archived)
 	case "prompts":
 		return m.openInvite(""), nil
 	case "close":

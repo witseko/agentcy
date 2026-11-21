@@ -165,9 +165,11 @@ class Core(socketserver.ThreadingUnixStreamServer):
         if not isinstance(request, operator_models.CreateConversation) and not database_exists(
             workspace
         ):
-            # Listing must not create a store for a checkout that has none.
+            # Listing and searching must not create a store for a checkout that has none.
             if isinstance(request, operator_models.ListConversations):
                 return {"conversations": []}
+            if isinstance(request, operator_models.SearchConversations):
+                return {"hits": []}
             raise ValueError(operator.UNKNOWN_CONVERSATION)
         if isinstance(request, operator_models.LaunchParticipant):
             return self.operator_launch(workspace, request)

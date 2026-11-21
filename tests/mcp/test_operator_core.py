@@ -379,3 +379,36 @@ def test_running_core_uses_the_private_key_file(bridge: Bridge) -> None:
     assert stat.S_IMODE(info.st_mode) == 0o600
     assert info.st_uid == os.getuid()
     assert bridge.core.operator_key == bridge.key
+
+
+def test_archive_and_search_through_the_socket(bridge: Bridge) -> None:
+    """The human archives a closed chat, lists the archive and finds its messages."""
+    conversation = create(bridge)["conversation"]
+    error = operator_error(bridge, "operator_archive", conversation=conversation, archived=True)
+    assert error == "Close the conversation before archiving it"
+    operate(
+        bridge,
+        "operator_post",
+        conversation=conversation,
+        submission_id="hint",
+        body="Check the backoff ceiling.",
+    )
+    operate(bridge, "operator_close", conversation=conversation)
+
+    archived = operate(bridge, "operator_archive", conversation=conversation, archived=True)
+
+    assert archived == {"archived": True}
+    assert operate(bridge, "operator_list")["conversations"] == []
+    archive = operate(bridge, "operator_list", archived=True)["conversations"]
+    assert [item["conversation"] for item in archive] == [conversation]
+    hits = operate(bridge, "operator_search", query="backoff")["hits"]
+    assert [(hit["conversation"], hit["author"], hit["archived"]) for hit in hits] == [
+        (conversation, HUMAN_LABEL, True)
+    ]
+    assert operate(bridge, "operator_show", conversation=conversation)["archived"] is True
+
+
+def test_search_without_a_store_creates_none(bridge: Bridge) -> None:
+    """Searching a checkout that has no conversations returns nothing and creates no store."""
+    assert operate(bridge, "operator_search", query="retry") == {"hits": []}
+    assert list(bridge.home.glob("*.sqlite3")) == []

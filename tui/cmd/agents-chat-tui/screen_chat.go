@@ -49,6 +49,12 @@ type chatState struct {
 	selected int
 	// scroll counts transcript lines hidden below the view. Zero follows the tail.
 	scroll int
+	// jumping asks the view to scroll to jumpTarget once the whole transcript has loaded.
+	// A jumpTarget of zero is the brief, at the start of the transcript.
+	jumping    bool
+	jumpTarget int64
+	// highlight is the ID of the message a search opened the chat at, or zero.
+	highlight int64
 }
 
 // humanPost is a parsed input line.
@@ -136,7 +142,7 @@ func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.chat.scroll > 0 {
 		_, center, _ := m.columnWidths()
-		m.chat.scroll += len(messageLines(msg.view.Messages, msg.view.Status.Members, center))
+		m.chat.scroll += len(messageLines(msg.view.Messages, msg.view.Status.Members, center, 0))
 	}
 	m.chat.messages = append(m.chat.messages, msg.view.Messages...)
 	m.chat.cursor = msg.view.Cursor
@@ -146,7 +152,37 @@ func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	if msg.view.More {
 		return m.pollChat()
 	}
+	if m.chat.jumping {
+		m = m.scrollToTarget()
+	}
 	return m, nil
+}
+
+// scrollToTarget scrolls the transcript so the target message starts at the top of the
+// view and marks it. A target that is not in the transcript, such as the brief, scrolls to
+// the start.
+func (m model) scrollToTarget() model {
+	m.chat.jumping = false
+	_, center, _ := m.columnWidths()
+	members := m.chat.view.Status.Members
+	total := len(messageLines(m.chat.messages, members, center, 0))
+	top := 0
+	for index, message := range m.chat.messages {
+		if message.ID == m.chat.jumpTarget {
+			top = len(messageLines(m.chat.messages[:index], members, center, 0))
+			m.chat.highlight = message.ID
+		}
+	}
+	height := m.transcriptHeight(center)
+	m.chat.scroll = max(min(total-top-height, total-height), 0)
+	return m
+}
+
+// transcriptHeight returns the rows the transcript gets between the header and the
+// message line.
+func (m model) transcriptHeight(width int) int {
+	bodyHeight := max(m.height-2, 1)
+	return max(bodyHeight-len(m.chatHeader(width))-len(m.composer(width)), 1)
 }
 
 // chatKey handles a key in the conversation view. Keys that work everywhere come first,
@@ -238,6 +274,8 @@ func (m model) chatListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "n":
 		return m.openForm()
+	case "/", "a", "v":
+		return m.listAction(msg.String())
 	case "esc":
 		return m.setChatFocus(focusInput)
 	case "q":
@@ -541,7 +579,7 @@ func (m model) mainHelp() []hint {
 	mouse := hint{"ctrl+o", m.mouseHint()}
 	switch {
 	case m.screen == screenHome:
-		return []hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}, {"r", "refresh"}, mouse, {"q", "quit"}}
+		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), mouse, hint{"q", "quit"})...)
 	case m.inviteWindow.open:
 		return []hint{{"c", "copy and go to next"}, {"↑↓", "select"}, {"r", "new code"}, {"esc", "done"}}
 	case m.chat.closing:
@@ -550,10 +588,18 @@ func (m model) mainHelp() []hint {
 		return []hint{{"↑↓", "member"}, {"c", "copy prompt"}, {"r", "new code"}, {"i", "invite"},
 			{"l", "launch"}, {"x", "close chat"}, {"tab", "chat list"}}
 	case m.chat.focus == focusList:
-		return []hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}, {"tab", "message"}, mouse, {"q", "quit"}}
+		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), hint{"tab", "message"}, mouse)...)
 	}
 	return []hint{{"⏎", "send"}, {"tab", "team"}, {"↑↓", "scroll"}, {"ctrl+p", "join prompts"},
 		{"ctrl+x", "close chat"}, mouse}
+}
+
+// listHints returns the search, archive and view hints of the chat list.
+func (m model) listHints() []hint {
+	if m.list.archived {
+		return []hint{{"/", "search"}, {"a", "unarchive"}, {"v", "active chats"}}
+	}
+	return []hint{{"/", "search"}, {"a", "archive"}, {"v", "archived chats"}}
 }
 
 // mouseHint names what ctrl+o does now.
@@ -630,6 +676,8 @@ func (m model) headerLayout(width int) headerParts {
 	switch {
 	case !m.chat.loaded:
 		parts.state, parts.title = badge("LOADING", colorDim), "Loading the chat"
+	case view.Archived:
+		parts.state = badge("ARCHIVED", colorDim)
 	case !view.Status.Open:
 		parts.state = badge("CLOSED", colorDim)
 	}
@@ -656,10 +704,16 @@ func (m model) headerLayout(width int) headerParts {
 	return parts
 }
 
-// headerButtons draws the chat actions at the right end of the header.
+// headerButtons draws the chat actions at the right end of the header. A closed chat can
+// move to the archive or back.
 func (m model) headerButtons() (string, []span) {
-	if !m.chat.loaded || !m.chat.view.Status.Open {
+	switch {
+	case !m.chat.loaded:
 		return "", nil
+	case m.chat.view.Archived:
+		return m.buttons(button{id: "archive", label: "Unarchive"})
+	case !m.chat.view.Status.Open:
+		return m.buttons(button{id: "archive", label: "Archive"})
 	}
 	return m.buttons(button{id: "prompts", label: "Join prompts"}, button{id: "close", label: "Close chat"})
 }
@@ -715,7 +769,7 @@ func (m model) inputPreview() string {
 
 // visibleTranscript returns the transcript lines that fit, honoring the scroll offset.
 func (m model) visibleTranscript(width int, height int) []string {
-	lines := messageLines(m.chat.messages, m.chat.view.Status.Members, width)
+	lines := messageLines(m.chat.messages, m.chat.view.Status.Members, width, m.chat.highlight)
 	if len(lines) == 0 && m.chat.loaded {
 		lines = []string{"", " " + dimStyle.Render("No messages yet. The lead posts tasks here once it joins.")}
 	}
@@ -726,8 +780,9 @@ func (m model) visibleTranscript(width int, height int) []string {
 }
 
 // messageLines draws each message as a header line and its wrapped body, with a blank line
-// between messages. The human's messages sit on a band.
-func messageLines(messages []TranscriptMessage, members map[string]MemberStatus, width int) []string {
+// between messages. The human's messages sit on a band, and the highlighted message on the
+// selection color with a marker. Highlighting never changes the number of lines.
+func messageLines(messages []TranscriptMessage, members map[string]MemberStatus, width int, highlight int64) []string {
 	var lines []string
 	for _, message := range messages {
 		role := members[message.Label].Role
@@ -749,12 +804,18 @@ func messageLines(messages []TranscriptMessage, members map[string]MemberStatus,
 			header += "  " + label
 		}
 		body := wrapLines(message.Body, width-1, messageIndent)
-		if role == "human" {
+		switch {
+		case message.ID == highlight:
+			lines = append(lines, fill(accentStyle.Render("▎")+header[1:], width, colorSelect))
+			for _, line := range body {
+				lines = append(lines, fill(textStyle.Render(line), width, colorSelect))
+			}
+		case role == "human":
 			lines = append(lines, fill(header, width, colorBand))
 			for _, line := range body {
 				lines = append(lines, fill(textStyle.Render(line), width, colorBand))
 			}
-		} else {
+		default:
 			lines = append(lines, header)
 			for _, line := range body {
 				lines = append(lines, textStyle.Render(line))

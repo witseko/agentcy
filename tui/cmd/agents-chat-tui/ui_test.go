@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,11 @@ const testConversation = "0123456789abcdef01234567"
 // fakeOperator records requests and returns canned results.
 type fakeOperator struct {
 	list     ConversationList
+	archive  ConversationList
+	results  SearchResults
+	lists    []ListRequest
+	archives []ArchiveRequest
+	searches []SearchRequest
 	view     ConversationView
 	showErr  error
 	plugins  PluginList
@@ -27,7 +33,23 @@ type fakeOperator struct {
 
 func (f *fakeOperator) Plugins() (PluginList, error) { return f.plugins, nil }
 
-func (f *fakeOperator) List(ListRequest) (ConversationList, error) { return f.list, nil }
+func (f *fakeOperator) List(request ListRequest) (ConversationList, error) {
+	f.lists = append(f.lists, request)
+	if request.Archived {
+		return f.archive, nil
+	}
+	return f.list, nil
+}
+
+func (f *fakeOperator) Archive(request ArchiveRequest) (ArchivedConversation, error) {
+	f.archives = append(f.archives, request)
+	return ArchivedConversation{Archived: request.Archived}, nil
+}
+
+func (f *fakeOperator) Search(request SearchRequest) (SearchResults, error) {
+	f.searches = append(f.searches, request)
+	return f.results, nil
+}
 
 func (f *fakeOperator) Show(request ShowRequest) (ConversationView, error) {
 	f.shows = append(f.shows, request)
@@ -606,5 +628,200 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 	}
 	if m.form.brief.Value() != "Check retries" {
 		t.Fatalf("brief = %q", m.form.brief.Value())
+	}
+}
+
+func TestArchiveKeyMovesAClosedChatAndVSwitchesTheList(t *testing.T) {
+	fake := &fakeOperator{
+		list: ConversationList{Conversations: []ConversationSummary{
+			{Conversation: "open", Title: "Open", Open: true}, {Conversation: "done", Title: "Done"},
+		}},
+		archive: ConversationList{Conversations: []ConversationSummary{{Conversation: "old", Title: "Old"}}},
+	}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	m, command := press(t, m, "a")
+	m = drive(t, m, command)
+	if len(fake.archives) != 0 || !strings.Contains(m.status, "Close the chat") {
+		t.Fatalf("archived an open chat: %+v, status %q", fake.archives, m.status)
+	}
+	m, _ = press(t, m, "down")
+	m, command = press(t, m, "a")
+	m = drive(t, m, command)
+	if len(fake.archives) != 1 || fake.archives[0] != (ArchiveRequest{Directory: "/work", Conversation: "done", Archived: true}) {
+		t.Fatalf("archives = %+v", fake.archives)
+	}
+
+	m, command = press(t, m, "v")
+	m = drive(t, m, command)
+	if !m.list.archived || len(m.list.items) != 1 || m.list.items[0].Conversation != "old" {
+		t.Fatalf("archived view %v items %+v", m.list.archived, m.list.items)
+	}
+	if !strings.Contains(m.View().Content, "Archived") {
+		t.Fatal("the list does not show the view switch")
+	}
+	m, command = press(t, m, "a")
+	drive(t, m, command)
+	if last := fake.archives[len(fake.archives)-1]; last.Conversation != "old" || last.Archived {
+		t.Fatalf("unarchive request = %+v", last)
+	}
+}
+
+func TestLateListAnswerForTheOtherViewIsDropped(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{{Conversation: "a", Title: "Active"}}}}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	stale := m.loadList()
+	m, _ = press(t, m, "v")
+	m = drive(t, m, stale)
+	if m.list.loaded || len(m.list.items) != 0 {
+		t.Fatalf("archive shows the active list: %+v", m.list.items)
+	}
+}
+
+func TestViewButtonsAndArchiveButtonAreClickable(t *testing.T) {
+	fake := &fakeOperator{}
+	m := sized(chatModel(t, fake), 140, 30)
+	find := func(m model, id string) zone {
+		t.Helper()
+		for _, item := range m.zones() {
+			if item.id == id {
+				return item
+			}
+		}
+		t.Fatalf("no zone %q in %+v", id, m.zones())
+		return zone{}
+	}
+	archived := find(m, "view:archived")
+	m, command := click(t, m, archived.x0, archived.y)
+	m = drive(t, m, command)
+	if !m.list.archived || fake.lists[len(fake.lists)-1] != (ListRequest{Directory: "/work", Archived: true}) {
+		t.Fatalf("archived %v lists %+v", m.list.archived, fake.lists)
+	}
+
+	fake.view.Status.Open = false
+	m, command = m.pollChat()
+	m = drive(t, m, command)
+	archive := find(m, "archive")
+	m, command = click(t, m, archive.x0, archive.y)
+	drive(t, m, command)
+	if len(fake.archives) != 1 || fake.archives[0].Conversation != testConversation || !fake.archives[0].Archived {
+		t.Fatalf("archives = %+v", fake.archives)
+	}
+}
+
+// longChat returns a closed conversation with enough messages to scroll.
+func longChat() ConversationView {
+	var messages []TranscriptMessage
+	for id := int64(1); id <= 40; id++ {
+		messages = append(messages, TranscriptMessage{ID: id, Label: "Lead", Body: fmt.Sprintf("Message %d", id), Created: 1795000000})
+	}
+	return ConversationView{
+		Conversation: testConversation,
+		Brief:        "Old review",
+		Archived:     true,
+		Status:       ConversationStatus{Members: map[string]MemberStatus{"Lead": {Role: "lead", State: "done"}}},
+		Messages:     messages,
+		Cursor:       40,
+	}
+}
+
+func TestSearchOpensTheChatAtTheMatchingMessage(t *testing.T) {
+	target := int64(12)
+	author := "Lead"
+	fake := &fakeOperator{
+		view: longChat(),
+		results: SearchResults{Hits: []SearchHit{
+			{Conversation: testConversation, Title: "Old review", Archived: true, MessageID: &target, Author: &author, Snippet: "Message 12"},
+		}},
+	}
+	m := sized(newModel(fake, "/work"), 120, 30)
+
+	m, command := press(t, m, "/")
+	m = drive(t, m, command)
+	if m.screen != screenSearch {
+		t.Fatalf("screen %v, want search", m.screen)
+	}
+	m = typeText(t, m, "message 12")
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.searches) != 1 || fake.searches[0] != (SearchRequest{Directory: "/work", Query: "message 12"}) {
+		t.Fatalf("searches = %+v", fake.searches)
+	}
+	if !strings.Contains(m.View().Content, "ARCHIVED") {
+		t.Fatal("the result does not show that its chat is archived")
+	}
+
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if m.screen != screenChat || m.chat.id != testConversation || m.chat.highlight != target {
+		t.Fatalf("screen %v chat %q highlight %d", m.screen, m.chat.id, m.chat.highlight)
+	}
+	if !m.list.archived {
+		t.Fatal("the chat list did not switch to the archive for an archived result")
+	}
+	visible := visibleTranscriptText(m)
+	if !strings.Contains(visible, "Message 12") || strings.Contains(visible, "Message 40") {
+		t.Fatalf("transcript is not scrolled to message 12:\n%s", visible)
+	}
+}
+
+// visibleTranscriptText returns the transcript rows on screen without styles.
+func visibleTranscriptText(m model) string {
+	_, center, _ := m.columnWidths()
+	return ansi.Strip(strings.Join(m.visibleTranscript(center, m.transcriptHeight(center)), "\n"))
+}
+
+func TestSearchResultsAreClickableAndEscGoesBack(t *testing.T) {
+	fake := &fakeOperator{results: SearchResults{Hits: []SearchHit{
+		{Conversation: "other", Title: "Other", Snippet: "first"},
+		{Conversation: testConversation, Title: "Old review", Snippet: "in the brief"},
+	}}}
+	m := sized(chatModel(t, fake), 140, 30)
+	fake.view = longChat()
+	m, _ = press(t, m, "tab")
+	m, _ = press(t, m, "tab") // chat list focus
+	m, command := press(t, m, "/")
+	m = drive(t, m, command)
+	m, _ = press(t, m, "esc")
+	if m.screen != screenChat {
+		t.Fatalf("esc went to screen %v, want the chat", m.screen)
+	}
+
+	search := zone{}
+	for _, item := range m.zones() {
+		if item.id == "search" {
+			search = item
+		}
+	}
+	m, command = click(t, m, search.x0, search.y)
+	m = drive(t, m, command)
+	m = typeText(t, m, "brief")
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+
+	// The second result's title row: body rows start at 1, four header rows, four rows a result.
+	m, command = click(t, m, sidebarWidth+5, 1+searchHeaderRows+searchHitRows)
+	m = drive(t, m, command)
+	if m.screen != screenChat || m.chat.id != testConversation || m.chat.highlight != 0 {
+		t.Fatalf("screen %v chat %q highlight %d", m.screen, m.chat.id, m.chat.highlight)
+	}
+	if visible := visibleTranscriptText(m); !strings.Contains(visible, "Message 1\n") || strings.Contains(visible, "Message 40") {
+		t.Fatalf("a brief match does not open at the start:\n%s", visible)
+	}
+}
+
+func TestHighlightTermsMarksWordsThatStartWithATerm(t *testing.T) {
+	got := highlightTerms("Retry the retrying job; skip jobs.", queryTerms("RETRY job"))
+	if ansi.Strip(got) != "Retry the retrying job; skip jobs." {
+		t.Fatalf("text changed: %q", ansi.Strip(got))
+	}
+	for _, word := range []string{"Retry", "retrying", "job", "jobs"} {
+		if !strings.Contains(got, accentStyle.Render(word)) {
+			t.Errorf("%q is not highlighted in %q", word, got)
+		}
+	}
+	if strings.Contains(got, accentStyle.Render("skip")) {
+		t.Error("skip is highlighted")
 	}
 }

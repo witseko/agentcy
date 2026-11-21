@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    text,
 )
 
 metadata = MetaData()
@@ -22,6 +23,7 @@ room = Table(
     Column("round", String),
     Column("round_deadline", Integer),
     Column("created", Integer),
+    Column("archived", Integer, nullable=False, server_default=text("0")),
 )
 member = Table(
     "participant",

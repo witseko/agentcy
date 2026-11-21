@@ -92,6 +92,9 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	case regionTeam:
 		return m.clickTeam(row)
 	case regionCenter:
+		if m.screen == screenSearch {
+			return m.clickSearch(row, bodyHeight)
+		}
 		if m.screen == screenChat && row >= bodyHeight-3 && !m.chat.closing {
 			return m.setChatFocus(focusInput)
 		}
@@ -99,11 +102,8 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickList opens the clicked chat or starts a new one.
+// clickList opens the clicked chat. The buttons above and below the list are zones.
 func (m model) clickList(row int, height int) (tea.Model, tea.Cmd) {
-	if row == height-1 {
-		return m.openForm()
-	}
 	index, found := m.listItemAt(row, height)
 	if !found {
 		return m, nil
@@ -244,8 +244,11 @@ func (m model) onWheel(mouse tea.Mouse) model {
 	case regionList:
 		m.list.selected = min(max(m.list.selected+step, 0), max(len(m.list.items)-1, 0))
 	case regionCenter:
-		if m.screen == screenChat {
+		switch m.screen {
+		case screenChat:
 			m.chat.scroll = max(m.chat.scroll-step*wheelLines, 0)
+		case screenSearch:
+			m.search.selected = min(max(m.search.selected+step, 0), max(len(m.search.hits)-1, 0))
 		}
 	case regionTeam:
 		m.chat.selected = min(max(m.chat.selected+step, 0), max(len(m.slotNames())-1, 0))
