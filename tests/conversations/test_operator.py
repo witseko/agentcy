@@ -405,6 +405,144 @@ def test_listing_without_a_store_creates_none(
     assert list(home.glob("*.sqlite3")) == []
 
 
+def archive(connection: Connection, conversation: str, archived: bool = True) -> dict:
+    """Archive or unarchive a conversation as the human."""
+    return run(
+        connection,
+        actions.ArchiveConversation,
+        action="operator_archive",
+        conversation=conversation,
+        archived=archived,
+    )
+
+
+def listed_ids(connection: Connection, archived: bool = False) -> list[str]:
+    """List the conversation IDs of the active list or the archive."""
+    listed = run(connection, actions.ListConversations, action="operator_list", archived=archived)
+    return [item["conversation"] for item in listed["conversations"]]
+
+
+def search(connection: Connection, query: str) -> list[dict]:
+    """Search every conversation of the workspace as the human."""
+    return run(connection, actions.SearchConversations, action="operator_search", query=query)[
+        "hits"
+    ]
+
+
+def close(connection: Connection, conversation: str) -> None:
+    """Close a conversation as the human without a summary."""
+    run(connection, actions.CloseConversation, action="operator_close", conversation=conversation)
+
+
+def test_archive_moves_a_closed_chat_between_lists(conversation_db: Connection) -> None:
+    """Only a closed chat can be archived, and members can still read it."""
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    other = create(conversation_db)["conversation"]
+    with pytest.raises(ValueError, match="Close the conversation before archiving it"):
+        archive(conversation_db, conversation)
+    close(conversation_db, conversation)
+
+    assert archive(conversation_db, conversation) == {"archived": True}
+    assert listed_ids(conversation_db) == [other]
+    assert listed_ids(conversation_db, archived=True) == [conversation]
+    assert show(conversation_db, conversation)["archived"] is True
+    page = repository.apply(
+        conversation_db,
+        models.Read(workspace=conversation_db.info["workspace"], token=lead["token"]),
+    )
+    assert page["brief"] == "Review retries\nCite the tests."
+
+    assert archive(conversation_db, conversation, archived=False) == {"archived": False}
+    assert set(listed_ids(conversation_db)) == {conversation, other}
+    assert listed_ids(conversation_db, archived=True) == []
+    assert show(conversation_db, conversation)["archived"] is False
+    with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
+        archive(conversation_db, token_hex(12))
+
+
+def test_search_finds_messages_and_briefs(conversation_db: Connection) -> None:
+    """A hit names its conversation, message, author, time and a snippet around the words."""
+    created = create(conversation_db, brief="Audit the backoff policy\nKeep it short.")
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    posted = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=conversation_db.info["workspace"],
+            token=lead["token"],
+            submission_id="finding",
+            body="The worker retries idempotent jobs with exponential backoff.",
+        ),
+    )
+    create(conversation_db, brief="Unrelated chat about logging")
+    close(conversation_db, conversation)
+    archive(conversation_db, conversation)
+
+    hits = search(conversation_db, "idempot BACKOFF")
+    assert hits == [
+        {
+            "conversation": conversation,
+            "title": "Audit the backoff policy",
+            "archived": True,
+            "message_id": posted["message_id"],
+            "author": "Lead",
+            "created": hits[0]["created"],
+            "snippet": "The worker retries idempotent jobs with exponential backoff.",
+        }
+    ]
+    assert hits[0]["created"] >= int(time.time()) - 5
+    brief_hits = [hit for hit in search(conversation_db, "policy") if hit["message_id"] is None]
+    assert [(hit["conversation"], hit["author"]) for hit in brief_hits] == [(conversation, None)]
+    assert search(conversation_db, "nothing-like-this") == []
+
+
+@pytest.mark.parametrize("query", ['"backoff', "backoff*", "(backoff)", "backoff:", "-backoff"])
+def test_search_ignores_query_punctuation(conversation_db: Connection, query: str) -> None:
+    """FTS5 punctuation in the query has no effect."""
+    create(conversation_db, brief="Backoff review")
+    assert [hit["title"] for hit in search(conversation_db, query)] == ["Backoff review"]
+
+
+def test_search_treats_operators_as_words(conversation_db: Connection) -> None:
+    """OR and NEAR are words to find, so every word of the query must match."""
+    create(conversation_db, brief="Backoff review")
+    assert search(conversation_db, "backoff OR zebra") == []
+    assert search(conversation_db, "NEAR(backoff review)") == []
+
+
+def test_search_needs_a_word(conversation_db: Connection) -> None:
+    """A query of only punctuation is rejected before it reaches the index."""
+    with pytest.raises(ValueError, match="Search needs at least one letter or digit"):
+        search(conversation_db, '"*()')
+
+
+def test_search_skips_sealed_proposals_until_release(conversation_db: Connection) -> None:
+    """A proposal held for a sealed round is private, so search cannot reveal it."""
+    created = create(conversation_db, ["Worker", "Peer"], sealed=True)
+    worker = join(conversation_db, created["invitations"][1]["code"])
+    peer = join(conversation_db, created["invitations"][2]["code"])
+
+    def propose(token: str, body: str) -> None:
+        """Submit a sealed proposal as one worker."""
+        repository.apply(
+            conversation_db,
+            models.Post(
+                workspace=conversation_db.info["workspace"],
+                token=token,
+                submission_id="idea",
+                body=body,
+                kind="proposal",
+            ),
+        )
+
+    propose(worker["token"], "Sealed zebra idea")
+    assert search(conversation_db, "zebra") == []
+    propose(peer["token"], "Peer idea")
+    assert [hit["author"] for hit in search(conversation_db, "zebra")] == ["Worker"]
+
+
 @pytest.mark.parametrize("directory", ["/does/not/exist", "/etc/hosts"])
 def test_directory_must_be_an_existing_directory(directory: str) -> None:
     """The workspace comes only from a real checkout directory."""

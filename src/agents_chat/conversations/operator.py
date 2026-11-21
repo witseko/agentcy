@@ -3,9 +3,9 @@
 import time
 from pathlib import Path
 
-from sqlalchemy import Connection, and_, func, insert, literal_column, select
+from sqlalchemy import Connection, and_, func, insert, literal_column, select, update
 
-from agents_chat.conversations import assignments, models, operator_models, repository
+from agents_chat.conversations import assignments, models, operator_models, repository, search
 from agents_chat.conversations.assignment_tables import PENDING_STATES
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, room
@@ -48,8 +48,11 @@ def title(brief_start: str) -> str:
     return first_line
 
 
-def list_conversations(connection: Connection) -> dict:
-    """Summarize the newest conversations. Conversations without a created time come last."""
+def list_conversations(connection: Connection, archived: bool = False) -> dict:
+    """Summarize the newest active or archived conversations.
+
+    Conversations without a created time come last.
+    """
     slots = and_(member.c.room == room.c.id, member.c.role != Role.HUMAN)
     members = select(func.count()).select_from(member).where(slots).scalar_subquery()
     joined = (
@@ -67,6 +70,7 @@ def list_conversations(connection: Connection) -> dict:
             members.label("members"),
             joined.label("joined"),
         )
+        .where(room.c.archived == int(archived))
         .order_by(
             room.c.created.is_(None),
             room.c.created.desc(),
@@ -103,6 +107,7 @@ def human_actor(connection: Connection, conversation_id: str) -> dict:
                 room.c.round,
                 room.c.round_deadline,
                 room.c.created,
+                room.c.archived,
                 member.c.id,
             )
             .select_from(
@@ -222,6 +227,7 @@ def show(connection: Connection, request: operator_models.ShowConversation) -> d
         "conversation": request.conversation,
         "brief": human["brief"],
         "created": human["created"],
+        "archived": bool(human["archived"]),
         "status": status,
         **transcript(connection, request.conversation, request.after),
     }
@@ -249,10 +255,46 @@ def launch(
     return assignments.queue(connection, human, workspace, request.name, request.plugin, timeout)
 
 
+def archive(connection: Connection, request: operator_models.ArchiveConversation) -> dict:
+    """Archive a closed conversation or return it to the active list. Members keep access."""
+    human = human_actor(connection, request.conversation)
+    if request.archived and human["open"]:
+        raise ValueError("Close the conversation before archiving it")
+    connection.execute(
+        update(room).where(room.c.id == request.conversation).values(archived=int(request.archived))
+    )
+    return {"archived": request.archived}
+
+
+def search_conversations(
+    connection: Connection, request: operator_models.SearchConversations
+) -> dict:
+    """Find the query's words in every brief and published message, best match first."""
+    matches = search.find_matches(connection, request.query, TITLE_LENGTH + 1)
+    return {
+        "hits": [
+            {
+                "conversation": match["room"],
+                "title": title(match["brief_start"]),
+                "archived": bool(match["archived"]),
+                "message_id": match["message_id"],
+                "author": match["author"],
+                "created": match["created"],
+                "snippet": match["snippet"],
+            }
+            for match in matches
+        ]
+    }
+
+
 def apply(connection: Connection, workspace: str, request: operator_models.OperatorRequest) -> dict:
     """Dispatch one operator action that needs only the workspace store."""
     if isinstance(request, operator_models.ListConversations):
-        return list_conversations(connection)
+        return list_conversations(connection, request.archived)
+    if isinstance(request, operator_models.SearchConversations):
+        return search_conversations(connection, request)
+    if isinstance(request, operator_models.ArchiveConversation):
+        return archive(connection, request)
     if isinstance(request, operator_models.ShowConversation):
         return show(connection, request)
     if isinstance(request, operator_models.CreateConversation):

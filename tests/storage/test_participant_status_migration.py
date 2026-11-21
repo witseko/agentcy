@@ -8,7 +8,7 @@ from secrets import token_hex
 import pytest
 
 from agents_chat.conversations import models, repository
-from agents_chat.storage.database import database
+from agents_chat.storage.database import SCHEMA_VERSION, database
 
 
 @pytest.mark.parametrize("version", [2, 3, 4])
@@ -83,7 +83,7 @@ def test_upgrade_legacy_database(
     engine = database(workspace)
     try:
         with engine.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 7
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             result = repository.apply(connection, models.Read(workspace=workspace, token=token))
             assert result["brief"] == "Old brief"
             assert result["messages"] == [{"id": 1, "label": "Lead", "body": "Old reply"}]

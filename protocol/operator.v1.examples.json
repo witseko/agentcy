@@ -114,6 +114,7 @@
       "conversation": "0123456789abcdef01234567",
       "brief": "Review the retry behavior of the worker.\nCite files and tests.",
       "created": 1795000000,
+      "archived": false,
       "status": {
         "open": true,
         "members": {
@@ -168,5 +169,71 @@
       "summary": "The retry rule holds. See the reviewer's evidence."
     },
     "result": {"closed": true}
+  },
+  {
+    "action": "operator_archive",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_archive",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "archived": true
+    },
+    "result": {"archived": true}
+  },
+  {
+    "action": "operator_list",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_list",
+      "directory": "/work/repository",
+      "archived": true
+    },
+    "result": {
+      "conversations": [
+        {
+          "conversation": "0123456789abcdef01234567",
+          "title": "Review the retry behavior of the worker.",
+          "open": false,
+          "created": 1795000000,
+          "members": 3,
+          "joined": 2
+        }
+      ]
+    }
+  },
+  {
+    "action": "operator_search",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_search",
+      "directory": "/work/repository",
+      "query": "retry"
+    },
+    "result": {
+      "hits": [
+        {
+          "conversation": "0123456789abcdef01234567",
+          "title": "Review the retry behavior of the worker.",
+          "archived": true,
+          "message_id": 3,
+          "author": "Human",
+          "created": 1795000030,
+          "snippet": "Also check the retry limit."
+        },
+        {
+          "conversation": "0123456789abcdef01234567",
+          "title": "Review the retry behavior of the worker.",
+          "archived": true,
+          "message_id": null,
+          "author": null,
+          "created": 1795000000,
+          "snippet": "Review the retry behavior of the worker.…"
+        }
+      ]
+    }
   }
 ]

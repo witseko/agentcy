@@ -49,14 +49,17 @@ type Operator interface {
 	Launch(request LaunchRequest) (LaunchQueued, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
+	Archive(request ArchiveRequest) (ArchivedConversation, error)
+	Search(request SearchRequest) (SearchResults, error)
 }
 
 // PluginsRequest lists configured plugins. It takes no fields besides the envelope.
 type PluginsRequest struct{}
 
-// ListRequest lists the conversations of a checkout's workspace.
+// ListRequest lists the active or archived conversations of a checkout's workspace.
 type ListRequest struct {
 	Directory string `json:"directory"`
+	Archived  bool   `json:"archived,omitempty"`
 }
 
 // ShowRequest reads status, the brief and one transcript page after a cursor.
@@ -104,6 +107,19 @@ type CloseRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Summary      string `json:"summary,omitempty"`
+}
+
+// ArchiveRequest moves a closed conversation to the archive, or back to the active list.
+type ArchiveRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Archived     bool   `json:"archived"`
+}
+
+// SearchRequest finds words in every brief and published message of the workspace.
+type SearchRequest struct {
+	Directory string `json:"directory"`
+	Query     string `json:"query"`
 }
 
 // PluginSummary names one configured plugin and its model.
@@ -172,6 +188,7 @@ type ConversationView struct {
 	Conversation string              `json:"conversation"`
 	Brief        string              `json:"brief"`
 	Created      *int64              `json:"created"`
+	Archived     bool                `json:"archived"`
 	Status       ConversationStatus  `json:"status"`
 	Messages     []TranscriptMessage `json:"messages"`
 	More         bool                `json:"more"`
@@ -209,6 +226,27 @@ type PostedMessage struct {
 // ClosedConversation confirms that the conversation is closed.
 type ClosedConversation struct {
 	Closed bool `json:"closed"`
+}
+
+// ArchivedConversation reports whether the conversation is now in the archive.
+type ArchivedConversation struct {
+	Archived bool `json:"archived"`
+}
+
+// SearchHit locates one match. A match in the brief has no message ID or author.
+type SearchHit struct {
+	Conversation string  `json:"conversation"`
+	Title        string  `json:"title"`
+	Archived     bool    `json:"archived"`
+	MessageID    *int64  `json:"message_id"`
+	Author       *string `json:"author"`
+	Created      *int64  `json:"created"`
+	Snippet      string  `json:"snippet"`
+}
+
+// SearchResults holds up to 50 matches, best first.
+type SearchResults struct {
+	Hits []SearchHit `json:"hits"`
 }
 
 // envelope holds the fields that every operator request carries.
@@ -302,6 +340,20 @@ func (c *Client) Post(request PostRequest) (PostedMessage, error) {
 func (c *Client) Close(request CloseRequest) (ClosedConversation, error) {
 	var result ClosedConversation
 	err := c.call("operator_close", request, &result)
+	return result, err
+}
+
+// Archive archives or unarchives a closed conversation.
+func (c *Client) Archive(request ArchiveRequest) (ArchivedConversation, error) {
+	var result ArchivedConversation
+	err := c.call("operator_archive", request, &result)
+	return result, err
+}
+
+// Search finds words in the workspace's briefs and messages.
+func (c *Client) Search(request SearchRequest) (SearchResults, error) {
+	var result SearchResults
+	err := c.call("operator_search", request, &result)
 	return result, err
 }
 

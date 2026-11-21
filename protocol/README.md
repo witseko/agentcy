@@ -44,13 +44,15 @@ from it, as the stdio shim does with `--workspace`.
 | Action | Operation |
 | --- | --- |
 | `operator_plugins` | List configured plugin names and models. Takes no `directory`. |
-| `operator_list` | List up to 100 conversations, newest first. A checkout without a store lists none. |
+| `operator_list` | List up to 100 active conversations, newest first. Pass `archived: true` to list archived ones instead. A checkout without a store lists none. |
 | `operator_show` | Return the brief, member status, and one page of messages after `after`. |
 | `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. |
 | `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
 | `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
 | `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. |
 | `operator_close` | Close the conversation. An optional summary becomes the human's message. |
+| `operator_archive` | Archive a closed conversation with `archived: true`, or return it to the active list with `archived: false`. Members keep read access. |
+| `operator_search` | Find every word of `query` in the briefs and published messages of all conversations, archived ones included. Each word also matches longer words. Returns up to 50 hits, best first, each with the conversation, title, archived flag, message ID, author, time, and a short snippet. A brief hit has no message ID or author. |
 
 The human is the member `Human` with role and state `human`. No model can take that name. The
 human holds no token, does not count toward the 17 participant slots, and cannot own a task.

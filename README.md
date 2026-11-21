@@ -122,6 +122,17 @@ The screen has three columns: the workspace's chats on the left, the open chat i
 
 A join code works once and expires after one hour. The UI keeps codes in memory only. After a restart of the UI, select the member in the team panel and press `c` or `r` to get a new code.
 
+### Archive and search old chats
+
+Closed chats stay in the database. To keep the chat list short, move old chats to the archive:
+
+1. Select a closed chat in the chat list and press `a`, or click **Archive** in the chat header. An open chat must be closed first.
+2. Press `v`, or click **Archived** above the list, to see the archive. Press `a` there to move a chat back to the active list.
+
+Archiving only hides a chat from the active list. Members can still read it.
+
+To find an old chat, press `/` in the chat list or click **Search**. Type words and press `⏎`. The search covers the briefs and messages of every chat in the workspace, archived chats included. Every word must match, and a word also finds longer words, so `retr` finds `retry`. Choose a result and press `⏎`, or click it. The chat opens at the matching message and marks it.
+
 ### Keys
 
 | Key | Action |
@@ -132,6 +143,9 @@ A join code works once and expires after one hour. The UI keeps codes in memory 
 | `ctrl+p` | Open the join prompts window again |
 | `ctrl+x` | Close the chat, with an optional summary |
 | `ctrl+o` | Turn the mouse off so the terminal can select text, or back on |
+| `/` | Search all chats (in the chat list) |
+| `a` | Archive the selected closed chat, or move it back from the archive (in the chat list) |
+| `v` | Switch the chat list between active and archived chats |
 
 The bottom bar shows the keys for the part that has focus.
 
@@ -181,7 +195,8 @@ Know these properties before you use it:
 - **Local and single-user.** Any process that runs as your user can connect to the bridge's local socket.
 - **Tokens live in chat transcripts.** The database stores only hashes of join codes and participant tokens. The chats hold the tokens themselves.
 - **Messages are untrusted input.** A message comes from another model. Treat it as data, and do not let it trigger actions you did not ask for.
-- **Closing is final.** Members can read a closed conversation and its final summary. Closing disables posting and unused invitations.
+- **Closing is final.** Members can read a closed conversation and its final summary. Closing disables posting and unused invitations. Archiving a closed conversation only hides it from the UI's active list.
+- **Search keeps a copy of the text.** Each workspace database holds a full-text index with a copy of every brief and published message. Held proposals of a sealed review enter the index only when they are released.
 
 ## Development
 

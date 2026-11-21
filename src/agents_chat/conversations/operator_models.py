@@ -20,6 +20,7 @@ LaunchState = Literal[
     "queued", "starting", "running", "finished", "failed", "cancelled", "timed_out", "unknown"
 ]
 RoundName = Literal["sealed", "critique"]
+SearchQuery = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 
 
 class OperatorRequest(BaseModel):
@@ -43,9 +44,10 @@ class ConversationRequest(WorkspaceRequest):
 
 
 class ListConversations(WorkspaceRequest):
-    """List the workspace's conversations, newest first."""
+    """List the workspace's active or archived conversations, newest first."""
 
     action: Literal["operator_list"]
+    archived: bool = False
 
 
 class ShowConversation(ConversationRequest):
@@ -96,6 +98,20 @@ class CloseConversation(ConversationRequest):
     summary: models.Body | None = None
 
 
+class ArchiveConversation(ConversationRequest):
+    """Move a closed conversation to the archive, or back to the active list."""
+
+    action: Literal["operator_archive"]
+    archived: bool
+
+
+class SearchConversations(WorkspaceRequest):
+    """Find words in the briefs and published messages of every conversation in the workspace."""
+
+    action: Literal["operator_search"]
+    query: SearchQuery
+
+
 class ListPlugins(OperatorRequest):
     """List the configured fresh-run plugins by name and model."""
 
@@ -110,6 +126,8 @@ OperatorAction = (
     | LaunchParticipant
     | PostMessage
     | CloseConversation
+    | ArchiveConversation
+    | SearchConversations
     | ListPlugins
 )
 
@@ -182,6 +200,7 @@ class ConversationView(Result):
     conversation: str
     brief: str
     created: int | None
+    archived: bool
     status: ConversationStatus
     messages: list[TranscriptMessage]
     more: bool
@@ -226,6 +245,30 @@ class ClosedConversation(Result):
     closed: Literal[True]
 
 
+class ArchivedConversation(Result):
+    """Report whether the conversation is now in the archive."""
+
+    archived: bool
+
+
+class SearchHit(Result):
+    """Locate one match. A match in the brief has no message ID or author."""
+
+    conversation: str
+    title: str
+    archived: bool
+    message_id: int | None
+    author: str | None
+    created: int | None
+    snippet: str
+
+
+class SearchResults(Result):
+    """Return up to 50 matches, best first."""
+
+    hits: list[SearchHit]
+
+
 class PluginSummary(Result):
     """Name one configured plugin and its model."""
 
@@ -247,6 +290,8 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     LaunchParticipant: LaunchQueued,
     PostMessage: PostedMessage,
     CloseConversation: ClosedConversation,
+    ArchiveConversation: ArchivedConversation,
+    SearchConversations: SearchResults,
     ListPlugins: PluginList,
 }
 

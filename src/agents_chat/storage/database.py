@@ -9,13 +9,24 @@ from pathlib import Path
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.operations.ops import CreateTableOp
-from sqlalchemy import Column, Connection, Engine, Integer, String, Table, create_engine, event
+from sqlalchemy import (
+    Column,
+    Connection,
+    Engine,
+    Integer,
+    String,
+    Table,
+    create_engine,
+    event,
+    text,
+)
 
 from agents_chat.conversations.assignment_tables import assignment
+from agents_chat.conversations.search_tables import create_search_index
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agents_chat.executables import find_on_path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -97,6 +108,7 @@ def database(key: str) -> Engine:
             operations = Operations(MigrationContext.configure(connection))
             for table in metadata.sorted_tables:
                 create_table(operations, table)
+            create_search_index(connection, backfill=False)
             connection.exec_driver_sql(f"PRAGMA user_version={SCHEMA_VERSION}")
         elif 1 <= version < SCHEMA_VERSION:
             upgrade(connection, version)
@@ -128,3 +140,9 @@ def upgrade(connection: Connection, version: int) -> None:
         create_table(operations, assignment)
     if version < 7:
         operations.add_column("conversation", Column("created", Integer))
+    if version < 8:
+        operations.add_column(
+            "conversation",
+            Column("archived", Integer, nullable=False, server_default=text("0")),
+        )
+        create_search_index(connection, backfill=True)

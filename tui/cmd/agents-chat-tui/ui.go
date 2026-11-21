@@ -22,6 +22,8 @@ const (
 	screenHome screen = iota
 	screenNew
 	screenChat
+	// screenSearch shows the search box and its results in the center.
+	screenSearch
 )
 
 const (
@@ -56,8 +58,9 @@ type (
 		err     error
 	}
 	listMsg struct {
-		list ConversationList
-		err  error
+		archived bool
+		list     ConversationList
+		err      error
 	}
 	showMsg struct {
 		conversation string
@@ -81,8 +84,18 @@ type (
 		queued LaunchQueued
 		err    error
 	}
-	postedMsg struct{ err error }
-	closedMsg struct{ err error }
+	postedMsg   struct{ err error }
+	closedMsg   struct{ err error }
+	archivedMsg struct {
+		conversation string
+		archived     bool
+		err          error
+	}
+	searchedMsg struct {
+		query   string
+		results SearchResults
+		err     error
+	}
 	copiedMsg struct {
 		name string
 		err  error
@@ -105,6 +118,7 @@ type model struct {
 	list         listState
 	form         formState
 	chat         chatState
+	search       searchState
 	inviteWindow inviteState
 	// mouseOff hands the mouse back to the terminal so its own text selection works.
 	mouseOff bool
@@ -130,6 +144,7 @@ func newModel(client Operator, directory string) model {
 		height:      24,
 		sidebarCols: sidebarWidth,
 		teamCols:    teamWidth,
+		search:      newSearch(),
 		invitations: map[string]map[string]JoinInvitation{},
 	}
 }
@@ -185,6 +200,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onPosted(msg)
 	case closedMsg:
 		return m.onClosed(msg)
+	case archivedMsg:
+		return m.onArchived(msg)
+	case searchedMsg:
+		return m.onSearched(msg), nil
 	case copiedMsg:
 		return m.onCopied(msg), nil
 	}
@@ -196,6 +215,8 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case screenNew:
 		return m.formKey(msg)
+	case screenSearch:
+		return m.searchKey(msg)
 	case screenChat:
 		if m.inviteWindow.open {
 			return m.inviteKey(msg)
@@ -215,6 +236,8 @@ func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.form, command = m.form.updateFocused(msg)
 	case screenChat:
 		m.chat, command = m.chat.updateInput(msg)
+	case screenSearch:
+		m.search.input, command = m.search.input.Update(msg)
 	}
 	return m, command
 }
@@ -278,10 +301,11 @@ func (m *model) resizeInputs() {
 	if m.screen == screenNew {
 		m.form.resize(m.width, m.height)
 	}
+	_, center, _ := m.columnWidths()
 	if m.chat.id != "" {
-		_, center, _ := m.columnWidths()
 		m.chat.resize(center)
 	}
+	m.search.input.SetWidth(max(center-6, 10))
 }
 
 // columnWidths returns the widths of the chat list, the center and the team panel. A side
@@ -311,6 +335,8 @@ func (m model) View() tea.View {
 	switch m.screen {
 	case screenNew:
 		body, help = column(m.formView(bodyHeight), m.width, bodyHeight), m.formHelp()
+	case screenSearch:
+		body, help = m.mainView(bodyHeight), m.searchHelp()
 	default:
 		body, help = m.mainView(bodyHeight), m.mainHelp()
 	}
@@ -331,9 +357,12 @@ func (m model) View() tea.View {
 func (m model) mainView(height int) []string {
 	listWidth, centerWidth, team := m.columnWidths()
 	var center []string
-	if m.screen == screenChat {
+	switch m.screen {
+	case screenChat:
 		center = m.chatView(centerWidth, height)
-	} else {
+	case screenSearch:
+		center = m.searchView(centerWidth, height)
+	default:
 		center = m.homeView(centerWidth, height)
 	}
 	columns := [][]string{}
@@ -375,7 +404,11 @@ func (m model) dividers(hasList bool, hasTeam bool) []string {
 // topBar names the app and checkout on the left and shows the status on the right.
 func (m model) topBar() string {
 	left := " " + brightStyle.Render("agents-chat") + "  " + dimStyle.Render(cleanLine(m.directory))
-	right := okStyle.Render("●") + dimStyle.Render(fmt.Sprintf(" core running · %d chats ", len(m.list.items)))
+	kind := "chats"
+	if m.list.archived {
+		kind = "archived chats"
+	}
+	right := okStyle.Render("●") + dimStyle.Render(fmt.Sprintf(" core running · %d %s ", len(m.list.items), kind))
 	switch {
 	case m.offline:
 		right = warnStyle.Render("▲ core not reachable, retrying ")
@@ -403,12 +436,12 @@ func (m model) loadPlugins() tea.Cmd {
 	}
 }
 
-// loadList asks the core for this checkout's conversations.
+// loadList asks the core for this checkout's active or archived conversations.
 func (m model) loadList() tea.Cmd {
-	client, directory := m.client, m.directory
+	client, request := m.client, ListRequest{Directory: m.directory, Archived: m.list.archived}
 	return func() tea.Msg {
-		list, err := client.List(ListRequest{Directory: directory})
-		return listMsg{list: list, err: err}
+		list, err := client.List(request)
+		return listMsg{archived: request.Archived, list: list, err: err}
 	}
 }
 

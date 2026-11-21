@@ -1,6 +1,68 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "ArchiveConversation": {
+      "additionalProperties": false,
+      "description": "Move a closed conversation to the archive, or back to the active list.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_archive",
+          "title": "Action",
+          "type": "string"
+        },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "archived"
+      ],
+      "title": "ArchiveConversation",
+      "type": "object"
+    },
+    "ArchivedConversation": {
+      "additionalProperties": false,
+      "description": "Report whether the conversation is now in the archive.",
+      "properties": {
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "archived"
+      ],
+      "title": "ArchivedConversation",
+      "type": "object"
+    },
     "CloseConversation": {
       "additionalProperties": false,
       "description": "Close the conversation and record an optional summary as the human's message.",
@@ -212,6 +274,10 @@
           ],
           "title": "Created"
         },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        },
         "status": {
           "$ref": "#/$defs/ConversationStatus"
         },
@@ -235,6 +301,7 @@
         "conversation",
         "brief",
         "created",
+        "archived",
         "status",
         "messages",
         "more",
@@ -609,7 +676,7 @@
     },
     "ListConversations": {
       "additionalProperties": false,
-      "description": "List the workspace's conversations, newest first.",
+      "description": "List the workspace's active or archived conversations, newest first.",
       "properties": {
         "version": {
           "const": 1,
@@ -632,6 +699,11 @@
           "const": "operator_list",
           "title": "Action",
           "type": "string"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
         }
       },
       "required": [
@@ -940,6 +1012,133 @@
       "title": "PostedMessage",
       "type": "object"
     },
+    "SearchConversations": {
+      "additionalProperties": false,
+      "description": "Find words in the briefs and published messages of every conversation in the workspace.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_search",
+          "title": "Action",
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "action",
+        "query"
+      ],
+      "title": "SearchConversations",
+      "type": "object"
+    },
+    "SearchHit": {
+      "additionalProperties": false,
+      "description": "Locate one match. A match in the brief has no message ID or author.",
+      "properties": {
+        "conversation": {
+          "title": "Conversation",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Author"
+        },
+        "created": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created"
+        },
+        "snippet": {
+          "title": "Snippet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation",
+        "title",
+        "archived",
+        "message_id",
+        "author",
+        "created",
+        "snippet"
+      ],
+      "title": "SearchHit",
+      "type": "object"
+    },
+    "SearchResults": {
+      "additionalProperties": false,
+      "description": "Return up to 50 matches, best first.",
+      "properties": {
+        "hits": {
+          "items": {
+            "$ref": "#/$defs/SearchHit"
+          },
+          "title": "Hits",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hits"
+      ],
+      "title": "SearchResults",
+      "type": "object"
+    },
     "ShowConversation": {
       "additionalProperties": false,
       "description": "Read status, the brief and one page of the full transcript after a cursor.",
@@ -1078,6 +1277,12 @@
     },
     {
       "$ref": "#/$defs/CloseConversation"
+    },
+    {
+      "$ref": "#/$defs/ArchiveConversation"
+    },
+    {
+      "$ref": "#/$defs/SearchConversations"
     },
     {
       "$ref": "#/$defs/ListPlugins"

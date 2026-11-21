@@ -1,6 +1,7 @@
 """Open a version-six conversation with the created conversation column."""
 
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from secrets import token_hex
 
@@ -18,14 +19,14 @@ def open_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return token_hex(32)
 
 
-def test_new_store_starts_at_version_seven(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_new_store_has_the_created_column(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Create a new store with the created column at the current version."""
     workspace = open_store(monkeypatch, tmp_path)
     engine = database(workspace)
     try:
         with engine.begin() as connection:
-            assert SCHEMA_VERSION == 7
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 7
+            version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+            assert version == SCHEMA_VERSION
             columns = {column["name"] for column in inspect(connection).get_columns("conversation")}
             assert "created" in columns
     finally:
@@ -33,7 +34,9 @@ def test_new_store_starts_at_version_seven(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 def test_upgrade_from_version_six_lists_old_conversations(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    undo_version_eight: Callable[[sqlite3.Connection], None],
 ) -> None:
     """Add the created column as NULL and keep old conversations readable and listable."""
     workspace = open_store(monkeypatch, tmp_path)
@@ -51,13 +54,14 @@ def test_upgrade_from_version_six_lists_old_conversations(
     original.dispose()
     database.cache_clear()
     with sqlite3.connect(tmp_path / f"{workspace}.sqlite3") as previous:
+        undo_version_eight(previous)
         previous.execute("ALTER TABLE conversation DROP COLUMN created")
         previous.execute("PRAGMA user_version=6")
 
     upgraded = database(workspace)
     try:
         with upgraded.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 7
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             status = repository.apply(
                 connection, models.Status(workspace=workspace, token=result["token"])
             )

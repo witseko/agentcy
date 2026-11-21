@@ -143,4 +143,20 @@ func TestClientDrivesARealCore(t *testing.T) {
 	if err != nil || view.Status.Open {
 		t.Fatalf("Show() after close = %+v, %v", view.Status, err)
 	}
+
+	archived, err := client.Archive(ArchiveRequest{Directory: workspace, Conversation: conversation, Archived: true})
+	if err != nil || !archived.Archived {
+		t.Fatalf("Archive() = %+v, %v", archived, err)
+	}
+	listed, err = client.List(ListRequest{Directory: workspace, Archived: true})
+	if err != nil || len(listed.Conversations) != 1 || listed.Conversations[0].Conversation != conversation {
+		t.Fatalf("List(archived) = %+v, %v", listed, err)
+	}
+	found, err := client.Search(SearchRequest{Directory: workspace, Query: "tests"})
+	if err != nil || len(found.Hits) != 1 || found.Hits[0].MessageID == nil || *found.Hits[0].MessageID != posted.MessageID {
+		t.Fatalf("Search() = %+v, %v", found, err)
+	}
+	if !found.Hits[0].Archived || found.Hits[0].Author == nil || *found.Hits[0].Author != humanName {
+		t.Fatalf("hit = %+v", found.Hits[0])
+	}
 }
