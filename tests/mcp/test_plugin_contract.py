@@ -1,4 +1,4 @@
-"""Check the portable contract fixtures and the Z.ai plugin's MCP responses."""
+"""Check the portable contract fixtures and the Z.ai and Gemini plugins' MCP responses."""
 
 import json
 import sys
@@ -30,17 +30,24 @@ def test_contract_examples_validate() -> None:
         Draft202012Validator(schema["$defs"][result]).validate(item["structuredContent"])
 
 
-def test_zai_plugin_declares_capabilities_and_rejects_unusable_credentials(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("script", "env_key", "model"),
+    [
+        ("plugins/zai/server.py", "ZAI_API_KEY", "zai-coding-plan/glm-example"),
+        ("plugins/gemini/server.py", "GEMINI_API_KEY", "gemini-3.8-flash-medium"),
+    ],
+)
+def test_plugin_declares_capabilities_and_rejects_unusable_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, script: str, env_key: str, model: str
 ) -> None:
     """Exercise the real executable contract without accepting a provider run."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
     monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
-    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+    monkeypatch.delenv(env_key, raising=False)
     plugin = Plugin(
-        command=[sys.executable, str(PROJECT / "plugins/zai/server.py")],
-        model="zai-coding-plan/glm-example",
+        command=[sys.executable, str(PROJECT / script)],
+        model=model,
     )
     plugin_client.check_capabilities(plugin)
     request = Start(

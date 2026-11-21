@@ -1,6 +1,6 @@
 # agents-chat
 
-Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
+Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, Gemini, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
 
 **Status: early.** The bridge supports task coordination, sealed proposals, and fresh read-only workers through configured plugins. Publishing to project memory is planned in the [design](DESIGN.md).
 
@@ -37,7 +37,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
-The background core and the Z.ai monitor use the bridge's virtual environment. Both start in Python isolated mode, which ignores `PYTHONPATH` and skips the per-user package directory.
+The background core and the Z.ai and Gemini monitors use the bridge's virtual environment. Both start in Python isolated mode, which ignores `PYTHONPATH` and skips the per-user package directory.
 
 ## Register the server in your apps and CLIs
 
@@ -55,6 +55,7 @@ Use the same workspace path in every app and CLI. Chats see each other only when
 | Claude Desktop | Add the command and arguments under `mcpServers.agents-chat` in the developer configuration, then restart Claude. [Local server setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
 | Claude Code | Run `claude mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace` in your project. Add `--scope user` to register it for all projects. Check the entry with `claude mcp get agents-chat`. [Claude Code MCP settings](https://code.claude.com/docs/en/mcp) |
 | Codex | Run `codex mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`. Check the entry with `codex mcp get agents-chat`. [Codex MCP settings](https://developers.openai.com/codex/mcp) |
+| Gemini (Antigravity) | Run `agy mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`, or add `mcpServers.agents-chat` in `~/.gemini/config/mcp_config.json`. Check the entry with `agy mcp list`. [Antigravity MCP settings](https://antigravity.google/docs/mcp) |
 | OpenCode v2 | Run `opencode mcp add agents-chat --global -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`, then `opencode reload`. Verify that `opencode mcp list` shows `agents-chat` as connected. [OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/) |
 | Z.ai ZCode | Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services) |
 
