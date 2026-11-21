@@ -45,6 +45,7 @@ type chatState struct {
 	input    textinput.Model
 	summary  textinput.Model
 	closing  bool
+	retiring string
 	focus    chatFocus
 	selected int
 	// scroll counts transcript lines hidden below the view. Zero follows the tail.
@@ -191,6 +192,9 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.chat.closing {
 		return m.closingKey(msg)
 	}
+	if m.chat.retiring != "" {
+		return m.retiringKey(msg)
+	}
 	switch msg.String() {
 	case "tab":
 		return m.setChatFocus(m.chat.focus + 1)
@@ -256,6 +260,8 @@ func (m model) teamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.reissueSelected()
 	case "l":
 		return m.prefillLaunch()
+	case "d":
+		return m.retireSelected()
 	case "i":
 		m.chat.input.SetValue("/invite ")
 		m.chat.input.CursorEnd()
@@ -361,6 +367,64 @@ func (m model) onClosed(msg closedMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(poll, m.loadList())
 }
 
+// retireSelected asks for confirmation before retiring the selected member.
+func (m model) retireSelected() (tea.Model, tea.Cmd) {
+	name := m.selectedMember()
+	if name == "" {
+		return m.inform("Select a member in the team panel first."), nil
+	}
+	return m.startRetiring(name)
+}
+
+// startRetiring confirms retiring one active member from an open chat.
+func (m model) startRetiring(name string) (tea.Model, tea.Cmd) {
+	if m.chat.loaded && !m.chat.view.Status.Open {
+		return m.inform("This chat is closed."), nil
+	}
+	member, found := m.chat.view.Status.Members[name]
+	if found && member.State == "retired" {
+		return m.inform(cleanLine(name) + " is already retired."), nil
+	}
+	m.chat.retiring = name
+	m.chat.input.Blur()
+	return m, nil
+}
+
+// retiringKey handles a key while the retire confirmation shows.
+func (m model) retiringKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.chat.retiring = ""
+		return m, nil
+	case "enter":
+		name := m.chat.retiring
+		m.chat.retiring = ""
+		return m.inform("Retiring " + cleanLine(name) + "."), m.retire(name)
+	}
+	return m, nil
+}
+
+// retire sends an operator_retire request for one participant.
+func (m model) retire(name string) tea.Cmd {
+	request := RetireRequest{Directory: m.directory, Conversation: m.chat.id, Name: name}
+	client := m.client
+	return func() tea.Msg {
+		result, err := client.Retire(request)
+		return retiredMsg{participant: result.Participant, err: err}
+	}
+}
+
+// onRetired drops any cached invitation for the retired slot and refreshes the chat.
+func (m model) onRetired(msg retiredMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	delete(m.invitations[m.chat.id], foldName(msg.participant))
+	m = m.inform("Retired " + cleanLine(msg.participant) + ".")
+	m, poll := m.pollChat()
+	return m, tea.Batch(poll, m.loadList())
+}
+
 // submitInput runs a slash command or posts the input line as the human.
 func (m model) submitInput() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.chat.input.Value())
@@ -446,7 +510,7 @@ func addressee(text string, members map[string]MemberStatus) (string, string, er
 	return best, text[len(best):], nil
 }
 
-// runCommand handles /invite Name and /launch Name plugin.
+// runCommand handles /invite Name, /launch Name plugin, and /retire Name.
 func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	command, argument, _ := strings.Cut(text, " ")
 	argument = strings.TrimSpace(argument)
@@ -461,8 +525,11 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		}
 		m.chat.input.Reset()
 		return m, m.launch(strings.TrimSpace(argument[:cut]), argument[cut+1:])
+	case command == "/retire" && argument != "":
+		m.chat.input.Reset()
+		return m.inform("Retiring " + cleanLine(argument) + "."), m.retire(argument)
 	}
-	return m.inform("Commands: /invite Name, /launch Name plugin"), nil
+	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name"), nil
 }
 
 // invite adds or reissues a slot and then shows its join prompt.
@@ -584,9 +651,11 @@ func (m model) mainHelp() []hint {
 		return []hint{{"c", "copy and go to next"}, {"↑↓", "select"}, {"r", "new code"}, {"esc", "done"}}
 	case m.chat.closing:
 		return []hint{{"⏎", "close the chat"}, {"esc", "cancel"}}
+	case m.chat.retiring != "":
+		return []hint{{"⏎", "retire member"}, {"esc", "cancel"}}
 	case m.chat.focus == focusTeam:
 		return []hint{{"↑↓", "member"}, {"c", "copy prompt"}, {"r", "new code"}, {"i", "invite"},
-			{"l", "launch"}, {"x", "close chat"}, {"tab", "chat list"}}
+			{"l", "launch"}, {"d", "retire"}, {"x", "close chat"}, {"tab", "chat list"}}
 	case m.chat.focus == focusList:
 		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), hint{"tab", "message"}, mouse)...)
 	}
@@ -732,6 +801,14 @@ func (m model) composer(width int) []string {
 			" " + dimStyle.Render("Participants can still read it. Posting stops and unused codes expire."),
 		}
 	}
+	if m.chat.retiring != "" {
+		return []string{
+			rule(width),
+			" " + warnStyle.Render("Retire "+cleanLine(m.chat.retiring)+"?") + " " +
+				dimStyle.Render("Press ⏎ to confirm or esc to cancel."),
+			" " + dimStyle.Render("Posting stops, unused codes expire, and any running plugin is cancelled."),
+		}
+	}
 	marker := dimStyle.Render("›")
 	if m.chat.focus == focusInput {
 		marker = accentStyle.Render("›")
@@ -754,7 +831,7 @@ func (m model) inputPreview() string {
 	case text == "":
 		return "⏎ send · @ address one member · ? ask a question"
 	case strings.HasPrefix(text, "/"):
-		return "command · /invite Name · /launch Name plugin"
+		return "command · /invite Name · /launch Name plugin · /retire Name"
 	}
 	post, err := parsePost(text, m.chat.view.Status.Members)
 	if err != nil {
@@ -881,7 +958,9 @@ func (m model) teamView(width int, height int) []string {
 		lines = append(lines, "")
 		for _, task := range member.OpenTasks {
 			state := dimStyle.Render("open")
-			if task.Blocked != nil && *task.Blocked {
+			if member.State == "retired" {
+				state = dimStyle.Render("retired")
+			} else if task.Blocked != nil && *task.Blocked {
 				state = warnStyle.Render("blocked")
 			} else if member.State == "invited" {
 				state = dimStyle.Render("waiting to join")
@@ -941,6 +1020,8 @@ func memberState(member MemberStatus) (string, string) {
 	switch {
 	case member.Role == "human":
 		return roleStyle("human").Render("◆"), "you, through this window"
+	case member.State == "retired":
+		return dimStyle.Render("✕"), "retired"
 	case blockedTask != 0:
 		return warnStyle.Render("▲"), fmt.Sprintf("blocked on task #%d", blockedTask)
 	case member.State == "blocked":

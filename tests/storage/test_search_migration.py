@@ -32,8 +32,7 @@ def test_new_store_has_the_index_and_archived_column(
     engine = database(token_hex(32))
     try:
         with engine.begin() as connection:
-            assert SCHEMA_VERSION == 8
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 8
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             columns = {column["name"] for column in inspect(connection).get_columns("conversation")}
             assert "archived" in columns
             assert inspect(connection).has_table("conversation_search")
@@ -76,7 +75,7 @@ def test_upgrade_from_version_seven_indexes_old_conversations(
     upgraded = database(workspace)
     try:
         with upgraded.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 8
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             assert [hit["message_id"] for hit in search(connection, workspace, "pelican")] == [None]
             walrus = search(connection, workspace, "walrus")
             assert [(hit["author"], hit["archived"]) for hit in walrus] == [("Lead", False)]

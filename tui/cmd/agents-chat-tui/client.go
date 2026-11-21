@@ -47,6 +47,7 @@ type Operator interface {
 	Create(request CreateRequest) (CreatedConversation, error)
 	Invite(request InviteRequest) (JoinInvitation, error)
 	Launch(request LaunchRequest) (LaunchQueued, error)
+	Retire(request RetireRequest) (RetiredParticipant, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
@@ -90,6 +91,13 @@ type LaunchRequest struct {
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
 	Plugin       string `json:"plugin"`
+}
+
+// RetireRequest retires a participant from an open conversation.
+type RetireRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
 }
 
 // PostRequest posts a note or question as the human.
@@ -218,6 +226,12 @@ type LaunchQueued struct {
 	State        string `json:"state"`
 }
 
+// RetiredParticipant confirms that a participant has been retired.
+type RetiredParticipant struct {
+	Participant string `json:"participant"`
+	Retired     bool   `json:"retired"`
+}
+
 // PostedMessage holds the ID of the posted message.
 type PostedMessage struct {
 	MessageID int64 `json:"message_id"`
@@ -326,6 +340,13 @@ func (c *Client) Invite(request InviteRequest) (JoinInvitation, error) {
 func (c *Client) Launch(request LaunchRequest) (LaunchQueued, error) {
 	var result LaunchQueued
 	err := c.call("operator_launch", request, &result)
+	return result, err
+}
+
+// Retire retires a participant from an open conversation.
+func (c *Client) Retire(request RetireRequest) (RetiredParticipant, error) {
+	var result RetiredParticipant
+	err := c.call("operator_retire", request, &result)
 	return result, err
 }
 

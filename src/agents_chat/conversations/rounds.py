@@ -126,12 +126,13 @@ def key_is_held(connection: Connection, author: int, key: str) -> bool:
 
 
 def complete(connection: Connection, room_id: str) -> bool:
-    """Check whether every joined worker in this room has a proposal."""
+    """Check whether every active joined worker in this room has a proposal."""
     pending = connection.scalar(
         select(member.c.id)
         .where(
             member.c.room == room_id,
             member.c.role == Role.WORKER,
+            member.c.retired == 0,
             member.c.token_hash.is_not(None),
             ~select(proposal.c.id)
             .where(proposal.c.room == room_id, proposal.c.author == member.c.id)
@@ -169,15 +170,27 @@ def release(connection: Connection, room_id: str, now: int) -> str:
 
 
 def missing_workers(connection: Connection, room_id: str, authors: list[int]) -> list[str]:
-    """Name worker slots that did not contribute, including unused invitations."""
+    """Name active worker slots that did not contribute, including unused invitations."""
     return list(
         connection.scalars(
             select(member.c.label)
             .where(
-                member.c.room == room_id, member.c.role == Role.WORKER, member.c.id.not_in(authors)
+                member.c.room == room_id,
+                member.c.role == Role.WORKER,
+                member.c.retired == 0,
+                member.c.id.not_in(authors),
             )
             .order_by(member.c.id)
         )
+    )
+
+
+def discard_author(connection: Connection, room_id: str, author_id: int) -> None:
+    """Remove an unpublished proposal owned by a retired worker."""
+    held = select(proposal.c.id).where(proposal.c.room == room_id, proposal.c.author == author_id)
+    connection.execute(delete(receipt).where(receipt.c.proposal_id.in_(held)))
+    connection.execute(
+        delete(proposal).where(proposal.c.room == room_id, proposal.c.author == author_id)
     )
 
 

@@ -51,7 +51,7 @@ def list_conversations(connection: Connection, archived: bool = False) -> dict:
 
     Conversations without a created time come last.
     """
-    slots = and_(member.c.room == room.c.id, member.c.role != Role.HUMAN)
+    slots = and_(member.c.room == room.c.id, member.c.role != Role.HUMAN, member.c.retired == 0)
     members = select(func.count()).select_from(member).where(slots).scalar_subquery()
     joined = (
         select(func.count())
@@ -300,6 +300,9 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
         return create(connection, workspace, request)
     if isinstance(request, operator_models.InviteParticipant):
         return invite(connection, workspace, request)
+    if isinstance(request, operator_models.RetireParticipant):
+        human = writing_actor(connection, request.conversation)
+        return repository.retire(connection, human, request.name)
     if isinstance(request, operator_models.PostMessage):
         human = writing_actor(connection, request.conversation)
         return repository.post_in_round(connection, human, request, int(time.time()))

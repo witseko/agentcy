@@ -765,6 +765,7 @@
             "replied",
             "done",
             "blocked",
+            "retired",
             "human"
           ],
           "title": "State",
@@ -1010,6 +1011,76 @@
         "message_id"
       ],
       "title": "PostedMessage",
+      "type": "object"
+    },
+    "RetireParticipant": {
+      "additionalProperties": false,
+      "description": "Retire a participant from an open conversation.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_retire",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name"
+      ],
+      "title": "RetireParticipant",
+      "type": "object"
+    },
+    "RetiredParticipant": {
+      "additionalProperties": false,
+      "description": "Confirm that the participant is retired.",
+      "properties": {
+        "participant": {
+          "title": "Participant",
+          "type": "string"
+        },
+        "retired": {
+          "const": true,
+          "title": "Retired",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "participant",
+        "retired"
+      ],
+      "title": "RetiredParticipant",
       "type": "object"
     },
     "SearchConversations": {
@@ -1271,6 +1342,9 @@
     },
     {
       "$ref": "#/$defs/LaunchParticipant"
+    },
+    {
+      "$ref": "#/$defs/RetireParticipant"
     },
     {
       "$ref": "#/$defs/PostMessage"

@@ -48,8 +48,12 @@ class Notifications:
 
 
 def ready(page: dict) -> bool:
-    """Recognize relevant messages and close even when there is no outcome text."""
-    return page.get("closed", False) or page.get("wake", bool(page["messages"]))
+    """Recognize relevant messages, close, and retirement even without outcome text."""
+    return (
+        page.get("closed", False)
+        or page.get("retired", False)
+        or page.get("wake", bool(page["messages"]))
+    )
 
 
 def wait_for_read(request: models.Read, notifications: Notifications) -> dict:
@@ -81,9 +85,13 @@ def read_page(request: models.Read) -> dict:
 
 
 def settle(request: models.Read, condition: Condition, page: dict) -> dict:
-    """Collect a short burst while returning promptly if the room closes."""
+    """Collect a short burst while returning promptly if the room closes or member retires."""
     deadline = time.monotonic() + SETTLE_SECONDS
-    while not page.get("closed") and (remaining := deadline - time.monotonic()) > 0:
+    while (
+        not page.get("closed")
+        and not page.get("retired")
+        and (remaining := deadline - time.monotonic()) > 0
+    ):
         condition.wait(remaining)
         page = read_page(request)
     return page

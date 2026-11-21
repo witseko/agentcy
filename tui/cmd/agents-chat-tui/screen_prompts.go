@@ -121,7 +121,8 @@ func (m model) inviteLayout(bodyHeight int) (box []string, row int, col int, slo
 	slots := m.promptSlots()
 	launched := 0
 	for _, name := range m.slotNames() {
-		if m.chat.view.Status.Members[name].LaunchState != "" {
+		member := m.chat.view.Status.Members[name]
+		if member.State != "retired" && member.LaunchState != "" {
 			launched++
 		}
 	}

@@ -15,6 +15,7 @@ from agents_chat.conversations.progress import (
     awaiting_fresh_join,
     fresh_run_ended,
     is_current_blocker,
+    is_retired,
     lead_waiting_on,
     task_availability,
     task_owners,
@@ -37,6 +38,9 @@ NEXT_AFTER_MESSAGES = (
 NEXT_AFTER_CLOSE = (
     "The conversation is closed. If 'more' is true, read the remaining pages with wait_seconds=0. "
     "Stop listening and report the outcome to your user."
+)
+NEXT_AFTER_RETIRE = (
+    "You have been retired from this conversation. Stop listening and report to your user."
 )
 BLOCKER_HELP = (
     "Ask a teammate who can clear the blocker. Post kind='question' with their name in 'to' "
@@ -79,7 +83,9 @@ def free_teammates_note(members: dict, owners: dict, me: str) -> str:
 def describe_open_task(name: str, member: dict, task: dict) -> str:
     """Show the state preventing the owner from working on an open task."""
     detail = f"#{task['id']} for {name}"
-    if fresh_run_ended(member) or awaiting_fresh_join(member):
+    if is_retired(member):
+        detail += " (retired)"
+    elif fresh_run_ended(member) or awaiting_fresh_join(member):
         detail += f" (fresh run {member['launch_state']})"
     elif member["state"] == "invited":
         detail += " (invitation unused)"
@@ -129,6 +135,7 @@ def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) 
         if name != me
         and name not in owners
         and member["state"] != "done"
+        and not is_retired(member)
         and fresh_run_ended(member)
     ]
     summary = f"Fresh runs left unfinished work for {', '.join(ended)}. " if ended else ""
@@ -181,9 +188,11 @@ def guidance(
     """Render the next action from the caller's role, progress, and recent waits."""
     if not status["open"]:
         return NEXT_AFTER_CLOSE
+    caller = status["members"][me]
+    if is_retired(caller):
+        return NEXT_AFTER_RETIRE
     if status.get("round") == rounds.SEALED:
         return sealed_guidance(status, me, has_messages)
-    caller = status["members"][me]
     if caller["role"] != Role.WORKER.label:
         next_step = lead_guidance(status, me, has_messages, silent_waits)
         return f"{BLOCKER_HELP} {next_step}" if blocker_received else next_step
@@ -221,9 +230,10 @@ def sealed_guidance(status: dict, me: str, has_messages: bool) -> str:
 def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_digest: str) -> dict:
     """Update a listener's quiet count and attach guidance to a message page."""
     me = status["participant"]
+    retired = is_retired(status["members"][me])
     has_messages = bool(page["messages"])
     count = 0
-    if has_messages or not status["open"]:
+    if has_messages or not status["open"] or retired:
         silent_waits.pop(token_digest, None)
     else:
         count = silent_waits.get(token_digest, 0) + 1
@@ -233,7 +243,7 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
             page["waiting_on"] = pending
     for field in CONTEXT_FIELDS:
         page.pop(field, None)
-    if status["open"] and status["members"][me]["role"] != Role.WORKER.label:
+    if status["open"] and not retired and status["members"][me]["role"] != Role.WORKER.label:
         page["team"] = team_snapshot(status, me)
     task_blockers = set(page.pop("_task_blockers", []))
     blocker_received = any(
@@ -258,9 +268,10 @@ async def read_member(
         return page
     status = await asyncio.to_thread(exchange, models.Status(workspace=workspace, token=token))
     round_released = page.get("round") == rounds.SEALED and status.get("round") == rounds.CRITIQUE
-    if (not status["open"] and not page.get("closed")) or round_released:
+    newly_retired = is_retired(status["members"][status["participant"]]) and not page.get("retired")
+    if (not status["open"] and not page.get("closed")) or newly_retired or round_released:
         page = await asyncio.to_thread(exchange, request.model_copy(update={"wait_seconds": 0}))
-    if not page["wake"] and not page.get("closed"):
+    if not page["wake"] and not page.get("closed") and not page.get("retired"):
         page.update(messages=[], cursor=after, more=False)
     return finish_wait(page, status, silent_waits, token_digest)
 

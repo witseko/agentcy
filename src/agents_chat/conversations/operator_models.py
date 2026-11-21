@@ -15,7 +15,7 @@ ConversationId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{24}$")]
 PluginName = Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9-]{1,64}$")]
 HumanPostKind = Literal["note", "question"]
 RoleName = Literal["worker", "lead", "co-lead", "human"]
-MemberState = Literal["invited", "joined", "replied", "done", "blocked", "human"]
+MemberState = Literal["invited", "joined", "replied", "done", "blocked", "retired", "human"]
 LaunchState = Literal[
     "queued", "starting", "running", "finished", "failed", "cancelled", "timed_out", "unknown"
 ]
@@ -84,6 +84,13 @@ class LaunchParticipant(ConversationRequest):
     plugin: PluginName
 
 
+class RetireParticipant(ConversationRequest):
+    """Retire a participant from an open conversation."""
+
+    action: Literal["operator_retire"]
+    name: models.Label
+
+
 class PostMessage(ConversationRequest, models.Submission):
     """Post a note or question as the human, with the same retry protection as members."""
 
@@ -124,6 +131,7 @@ OperatorAction = (
     | CreateConversation
     | InviteParticipant
     | LaunchParticipant
+    | RetireParticipant
     | PostMessage
     | CloseConversation
     | ArchiveConversation
@@ -233,6 +241,13 @@ class LaunchQueued(Result):
     state: LaunchState
 
 
+class RetiredParticipant(Result):
+    """Confirm that the participant is retired."""
+
+    participant: str
+    retired: Literal[True]
+
+
 class PostedMessage(Result):
     """Return the message ID. A retry with the same submission ID returns the same ID."""
 
@@ -288,6 +303,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     CreateConversation: CreatedConversation,
     InviteParticipant: JoinInvitation,
     LaunchParticipant: LaunchQueued,
+    RetireParticipant: RetiredParticipant,
     PostMessage: PostedMessage,
     CloseConversation: ClosedConversation,
     ArchiveConversation: ArchivedConversation,
