@@ -11,8 +11,7 @@ from agents_chat.storage.database import workspace_key
 
 TUI_PROGRAM = "agents-chat-tui"
 TUI_MISSING = (
-    "The terminal UI is not installed. In the tui/ folder of the agents-chat clone, run "
-    "'go install ./cmd/agents-chat-tui' and put $(go env GOPATH)/bin on PATH, "
+    "The terminal UI is not installed. Run 'make setup' in the agents-chat clone, "
     "or set AGENTS_CHAT_TUI to the absolute path of a built agents-chat-tui binary."
 )
 
@@ -42,13 +41,20 @@ def start_shim(arguments: list[str]) -> None:
 
 
 def tui_executable() -> str:
-    """Find the UI binary from AGENTS_CHAT_TUI or the absolute entries of PATH."""
+    """Find the UI binary from AGENTS_CHAT_TUI, the bridge's own bin folder, or PATH.
+
+    `make setup` builds the binary into the virtual environment's bin folder, next to the
+    interpreter that runs this command, so the UI works without a PATH change.
+    """
     configured = os.environ.get("AGENTS_CHAT_TUI")
     if configured:
         path = Path(configured)
         if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
             raise SystemExit("AGENTS_CHAT_TUI must be the absolute path of an executable file")
         return str(path)
+    installed = Path(sys.executable).parent / TUI_PROGRAM
+    if installed.is_file() and os.access(installed, os.X_OK):
+        return str(installed)
     found = find_on_path(TUI_PROGRAM)
     if found is None:
         raise SystemExit(TUI_MISSING)

@@ -24,10 +24,13 @@ class FakeConnection:
 
 @pytest.fixture
 def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the bridge at a private data directory."""
+    """Point the bridge at a private data directory and an empty interpreter folder."""
     home = tmp_path / "home"
     home.mkdir(mode=0o700)
     monkeypatch.setenv("AGENTS_CHAT_HOME", str(home))
+    interpreter = tmp_path / "venv" / "bin"
+    interpreter.mkdir(parents=True)
+    monkeypatch.setattr(cli.sys, "executable", str(interpreter / "python"))
     return home
 
 
@@ -75,6 +78,25 @@ def test_ui_finds_the_binary_on_path(
     assert calls == [(str(binary), [str(binary), "--workspace", str(tmp_path.resolve())])]
 
 
+def test_ui_prefers_the_binary_next_to_the_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
+) -> None:
+    """make setup puts the binary in the venv's bin folder, which wins over PATH."""
+    installed = fake_binary(Path(cli.sys.executable).parent)
+    on_path = tmp_path / "path"
+    on_path.mkdir()
+    fake_binary(on_path)
+    monkeypatch.delenv("AGENTS_CHAT_TUI", raising=False)
+    monkeypatch.setenv("PATH", str(on_path))
+    monkeypatch.setattr(cli, "core_connection", FakeConnection)
+    calls = []
+    monkeypatch.setattr(cli.os, "execv", lambda path, argv: calls.append((path, argv)))
+
+    cli.main(["ui", "--workspace", str(tmp_path)])
+
+    assert calls == [(str(installed), [str(installed), "--workspace", str(tmp_path.resolve())])]
+
+
 def test_missing_binary_says_how_to_build_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
@@ -90,7 +112,7 @@ def test_missing_binary_says_how_to_build_it(
     with pytest.raises(SystemExit) as stopped:
         cli.main(["ui", "--workspace", str(tmp_path)])
 
-    assert "go install ./cmd/agents-chat-tui" in str(stopped.value)
+    assert "make setup" in str(stopped.value)
     assert "AGENTS_CHAT_TUI" in str(stopped.value)
 
 
