@@ -95,8 +95,8 @@ def open_tasks(connection: Connection, room_id: str) -> dict[int, list[dict]]:
 def validate_transition(connection: Connection, participant: RowMapping, content: dict) -> None:
     """Check role and ownership before adding a new task or handoff message."""
     kind = content["kind"]
-    if kind in ("task", "handoff") and addressed_to_human(connection, content["recipient"]):
-        raise ValueError(f"The {Role.HUMAN.label} cannot own a task. Address it to a member")
+    if kind in ("task", "handoff"):
+        validate_task_recipient(connection, content["recipient"])
     if kind == "task":
         if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
             raise ValueError("Only a lead or co-lead can assign a task")
@@ -110,11 +110,23 @@ def validate_transition(connection: Connection, participant: RowMapping, content
         validate_response(connection, participant, content["reply_to"])
 
 
-def addressed_to_human(connection: Connection, recipient: int | None) -> bool:
-    """Recognize the human, who can read a task but cannot report on it."""
+def validate_task_recipient(connection: Connection, recipient: int | None) -> None:
+    """Reject assigning tasks or handoffs to the human or a retired member."""
     if recipient is None:
-        return False
-    return connection.scalar(select(member.c.role).where(member.c.id == recipient)) == Role.HUMAN
+        return
+    row = (
+        connection.execute(
+            select(member.c.role, member.c.retired).where(member.c.id == recipient)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        return
+    if row["role"] == Role.HUMAN:
+        raise ValueError(f"The {Role.HUMAN.label} cannot own a task. Address it to a member")
+    if row["retired"]:
+        raise ValueError("Cannot assign a task or handoff to a retired participant")
 
 
 def validate_resume(connection: Connection, participant: RowMapping, task_id: int | None) -> None:

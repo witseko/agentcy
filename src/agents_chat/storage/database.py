@@ -26,7 +26,7 @@ from agents_chat.conversations.search_tables import create_search_index
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agents_chat.executables import find_on_path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -146,3 +146,8 @@ def upgrade(connection: Connection, version: int) -> None:
             Column("archived", Integer, nullable=False, server_default=text("0")),
         )
         create_search_index(connection, backfill=True)
+    if version < 9:
+        operations.add_column(
+            "participant",
+            Column("retired", Integer, nullable=False, server_default=text("0")),
+        )

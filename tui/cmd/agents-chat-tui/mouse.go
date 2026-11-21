@@ -95,7 +95,7 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		if m.screen == screenSearch {
 			return m.clickSearch(row, bodyHeight)
 		}
-		if m.screen == screenChat && row >= bodyHeight-3 && !m.chat.closing {
+		if m.screen == screenChat && row >= bodyHeight-3 && !m.chat.closing && m.chat.retiring == "" {
 			return m.setChatFocus(focusInput)
 		}
 	}

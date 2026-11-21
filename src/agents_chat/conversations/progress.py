@@ -9,6 +9,11 @@ def awaiting_fresh_join(member: dict) -> bool:
     return member["state"] == "invited" and member.get("launch_state") in PENDING_STATES
 
 
+def is_retired(member: dict) -> bool:
+    """Recognize a member retired from the conversation."""
+    return member["state"] == "retired"
+
+
 def fresh_run_ended(member: dict) -> bool:
     """Recognize a launch that the bridge no longer tracks as active."""
     launch_state = member.get("launch_state")
@@ -17,7 +22,7 @@ def fresh_run_ended(member: dict) -> bool:
 
 def member_is_working(member: dict) -> bool:
     """Recognize a peer who can still contribute through the current seat."""
-    return not fresh_run_ended(member) and (
+    return not is_retired(member) and not fresh_run_ended(member) and (
         member["state"] in ("joined", "replied") or awaiting_fresh_join(member)
     )
 
@@ -32,8 +37,10 @@ def task_availability(owners: dict[str, dict]) -> tuple[set[str], bool]:
     working = set()
     blocked = False
     for name, member in owners.items():
-        if fresh_run_ended(member) or (
-            member["state"] == "invited" and not awaiting_fresh_join(member)
+        if (
+            is_retired(member)
+            or fresh_run_ended(member)
+            or (member["state"] == "invited" and not awaiting_fresh_join(member))
         ):
             continue
         for task in member["open_tasks"]:
@@ -71,7 +78,7 @@ def is_current_blocker(message: dict, members: dict, task_blocker: bool) -> bool
     if message.get("kind") != "blocker":
         return False
     author = members[message["label"]]
-    if fresh_run_ended(author):
+    if is_retired(author) or fresh_run_ended(author):
         return False
     if not task_blocker:
         return author["state"] == "blocked"
@@ -89,7 +96,9 @@ def lead_waiting_on(status: dict, caller: str) -> list[str]:
     owners = task_owners(status)
     working_owners, _ = task_availability(owners)
     pending_owners = [
-        name for name, member in owners.items() if name != caller and not fresh_run_ended(member)
+        name
+        for name, member in owners.items()
+        if name != caller and not is_retired(member) and not fresh_run_ended(member)
     ]
     if owners:
         working = [name for name in pending_owners if name in working_owners]
@@ -100,7 +109,7 @@ def lead_waiting_on(status: dict, caller: str) -> list[str]:
     blocked = []
     invited = []
     for name, member in members.items():
-        if name == caller or fresh_run_ended(member):
+        if name == caller or is_retired(member) or fresh_run_ended(member):
             continue
         if member_is_working(member):
             working.append(name)

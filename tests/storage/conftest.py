@@ -6,8 +6,14 @@ from collections.abc import Callable
 import pytest
 
 
+def remove_version_nine(previous: sqlite3.Connection) -> None:
+    """Drop the retired column added in version nine."""
+    previous.execute("ALTER TABLE participant DROP COLUMN retired")
+
+
 def remove_version_eight(previous: sqlite3.Connection) -> None:
-    """Drop the search index, its triggers and the archived column added in version eight."""
+    """Drop version-nine and version-eight schema changes."""
+    remove_version_nine(previous)
     previous.execute("DROP TRIGGER conversation_search_brief")
     previous.execute("DROP TRIGGER conversation_search_message")
     previous.execute("DROP TABLE conversation_search")
@@ -15,6 +21,12 @@ def remove_version_eight(previous: sqlite3.Connection) -> None:
 
 
 @pytest.fixture
+def undo_version_nine() -> Callable[[sqlite3.Connection], None]:
+    """Return the helper that removes the version-nine schema from an open store."""
+    return remove_version_nine
+
+
+@pytest.fixture
 def undo_version_eight() -> Callable[[sqlite3.Connection], None]:
-    """Return the helper that removes the version-eight schema from an open store."""
+    """Return the helper that removes the version-eight (and newer) schema from an open store."""
     return remove_version_eight

@@ -84,6 +84,10 @@ type (
 		queued LaunchQueued
 		err    error
 	}
+	retiredMsg struct {
+		participant string
+		err         error
+	}
 	postedMsg   struct{ err error }
 	closedMsg   struct{ err error }
 	archivedMsg struct {
@@ -196,6 +200,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onInvited(msg), nil
 	case launchedMsg:
 		return m.onLaunched(msg), nil
+	case retiredMsg:
+		return m.onRetired(msg)
 	case postedMsg:
 		return m.onPosted(msg)
 	case closedMsg:

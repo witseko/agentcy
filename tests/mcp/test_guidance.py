@@ -535,3 +535,43 @@ def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
     assert lead_after_b["team"]["Bob"]["state"] == "done"
     assert "All other members are done" in lead_after_b["next"]
     assert "assign any follow-up tasks" in lead_after_b["next"]
+
+
+def test_retired_member_gets_stop_guidance_and_lead_does_not_wait_on_retired() -> None:
+    """A retired member is told to stop listening, and the lead stops waiting on retired peers."""
+    status = {
+        "open": True,
+        "participant": "Worker",
+        "members": {
+            "Lead": {"role": "lead", "state": "replied"},
+            "Worker": {"role": "worker", "state": "retired"},
+        },
+    }
+    retired_page = server.finish_wait({"messages": [], "retired": True}, status, {"w": 2}, "w")
+    assert retired_page["next"] == server.NEXT_AFTER_RETIRE
+    assert "team" not in retired_page
+
+    lead_status = {**status, "participant": "Lead"}
+    lead_page = server.finish_wait({"messages": []}, lead_status, {}, "l")
+    assert "waiting_on" not in lead_page
+    assert "All other members are done" in lead_page["next"]
+
+    lead_status["members"]["Worker"]["open_tasks"] = [{"id": 9}]
+    stranded = server.finish_wait({"messages": []}, lead_status, {}, "l")
+    assert "#9 for Worker (retired)" in stranded["next"]
+    assert "Stop listening" in stranded["next"]
+
+
+def test_assignment_worker_cancels_retired_participant_run() -> None:
+    """Retiring a slot with an active fresh run marks it for cancellation."""
+    from agents_chat.mcp.assignment_worker import AssignmentWorker
+
+    row = {
+        "open": 1,
+        "retired": 1,
+        "round": None,
+        "current_round": None,
+        "round_deadline": None,
+        "deadline": 9_999_999_999,
+    }
+    assert AssignmentWorker.stop_reason(row) == "cancelled"

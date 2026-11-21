@@ -60,7 +60,7 @@ func (m model) zones() []zone {
 	if _, spans := m.headerButtons(); m.headerLayout(center).actions {
 		zones = append(zones, place(spans, centerStart+center-1-buttonsWidth(spans), 1)...)
 	}
-	if !m.chat.closing {
+	if !m.chat.closing && m.chat.retiring == "" {
 		_, spans := m.sendButton()
 		zones = append(zones, place(spans, centerStart+center-1-buttonsWidth(spans), bodyHeight-1)...)
 	}

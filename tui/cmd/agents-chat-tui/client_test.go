@@ -213,6 +213,7 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_create":  {reflect.TypeFor[CreateRequest](), reflect.TypeFor[CreatedConversation]()},
 	"operator_invite":  {reflect.TypeFor[InviteRequest](), reflect.TypeFor[JoinInvitation]()},
 	"operator_launch":  {reflect.TypeFor[LaunchRequest](), reflect.TypeFor[LaunchQueued]()},
+	"operator_retire":  {reflect.TypeFor[RetireRequest](), reflect.TypeFor[RetiredParticipant]()},
 	"operator_post":    {reflect.TypeFor[PostRequest](), reflect.TypeFor[PostedMessage]()},
 	"operator_close":   {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
 	"operator_archive": {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},

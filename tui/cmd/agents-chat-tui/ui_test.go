@@ -25,6 +25,7 @@ type fakeOperator struct {
 	plugins  PluginList
 	creates  []CreateRequest
 	launches []LaunchRequest
+	retires  []RetireRequest
 	posts    []PostRequest
 	closes   []CloseRequest
 	invites  []InviteRequest
@@ -73,6 +74,11 @@ func (f *fakeOperator) Invite(request InviteRequest) (JoinInvitation, error) {
 func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
 	f.launches = append(f.launches, request)
 	return LaunchQueued{AssignmentID: "a1", State: "queued"}, nil
+}
+
+func (f *fakeOperator) Retire(request RetireRequest) (RetiredParticipant, error) {
+	f.retires = append(f.retires, request)
+	return RetiredParticipant{Participant: request.Name, Retired: true}, nil
 }
 
 func (f *fakeOperator) Post(request PostRequest) (PostedMessage, error) {
@@ -853,5 +859,60 @@ func TestMemberStateShowsOpenTasksAsWorking(t *testing.T) {
 	})
 	if ansi.Strip(glyph) != "○" || detail != "done" {
 		t.Fatalf("got (%q, %q), want done", ansi.Strip(glyph), detail)
+	}
+
+	glyph, detail = memberState(MemberStatus{
+		Role:  "worker",
+		State: "retired",
+	})
+	if ansi.Strip(glyph) != "✕" || detail != "retired" {
+		t.Fatalf("got (%q, %q), want retired", ansi.Strip(glyph), detail)
+	}
+}
+
+func TestRetireFromTeamPanelConfirmsAndCancels(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m.invitations[testConversation] = map[string]JoinInvitation{
+		foldName("Reviewer"): {Participant: "Reviewer", Code: "W", JoinPrompt: "join W"},
+	}
+
+	// Tab to team panel, move down to Reviewer, press d to start retiring, esc to cancel.
+	m, _ = press(t, m, "tab")
+	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "d")
+	if m.chat.retiring != "Reviewer" {
+		t.Fatalf("retiring = %q, want Reviewer", m.chat.retiring)
+	}
+	m, _ = press(t, m, "esc")
+	if m.chat.retiring != "" || len(fake.retires) != 0 {
+		t.Fatalf("esc did not cancel retire: retiring=%q retires=%+v", m.chat.retiring, fake.retires)
+	}
+
+	// Confirm retirement with enter.
+	m, _ = press(t, m, "d")
+	var command tea.Cmd
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.retires) != 1 || fake.retires[0].Name != "Reviewer" {
+		t.Fatalf("retires = %+v, want Reviewer", fake.retires)
+	}
+	if _, found := m.knownInvitation("Reviewer"); found {
+		t.Fatal("cached invitation was not cleared after retirement")
+	}
+	if !strings.Contains(m.status, "Retired Reviewer.") {
+		t.Fatalf("unexpected status: %q", m.status)
+	}
+}
+
+func TestRetireSlashCommandSendsRequest(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m = typeText(t, m, "/retire Reviewer")
+	var command tea.Cmd
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.retires) != 1 || fake.retires[0].Name != "Reviewer" {
+		t.Fatalf("retires = %+v, want Reviewer", fake.retires)
 	}
 }

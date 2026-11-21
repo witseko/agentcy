@@ -579,3 +579,152 @@ def test_ready_prompt_preserves_literal_code_in_brief_and_slot_name(
     assert worker_prompt.startswith("Fix CODE formatting (CODE-Reviewer): ")
     assert lead_prompt.count(invitations["CODE-Lead"]["code"]) == 1
     assert worker_prompt.count(invitations["CODE-Reviewer"]["code"]) == 1
+
+
+def retire(connection: Connection, conversation: str, name: str) -> dict:
+    """Retire a participant as the human."""
+    return run(
+        connection,
+        actions.RetireParticipant,
+        action="operator_retire",
+        conversation=conversation,
+        name=name,
+    )
+
+
+def test_retire_unjoined_slot_expires_code_and_blocks_reinvite(
+    conversation_db: Connection,
+) -> None:
+    """Retiring an invited slot invalidates its join code, records an event, and updates counts."""
+    created = create(conversation_db, ["Worker", "Peer"])
+    conversation = created["conversation"]
+    worker_code = created["invitations"][1]["code"]
+    join(conversation_db, created["invitations"][0]["code"])
+
+    result = retire(conversation_db, conversation, "worker")
+    assert result == {"participant": "Worker", "retired": True}
+    # Idempotent: retiring again does not add another event.
+    assert retire(conversation_db, conversation, "Worker") == {
+        "participant": "Worker",
+        "retired": True,
+    }
+
+    with pytest.raises(ValueError, match="Invalid or expired invitation"):
+        join(conversation_db, worker_code)
+    with pytest.raises(ValueError, match="Participant is retired: Worker"):
+        run(
+            conversation_db,
+            actions.InviteParticipant,
+            action="operator_invite",
+            conversation=conversation,
+            name="Worker",
+        )
+
+    view = show(conversation_db, conversation)
+    assert view["status"]["members"]["Worker"] == {"role": "worker", "state": "retired"}
+    events = [msg["body"] for msg in view["messages"] if msg.get("kind") == "event"]
+    assert events == ["Retired Worker."]
+    listed = operator.list_conversations(conversation_db)["conversations"][0]
+    assert (listed["members"], listed["joined"]) == (2, 1)
+
+
+def test_retire_joined_member_blocks_writes_and_keeps_read_access(
+    conversation_db: Connection,
+) -> None:
+    """A retired member can still read and see retired=True, but cannot post or receive tasks."""
+    workspace = conversation_db.info["workspace"]
+    created = create(conversation_db, ["Worker"])
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    worker = join(conversation_db, created["invitations"][1]["code"])
+
+    retire(conversation_db, conversation, "Worker")
+
+    with pytest.raises(ValueError, match="retired"):
+        repository.apply(
+            conversation_db,
+            models.Post(
+                workspace=workspace,
+                token=worker["token"],
+                submission_id="after-retire",
+                body="Still here",
+            ),
+        )
+    with pytest.raises(ValueError, match="retired participant"):
+        repository.apply(
+            conversation_db,
+            models.Post(
+                workspace=workspace,
+                token=lead["token"],
+                submission_id="task-to-retired",
+                body="Do this",
+                kind="task",
+                to="Worker",
+            ),
+        )
+
+    page = repository.apply(
+        conversation_db, models.Read(workspace=workspace, token=worker["token"], after=0)
+    )
+    assert page["retired"] is True
+    assert any(msg["body"] == "Retired Worker." for msg in page["messages"])
+
+
+def test_retire_rejects_human_unknown_and_closed_chat(conversation_db: Connection) -> None:
+    """Retiring refuses the human, unknown names, and closed conversations."""
+    created = create(conversation_db, ["Worker"])
+    conversation = created["conversation"]
+
+    with pytest.raises(ValueError, match="Cannot retire Human"):
+        retire(conversation_db, conversation, HUMAN_LABEL)
+    with pytest.raises(ValueError, match="Unknown participant"):
+        retire(conversation_db, conversation, "Ghost")
+
+    run(
+        conversation_db,
+        actions.CloseConversation,
+        action="operator_close",
+        conversation=conversation,
+    )
+    with pytest.raises(ValueError, match="Conversation is closed"):
+        retire(conversation_db, conversation, "Worker")
+
+
+def test_retire_in_sealed_round_discards_proposal_and_excludes_from_missing(
+    conversation_db: Connection,
+) -> None:
+    """Retiring a worker in a sealed round drops its held proposal and stops waiting on it."""
+    workspace = conversation_db.info["workspace"]
+    created = create(conversation_db, ["Worker", "Peer"], sealed=True)
+    conversation = created["conversation"]
+    worker = join(conversation_db, created["invitations"][1]["code"])
+    peer = join(conversation_db, created["invitations"][2]["code"])
+
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="w-prop",
+            body="Worker secret idea",
+            kind="proposal",
+        ),
+    )
+    retire(conversation_db, conversation, "Worker")
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=peer["token"],
+            submission_id="p-prop",
+            body="Peer idea",
+            kind="proposal",
+        ),
+    )
+
+    view = show(conversation_db, conversation)
+    assert view["status"]["round"] == "critique"
+    proposals = [msg["body"] for msg in view["messages"] if msg.get("kind") == "proposal"]
+    assert proposals == ["Peer idea"]
+    events = [msg["body"] for msg in view["messages"] if msg.get("kind") == "event"]
+    assert "Proposals released for critique. All workers submitted." in events

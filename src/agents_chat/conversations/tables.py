@@ -36,6 +36,7 @@ member = Table(
     Column("expires", Integer),
     Column("token_hash", String, unique=True),
     Column("seen", Integer),
+    Column("retired", Integer, nullable=False, server_default=text("0")),
     UniqueConstraint("room", "label"),
 )
 message = Table(

@@ -15,6 +15,7 @@ from agents_chat.conversations.tables import member, message, receipt, room
 
 ACTIVITY_UPDATE_SECONDS = 10
 EVENT_KIND = "event"
+RETIRED_ERROR = "You have been retired from this conversation"
 PROGRESS_KINDS = ("done", "blocker", "resume")
 PAGE_SIZE = 16
 TITLE_LENGTH = 80
@@ -180,7 +181,7 @@ def join(connection: Connection, request: models.Join) -> dict:
         .mappings()
         .one_or_none()
     )
-    if slot is None or slot["expires"] <= time.time():
+    if slot is None or slot["retired"] or slot["expires"] <= time.time():
         if not tagged:
             raise ValueError(f"Invalid or expired invitation. {JOIN_WORKSPACE_HELP}")
         raise ValueError("Invalid or expired invitation")
@@ -212,6 +213,8 @@ def invite(
 
     The actor is a lead, a co-lead, or the human. A role of None keeps a reissued slot's role.
     """
+    if actor.get("retired"):
+        raise ValueError(RETIRED_ERROR)
     if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
         raise ValueError("Only a lead or co-lead can invite participants")
     if not actor["open"]:
@@ -223,6 +226,7 @@ def invite(
             member.c.id,
             member.c.label,
             member.c.role,
+            member.c.retired,
             member.c.token_hash.is_not(None).label("joined"),
         ).where(member.c.room == room_id, member.c.role != Role.HUMAN)
     ).all()
@@ -230,6 +234,8 @@ def invite(
     slot = next((slot for slot in slots if slot.label.casefold() == folded), None)
     if slot is None and len(slots) >= models.MAX_PARTICIPANTS:
         raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
+    if slot is not None and slot.retired:
+        raise ValueError(f"Participant is retired: {slot.label}")
     if slot is not None and slot.joined:
         raise ValueError(f"Invitation slot already taken: {slot.label}")
     if slot is not None and active_assignment(connection, slot.id):
@@ -261,6 +267,35 @@ def invite(
         "code": code,
         "join_prompt": join_prompt(actor["brief"], participant=label),
     }
+
+
+def retire(connection: Connection, actor: RowMapping, name: str) -> dict:
+    """Retire a participant, expiring unused invites and stopping further writes."""
+    if actor.get("retired"):
+        raise ValueError(RETIRED_ERROR)
+    if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
+        raise ValueError("Only a lead, co-lead or the human can retire participants")
+    if not actor["open"]:
+        raise ValueError("Conversation is closed")
+    rows = connection.execute(
+        select(member.c.id, member.c.label, member.c.role, member.c.retired).where(
+            member.c.room == actor["room"]
+        )
+    ).mappings()
+    target = next((row for row in rows if row["label"].casefold() == name.casefold()), None)
+    if target is None:
+        raise ValueError("Unknown participant in this conversation")
+    if target["role"] == Role.HUMAN:
+        raise ValueError(f"Cannot retire {HUMAN_LABEL}")
+    if target["retired"]:
+        return {"participant": target["label"], "retired": True}
+    connection.execute(
+        update(member).where(member.c.id == target["id"]).values(retired=1, expires=0)
+    )
+    if actor["round"] == rounds.SEALED:
+        rounds.discard_author(connection, actor["room"], target["id"])
+    record_event(connection, actor, f"Retired {target['label']}.")
+    return {"participant": target["label"], "retired": True}
 
 
 def active_assignment(connection: Connection, slot_id: int) -> bool:
@@ -325,7 +360,11 @@ def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
     entry = {"role": Role(row["role"]).label, "state": "invited"}
     if row["launch_state"] is not None:
         entry["launch_state"] = row["launch_state"]
-    if row["joined"]:
+    if row["retired"]:
+        entry["state"] = "retired"
+        if row["count"]:
+            entry["messages"] = row["count"]
+    elif row["joined"]:
         entry["state"] = progress_state(row, owned_tasks)
         if row["seen"] is not None:
             entry["idle_seconds"] = max(0, now - row["seen"])
@@ -385,6 +424,7 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.id,
             member.c.label,
             member.c.role,
+            member.c.retired,
             member.c.token_hash.is_not(None).label("joined"),
             member.c.seen,
             message_count.label("count"),
@@ -582,11 +622,15 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         result["roster"] = roster(connection, participant["room"])
     if not participant["open"]:
         result["closed"] = True
+    if participant.get("retired"):
+        result["retired"] = True
     return result
 
 
 def close(connection: Connection, participant: RowMapping, summary: str | None) -> dict:
     """Record the final message of a lead, co-lead or the human and close the conversation once."""
+    if participant.get("retired"):
+        raise ValueError(RETIRED_ERROR)
     if participant["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
         raise ValueError("Only a lead or co-lead can close the conversation")
     if not participant["open"]:
@@ -614,6 +658,8 @@ def release_round(connection: Connection, participant: RowMapping, now: int) -> 
 
 def release(connection: Connection, participant: RowMapping, now: int) -> dict:
     """Allow a lead to publish the proposals early and retry release safely."""
+    if participant.get("retired"):
+        raise ValueError(RETIRED_ERROR)
     if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
         raise ValueError("Only a lead or co-lead can release proposals")
     if not participant["open"]:
@@ -629,6 +675,8 @@ def post_in_round(
     connection: Connection, participant: RowMapping, request: models.Submission, now: int
 ) -> dict:
     """Route an ordinary message or a proposal through the correct submission store."""
+    if participant.get("retired"):
+        raise ValueError(RETIRED_ERROR)
     if not participant["open"]:
         raise ValueError("Conversation is closed")
     if request.kind != rounds.PROPOSAL:
@@ -652,7 +700,7 @@ def post_in_round(
 def refresh_participant(connection: Connection, request: models.Member, now: int) -> RowMapping:
     """Check activity and publish on deadline before any read or post observes the round."""
     participant = authenticate(connection, request.token)
-    if not participant["open"]:
+    if not participant["open"] or participant["retired"]:
         return participant
     record_activity(connection, participant, now)
     if (

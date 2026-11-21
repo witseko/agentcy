@@ -19,8 +19,10 @@ EVENTS = {
 
 
 def launch_authority(connection: Connection, token: str) -> RowMapping:
-    """Require a lead with an open conversation before accessing launch settings."""
+    """Require an active lead with an open conversation before accessing launch settings."""
     participant = repository.authenticate(connection, token)
+    if participant["retired"]:
+        raise ValueError(repository.RETIRED_ERROR)
     if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
         raise ValueError("Only a lead or co-lead can launch fresh workers")
     if not participant["open"]:
@@ -40,6 +42,8 @@ def queue(
     room_id = participant["room"]
     previous = find_assignment(connection, room_id, name)
     if previous is not None:
+        if previous["retired"]:
+            raise ValueError(f"Participant is retired: {previous['label']}")
         if previous["plugin"] != plugin:
             raise ValueError("This participant already has a fresh-run assignment")
         return {"assignment_id": previous["id"], "state": previous["state"]}, None, room_id
@@ -64,7 +68,7 @@ def queue(
 def find_assignment(connection: Connection, room_id: str, name: str) -> RowMapping | None:
     """Resolve the slot case-insensitively using the same rule as invitations."""
     rows = connection.execute(
-        select(assignment, member.c.label)
+        select(assignment, member.c.label, member.c.retired)
         .join(member, member.c.id == assignment.c.slot)
         .where(assignment.c.room == room_id)
     ).mappings()
@@ -103,6 +107,7 @@ def pending(connection: Connection) -> list[RowMapping]:
                 room.c.round.label("current_round"),
                 room.c.round_deadline,
                 member.c.label,
+                member.c.retired,
             )
             .join(room, room.c.id == assignment.c.room)
             .join(member, member.c.id == assignment.c.slot)
