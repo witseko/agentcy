@@ -951,10 +951,15 @@ func memberState(member MemberStatus) (string, string) {
 		return accentStyle.Render("◐"), "plugin " + member.LaunchState
 	case member.State == "invited":
 		return dimStyle.Render("◌"), "not joined yet"
-	case member.State == "done":
-		return dimStyle.Render("○"), "done"
 	}
 	detail := member.State
+	if len(member.OpenTasks) == 1 {
+		detail = fmt.Sprintf("working on #%d", member.OpenTasks[0].ID)
+	} else if len(member.OpenTasks) > 1 {
+		detail = fmt.Sprintf("working on %d tasks", len(member.OpenTasks))
+	} else if member.State == "done" {
+		return dimStyle.Render("○"), "done"
+	}
 	if member.IdleSeconds != nil {
 		detail += " · active " + idle(*member.IdleSeconds) + " ago"
 	}

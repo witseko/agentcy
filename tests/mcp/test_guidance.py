@@ -458,3 +458,80 @@ def test_waiting_read_catches_close_between_page_and_status(
     assert "Stop listening and report the outcome" in page["next"]
     assert calls["status"] == 1
     assert calls["read"] == 2
+
+
+def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Surface team state on waiting reads and prompt the lead when workers finish."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Ship feature",
+        your_name="Lead",
+        invitees=["Alice", "Bob"],
+    )
+    lead = team["token"]
+    alice = tool(app, "join_conversation", code=team["invitations"]["Alice"])["token"]
+    bob = tool(app, "join_conversation", code=team["invitations"]["Bob"])["token"]
+    task_a = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="task-a",
+        body="Build API",
+        kind="task",
+        to="Alice",
+    )["message_id"]
+    task_b = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="task-b",
+        body="Write tests",
+        kind="task",
+        to="Bob",
+    )["message_id"]
+
+    # Workers do not receive the lead's team status snapshot.
+    worker_page = tool(app, "read_messages", token=alice, after=task_b, wait_seconds=1)
+    assert "team" not in worker_page
+
+    # Alice finishes while Bob still has an open task.
+    done_a = tool(
+        app,
+        "post_message",
+        token=alice,
+        submission_id="done-a",
+        body="API ready",
+        kind="done",
+        reply_to=task_a,
+    )["message_id"]
+    lead_after_a = tool(app, "read_messages", token=lead, after=task_b, wait_seconds=1)
+    assert lead_after_a["team"]["Alice"]["state"] == "done"
+    assert lead_after_a["team"]["Bob"]["open_tasks"] == [{"id": task_b}]
+    assert "Free teammates waiting for next steps: Alice" in lead_after_a["next"]
+
+    # On repeated quiet waits while Bob works, the lead is reminded to check in.
+    first_quiet = tool(app, "read_messages", token=lead, after=done_a, wait_seconds=1)
+    assert server.LEAD_CHECKIN_HELP not in first_quiet["next"]
+    second_quiet = tool(app, "read_messages", token=lead, after=done_a, wait_seconds=1)
+    assert server.LEAD_CHECKIN_HELP in second_quiet["next"]
+    assert "Free teammates waiting for next steps: Alice" in second_quiet["next"]
+
+    # Once Bob also finishes, the lead is told immediately without another blind wait.
+    tool(
+        app,
+        "post_message",
+        token=bob,
+        submission_id="done-b",
+        body="Tests green",
+        kind="done",
+        reply_to=task_b,
+    )
+    lead_after_b = tool(app, "read_messages", token=lead, after=done_a, wait_seconds=1)
+    assert lead_after_b["team"]["Alice"]["state"] == "done"
+    assert lead_after_b["team"]["Bob"]["state"] == "done"
+    assert "All other members are done" in lead_after_b["next"]
+    assert "assign any follow-up tasks" in lead_after_b["next"]

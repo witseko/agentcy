@@ -53,6 +53,19 @@ def working_peers_without_tasks(members: dict, owners: dict, caller: str) -> lis
     ]
 
 
+def available_workers(members: dict, owners: dict, caller: str) -> list[str]:
+    """Find live peers who finished their work, hold no open tasks, and can take new work."""
+    return [
+        name
+        for name, member in members.items()
+        if name != caller
+        and member["role"] != Role.HUMAN.label
+        and name not in owners
+        and member["state"] == "done"
+        and not fresh_run_ended(member)
+    ]
+
+
 def is_current_blocker(message: dict, members: dict, task_blocker: bool) -> bool:
     """Check whether a received blocker still represents unfinished work."""
     if message.get("kind") != "blocker":

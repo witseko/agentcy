@@ -11,6 +11,7 @@ from mcp.types import Icon
 
 from agents_chat.conversations import models, rounds
 from agents_chat.conversations.progress import (
+    available_workers,
     awaiting_fresh_join,
     fresh_run_ended,
     is_current_blocker,
@@ -24,6 +25,7 @@ from agents_chat.mcp.transport import exchange
 
 # Hosts stop a tool call after about one minute, and the first call may also start the core.
 IDLE_WAITS = 3
+LEAD_CHECKIN_WAITS = 2
 LEAD_IDLE_WAITS = 8
 # A listening chat already holds these from create, join or a one-time read.
 CONTEXT_FIELDS = ("brief", "role", "roster")
@@ -44,6 +46,34 @@ BLOCKER_HELP = (
 TASK_RESUME_HELP = (
     "Once you can continue a blocked task, reply to its original task ID with kind='resume'."
 )
+LEAD_CHECKIN_HELP = (
+    "Check in on quiet teammates or post a brief team update so waiting peers stay active."
+)
+
+
+def team_snapshot(status: dict, me: str) -> dict[str, dict]:
+    """Summarize non-human teammates so a lead sees joins, open tasks, and idle time."""
+    snapshot = {}
+    for name, member in status["members"].items():
+        if name == me or member["role"] == Role.HUMAN.label:
+            continue
+        entry = {"state": member["state"]}
+        for field in ("open_tasks", "launch_state", "idle_seconds"):
+            if field in member:
+                entry[field] = member[field]
+        snapshot[name] = entry
+    return snapshot
+
+
+def free_teammates_note(members: dict, owners: dict, me: str) -> str:
+    """Mention finished peers who hold no open tasks so the lead can assign next work."""
+    available = available_workers(members, owners, me)
+    if not available:
+        return ""
+    return (
+        f" Free teammates waiting for next steps: {', '.join(available)} "
+        "(assign kind='task' or post a team update)."
+    )
 
 
 def describe_open_task(name: str, member: dict, task: dict) -> str:
@@ -68,20 +98,25 @@ def lead_task_guidance(
         for task in member["open_tasks"]
     ]
     summary = f"Open tasks are {', '.join(descriptions)}."
+    idle_note = free_teammates_note(members, owners, me)
     if has_messages:
-        return f"{summary} {NEXT_AFTER_MESSAGES}"
+        return f"{summary}{idle_note} {NEXT_AFTER_MESSAGES}"
     working, has_blocked_task = task_availability(owners)
     if me in working:
-        return f"{summary} Continue your tasks. Reply to each task with kind='done' or 'blocker'."
+        return (
+            f"{summary}{idle_note} Continue your tasks. "
+            "Reply to each task with kind='done' or 'blocker'."
+        )
     other_working = working_peers_without_tasks(members, owners, me)
     if (working or other_working) and silent_waits < LEAD_IDLE_WAITS:
-        return f"{summary} To keep listening, {LISTEN}."
+        checkin = f" {LEAD_CHECKIN_HELP}" if silent_waits >= LEAD_CHECKIN_WAITS else ""
+        return f"{summary}{idle_note} To keep listening, {LISTEN}.{checkin}"
     if has_blocked_task and silent_waits < LEAD_IDLE_WAITS:
         return (
-            f"{summary} If a teammate is checking a blocker, {LISTEN}. "
+            f"{summary}{idle_note} If a teammate is checking a blocker, {LISTEN}. "
             "If you need your user's help, stop listening and report the open tasks."
         )
-    return f"{summary} Stop listening and tell your user which tasks are still open."
+    return f"{summary}{idle_note} Stop listening and tell your user which tasks are still open."
 
 
 def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) -> str:
@@ -99,11 +134,18 @@ def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) 
     summary = f"Fresh runs left unfinished work for {', '.join(ended)}. " if ended else ""
     if owners:
         return summary + lead_task_guidance(members, owners, me, has_messages, silent_waits)
-    if has_messages:
-        return summary + NEXT_AFTER_MESSAGES
     pending = lead_waiting_on(status, me)
+    idle_note = free_teammates_note(members, owners, me)
+    if has_messages:
+        if not pending and not ended and idle_note:
+            return (
+                f"{summary}All other members are done. Handle these messages, assign any "
+                "follow-up tasks with kind='task', or verify the evidence and report one "
+                "conclusion to your user."
+            )
+        return f"{summary}{idle_note.lstrip()}{' ' if idle_note else ''}{NEXT_AFTER_MESSAGES}"
     if pending:
-        return summary + lead_pending_guidance(members, pending, silent_waits)
+        return summary + lead_pending_guidance(members, pending, silent_waits, idle_note)
     if ended:
         return summary + "Stop listening, verify the evidence, and report what remains open."
     return (
@@ -112,7 +154,9 @@ def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) 
     )
 
 
-def lead_pending_guidance(members: dict, pending: list[str], silent_waits: int) -> str:
+def lead_pending_guidance(
+    members: dict, pending: list[str], silent_waits: int, idle_note: str = ""
+) -> str:
     """Guide a lead based on the priority group of outstanding peers."""
     names = ", ".join(
         f"{name} (fresh run {members[name]['launch_state']})"
@@ -127,7 +171,8 @@ def lead_pending_guidance(members: dict, pending: list[str], silent_waits: int) 
         return f"Stop listening and tell your user who is blocked: {names}."
     if silent_waits >= LEAD_IDLE_WAITS:
         return f"Stop listening and tell your user who is still working: {names}."
-    return f"Still working: {names}. To keep listening, {LISTEN}."
+    checkin = f" {LEAD_CHECKIN_HELP}" if silent_waits >= LEAD_CHECKIN_WAITS else ""
+    return f"Still working: {names}. To keep listening, {LISTEN}.{idle_note}{checkin}"
 
 
 def guidance(
@@ -188,6 +233,8 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
             page["waiting_on"] = pending
     for field in CONTEXT_FIELDS:
         page.pop(field, None)
+    if status["open"] and status["members"][me]["role"] != Role.WORKER.label:
+        page["team"] = team_snapshot(status, me)
     task_blockers = set(page.pop("_task_blockers", []))
     blocker_received = any(
         is_current_blocker(message, status["members"], message["id"] in task_blockers)
@@ -241,6 +288,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "test result, or other source the peer can check. Reply to a task ID with kind='done' "
             f"when the task is complete or kind='blocker' when you need help. {TASK_RESUME_HELP} "
             "As lead, ask a teammate who can help when a worker is blocked. "
+            "Track the 'team' status returned by read_messages; assign follow-up tasks or post "
+            "a brief team update when workers finish or go quiet so waiting peers stay active. "
             "Workers in a sealed round submit with kind='proposal' and wait for release. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up and post_message to contribute. When you have no "

@@ -825,3 +825,33 @@ func TestHighlightTermsMarksWordsThatStartWithATerm(t *testing.T) {
 		t.Error("skip is highlighted")
 	}
 }
+
+func TestMemberStateShowsOpenTasksAsWorking(t *testing.T) {
+	idle := int64(12)
+	glyph, detail := memberState(MemberStatus{
+		Role:        "worker",
+		State:       "done",
+		IdleSeconds: &idle,
+		OpenTasks:   []OpenTask{{ID: 42}},
+	})
+	if ansi.Strip(glyph) != "●" || detail != "working on #42 · active 12s ago" {
+		t.Fatalf("got (%q, %q), want active working on #42", ansi.Strip(glyph), detail)
+	}
+
+	glyph, detail = memberState(MemberStatus{
+		Role:      "worker",
+		State:     "replied",
+		OpenTasks: []OpenTask{{ID: 42}, {ID: 45}},
+	})
+	if ansi.Strip(glyph) != "●" || detail != "working on 2 tasks" {
+		t.Fatalf("got (%q, %q), want working on 2 tasks", ansi.Strip(glyph), detail)
+	}
+
+	glyph, detail = memberState(MemberStatus{
+		Role:  "worker",
+		State: "done",
+	})
+	if ansi.Strip(glyph) != "○" || detail != "done" {
+		t.Fatalf("got (%q, %q), want done", ansi.Strip(glyph), detail)
+	}
+}
