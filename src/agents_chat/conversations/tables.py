@@ -21,6 +21,7 @@ room = Table(
     Column("open", Integer, nullable=False),
     Column("round", String),
     Column("round_deadline", Integer),
+    Column("created", Integer),
 )
 member = Table(
     "participant",

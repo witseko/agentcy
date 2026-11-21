@@ -1,0 +1,1086 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "CloseConversation": {
+      "additionalProperties": false,
+      "description": "Close the conversation and record an optional summary as the human's message.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_close",
+          "title": "Action",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "CloseConversation",
+      "type": "object"
+    },
+    "ClosedConversation": {
+      "additionalProperties": false,
+      "description": "Confirm that the conversation is closed.",
+      "properties": {
+        "closed": {
+          "const": true,
+          "title": "Closed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "closed"
+      ],
+      "title": "ClosedConversation",
+      "type": "object"
+    },
+    "ConversationList": {
+      "additionalProperties": false,
+      "description": "Return up to 100 conversations, newest first.",
+      "properties": {
+        "conversations": {
+          "items": {
+            "$ref": "#/$defs/ConversationSummary"
+          },
+          "title": "Conversations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "conversations"
+      ],
+      "title": "ConversationList",
+      "type": "object"
+    },
+    "ConversationStatus": {
+      "additionalProperties": false,
+      "description": "Report the conversation state as conversation_status does for members.",
+      "properties": {
+        "open": {
+          "title": "Open",
+          "type": "boolean"
+        },
+        "members": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MemberStatus"
+          },
+          "title": "Members",
+          "type": "object"
+        },
+        "round": {
+          "anyOf": [
+            {
+              "enum": [
+                "sealed",
+                "critique"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round"
+        },
+        "round_deadline": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round Deadline"
+        }
+      },
+      "required": [
+        "open",
+        "members"
+      ],
+      "title": "ConversationStatus",
+      "type": "object"
+    },
+    "ConversationSummary": {
+      "additionalProperties": false,
+      "description": "Summarize one conversation for a list view.",
+      "properties": {
+        "conversation": {
+          "title": "Conversation",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "open": {
+          "title": "Open",
+          "type": "boolean"
+        },
+        "created": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created"
+        },
+        "members": {
+          "title": "Members",
+          "type": "integer"
+        },
+        "joined": {
+          "title": "Joined",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "conversation",
+        "title",
+        "open",
+        "created",
+        "members",
+        "joined"
+      ],
+      "title": "ConversationSummary",
+      "type": "object"
+    },
+    "ConversationView": {
+      "additionalProperties": false,
+      "description": "Return the brief, status and one transcript page. Pass cursor as the next after.",
+      "properties": {
+        "conversation": {
+          "title": "Conversation",
+          "type": "string"
+        },
+        "brief": {
+          "title": "Brief",
+          "type": "string"
+        },
+        "created": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created"
+        },
+        "status": {
+          "$ref": "#/$defs/ConversationStatus"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/TranscriptMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "more": {
+          "title": "More",
+          "type": "boolean"
+        },
+        "cursor": {
+          "title": "Cursor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "conversation",
+        "brief",
+        "created",
+        "status",
+        "messages",
+        "more",
+        "cursor"
+      ],
+      "title": "ConversationView",
+      "type": "object"
+    },
+    "CreateConversation": {
+      "additionalProperties": false,
+      "description": "Create a conversation in which every slot, the lead included, is an invitation.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_create",
+          "title": "Action",
+          "type": "string"
+        },
+        "brief": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Brief",
+          "type": "string"
+        },
+        "lead": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Lead",
+          "type": "string"
+        },
+        "invitees": {
+          "items": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/Invitation"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Invitees",
+          "type": "array"
+        },
+        "sealed": {
+          "default": false,
+          "title": "Sealed",
+          "type": "boolean"
+        },
+        "deadline_minutes": {
+          "anyOf": [
+            {
+              "maximum": 60,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline Minutes"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "action",
+        "brief",
+        "lead",
+        "invitees"
+      ],
+      "title": "CreateConversation",
+      "type": "object"
+    },
+    "CreatedConversation": {
+      "additionalProperties": false,
+      "description": "Return the new conversation with one invitation per slot, the lead first.",
+      "properties": {
+        "conversation": {
+          "title": "Conversation",
+          "type": "string"
+        },
+        "invitations": {
+          "items": {
+            "$ref": "#/$defs/JoinInvitation"
+          },
+          "title": "Invitations",
+          "type": "array"
+        },
+        "roster": {
+          "additionalProperties": {
+            "enum": [
+              "worker",
+              "lead",
+              "co-lead",
+              "human"
+            ],
+            "type": "string"
+          },
+          "title": "Roster",
+          "type": "object"
+        },
+        "round": {
+          "anyOf": [
+            {
+              "enum": [
+                "sealed",
+                "critique"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round"
+        },
+        "round_deadline": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round Deadline"
+        }
+      },
+      "required": [
+        "conversation",
+        "invitations",
+        "roster"
+      ],
+      "title": "CreatedConversation",
+      "type": "object"
+    },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "Reserve a worker or co-lead slot when creating a conversation.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "worker",
+          "enum": [
+            "worker",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "InviteParticipant": {
+      "additionalProperties": false,
+      "description": "Add a slot or reissue the unused code of an existing slot.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_invite",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "worker",
+                "co-lead"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name"
+      ],
+      "title": "InviteParticipant",
+      "type": "object"
+    },
+    "JoinInvitation": {
+      "additionalProperties": false,
+      "description": "Return a slot's join code and a join prompt with the code already in it.",
+      "properties": {
+        "participant": {
+          "title": "Participant",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "join_prompt": {
+          "title": "Join Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "participant",
+        "role",
+        "code",
+        "join_prompt"
+      ],
+      "title": "JoinInvitation",
+      "type": "object"
+    },
+    "LaunchParticipant": {
+      "additionalProperties": false,
+      "description": "Fill a worker slot with a fresh run from a configured plugin.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_launch",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "plugin": {
+          "pattern": "^[a-zA-Z0-9-]{1,64}$",
+          "title": "Plugin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name",
+        "plugin"
+      ],
+      "title": "LaunchParticipant",
+      "type": "object"
+    },
+    "LaunchQueued": {
+      "additionalProperties": false,
+      "description": "Report the assignment that will fill the slot.",
+      "properties": {
+        "assignment_id": {
+          "title": "Assignment Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "starting",
+            "running",
+            "finished",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assignment_id",
+        "state"
+      ],
+      "title": "LaunchQueued",
+      "type": "object"
+    },
+    "ListConversations": {
+      "additionalProperties": false,
+      "description": "List the workspace's conversations, newest first.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_list",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "action"
+      ],
+      "title": "ListConversations",
+      "type": "object"
+    },
+    "ListPlugins": {
+      "additionalProperties": false,
+      "description": "List the configured fresh-run plugins by name and model.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_plugins",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "action"
+      ],
+      "title": "ListPlugins",
+      "type": "object"
+    },
+    "MemberStatus": {
+      "additionalProperties": false,
+      "description": "Report one member's role, membership state, launch state and open tasks.",
+      "properties": {
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead",
+            "human"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "invited",
+            "joined",
+            "replied",
+            "done",
+            "blocked",
+            "human"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "launch_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "queued",
+                "starting",
+                "running",
+                "finished",
+                "failed",
+                "cancelled",
+                "timed_out",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Launch State"
+        },
+        "idle_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Idle Seconds"
+        },
+        "messages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Messages"
+        },
+        "open_tasks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/OpenTask"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open Tasks"
+        }
+      },
+      "required": [
+        "role",
+        "state"
+      ],
+      "title": "MemberStatus",
+      "type": "object"
+    },
+    "OpenTask": {
+      "additionalProperties": false,
+      "description": "Identify one unfinished task of a member.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "blocked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocked"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "OpenTask",
+      "type": "object"
+    },
+    "PluginList": {
+      "additionalProperties": false,
+      "description": "List the configured plugins without commands, environment names or caps.",
+      "properties": {
+        "plugins": {
+          "items": {
+            "$ref": "#/$defs/PluginSummary"
+          },
+          "title": "Plugins",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plugins"
+      ],
+      "title": "PluginList",
+      "type": "object"
+    },
+    "PluginSummary": {
+      "additionalProperties": false,
+      "description": "Name one configured plugin and its model.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "model"
+      ],
+      "title": "PluginSummary",
+      "type": "object"
+    },
+    "PostMessage": {
+      "additionalProperties": false,
+      "description": "Post a note or question as the human, with the same retry protection as members.",
+      "properties": {
+        "submission_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Submission Id",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "kind": {
+          "default": "note",
+          "enum": [
+            "note",
+            "question"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To"
+        },
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_post",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "submission_id",
+        "body",
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "PostMessage",
+      "type": "object"
+    },
+    "PostedMessage": {
+      "additionalProperties": false,
+      "description": "Return the message ID. A retry with the same submission ID returns the same ID.",
+      "properties": {
+        "message_id": {
+          "title": "Message Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "title": "PostedMessage",
+      "type": "object"
+    },
+    "ShowConversation": {
+      "additionalProperties": false,
+      "description": "Read status, the brief and one page of the full transcript after a cursor.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_show",
+          "title": "Action",
+          "type": "string"
+        },
+        "after": {
+          "default": 0,
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "ShowConversation",
+      "type": "object"
+    },
+    "TranscriptMessage": {
+      "additionalProperties": false,
+      "description": "Show one published message with its author and creation time.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "body",
+        "created"
+      ],
+      "title": "TranscriptMessage",
+      "type": "object"
+    }
+  },
+  "title": "agents-chat operator protocol v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ListConversations"
+    },
+    {
+      "$ref": "#/$defs/ShowConversation"
+    },
+    {
+      "$ref": "#/$defs/CreateConversation"
+    },
+    {
+      "$ref": "#/$defs/InviteParticipant"
+    },
+    {
+      "$ref": "#/$defs/LaunchParticipant"
+    },
+    {
+      "$ref": "#/$defs/PostMessage"
+    },
+    {
+      "$ref": "#/$defs/CloseConversation"
+    },
+    {
+      "$ref": "#/$defs/ListPlugins"
+    }
+  ]
+}

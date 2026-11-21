@@ -81,15 +81,21 @@ class Member(Request):
     token: Key
 
 
-class Post(Member):
-    """Append a participant message with retry protection."""
+class Submission(BaseModel):
+    """Describe one message and the client-chosen ID that protects its retries."""
 
-    action: Literal["post"] = "post"
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     submission_id: Key
     body: Body
     kind: PostKind = "note"
     to: Label | None = None
     reply_to: MessageId | None = None
+
+
+class Post(Member, Submission):
+    """Append a participant message with retry protection."""
+
+    action: Literal["post"] = "post"
 
 
 class Read(Member):
@@ -136,9 +142,5 @@ class Launch(Member):
     directory: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
 
 
-REQUEST = TypeAdapter(
-    Annotated[
-        Create | Join | Post | Read | Close | Status | Invite | Release | Launch,
-        Field(discriminator="action"),
-    ]
-)
+MemberRequest = Create | Join | Post | Read | Close | Status | Invite | Release | Launch
+REQUEST = TypeAdapter(Annotated[MemberRequest, Field(discriminator="action")])

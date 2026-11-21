@@ -9,11 +9,13 @@ from pathlib import Path
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.operations.ops import CreateTableOp
-from sqlalchemy import Column, Engine, Integer, String, Table, create_engine, event
+from sqlalchemy import Column, Connection, Engine, Integer, String, Table, create_engine, event
 
 from agents_chat.conversations.assignment_tables import assignment
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agents_chat.executables import find_on_path
+
+SCHEMA_VERSION = 7
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -71,6 +73,11 @@ def workspace_key(workspace: Path) -> str:
     return hashlib.sha256(os.fsencode(root)).hexdigest()
 
 
+def database_exists(key: str) -> bool:
+    """Check for a workspace store without creating one."""
+    return (data_dir() / (key + ".sqlite3")).is_file()
+
+
 @lru_cache(maxsize=64)
 def database(key: str) -> Engine:
     """Open a versioned store. The daemon owns all schema changes."""
@@ -90,26 +97,34 @@ def database(key: str) -> Engine:
             operations = Operations(MigrationContext.configure(connection))
             for table in metadata.sorted_tables:
                 create_table(operations, table)
-            connection.exec_driver_sql("PRAGMA user_version=6")
-        elif version in (1, 2, 3, 4, 5):
-            operations = Operations(MigrationContext.configure(connection))
-            if version == 1:
-                # The old creator flag already encodes worker (0) and lead (1).
-                operations.alter_column("participant", "creator", new_column_name="role")
-            if version < 3:
-                operations.add_column("participant", Column("seen", Integer))
-            if version < 4:
-                operations.add_column("message", Column("kind", String))
-                connection.exec_driver_sql(
-                    "ALTER TABLE message ADD COLUMN recipient INTEGER REFERENCES participant(id)"
-                )
-                connection.exec_driver_sql(
-                    "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
-                )
-            if version < 5:
-                migrate_sealed_rounds(operations)
-            create_table(operations, assignment)
-            connection.exec_driver_sql("PRAGMA user_version=6")
-        elif version != 6:
+            connection.exec_driver_sql(f"PRAGMA user_version={SCHEMA_VERSION}")
+        elif 1 <= version < SCHEMA_VERSION:
+            upgrade(connection, version)
+            connection.exec_driver_sql(f"PRAGMA user_version={SCHEMA_VERSION}")
+        elif version != SCHEMA_VERSION:
             raise ValueError("Unsupported bridge database version")
     return engine
+
+
+def upgrade(connection: Connection, version: int) -> None:
+    """Apply each schema change that a store at an older version is missing."""
+    operations = Operations(MigrationContext.configure(connection))
+    if version == 1:
+        # The old creator flag already encodes worker (0) and lead (1).
+        operations.alter_column("participant", "creator", new_column_name="role")
+    if version < 3:
+        operations.add_column("participant", Column("seen", Integer))
+    if version < 4:
+        operations.add_column("message", Column("kind", String))
+        connection.exec_driver_sql(
+            "ALTER TABLE message ADD COLUMN recipient INTEGER REFERENCES participant(id)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE message ADD COLUMN reply_to INTEGER REFERENCES message(id)"
+        )
+    if version < 5:
+        migrate_sealed_rounds(operations)
+    if version < 6:
+        create_table(operations, assignment)
+    if version < 7:
+        operations.add_column("conversation", Column("created", Integer))

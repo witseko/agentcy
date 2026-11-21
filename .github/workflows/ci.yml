@@ -84,6 +84,37 @@ jobs:
       - name: Run tests
         run: uv run --locked pytest --ignore=tests/e2e tests
 
+  tui:
+    name: Terminal UI (gofmt, vet, tests, govulncheck)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags e2e ./...
+      - name: Run tests
+        run: go test ./...
+      - name: Scan for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   e2e:
     name: End-to-end tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -102,3 +133,10 @@ jobs:
           enable-cache: false
       - name: Run end-to-end tests
         run: uv run --locked pytest tests/e2e
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Run terminal UI end-to-end tests against a real core
+        working-directory: tui
+        run: uv run --locked go test -tags e2e ./...

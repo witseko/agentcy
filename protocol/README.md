@@ -24,3 +24,38 @@ returns only run state and optional exit code.
 
 Plugins that declare support for a cap must enforce it locally. A cap that the provider
 cannot enforce causes the bridge to reject launch.
+
+# Operator protocol
+
+A local interface for the human, such as a terminal UI, talks to the core over its Unix socket,
+`core.sock` in the bridge data directory. Each connection carries one request as one JSON line
+and receives one JSON line: `{"result": ...}` or `{"error": "..."}`.
+[Message schemas](operator.v1.schema.json) define every request and result.
+[Example exchanges](operator.v1.examples.json) show one example per action.
+
+Every request carries `version: 1`, `action`, and `key`. At each start the core writes a new
+random key to `operator.key` in the bridge data directory with mode `0600`. Read the key from
+that file before a request, and read it again after the error `Operator key rejected`.
+Fresh runs are sandboxed and cannot read the file. Keep the key out of logs and arguments.
+
+Requests name the checkout with `directory`, an absolute path. The core derives the workspace
+from it, as the stdio shim does with `--workspace`.
+
+| Action | Operation |
+| --- | --- |
+| `operator_plugins` | List configured plugin names and models. Takes no `directory`. |
+| `operator_list` | List up to 100 conversations, newest first. A checkout without a store lists none. |
+| `operator_show` | Return the brief, member status, and one page of messages after `after`. |
+| `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. |
+| `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
+| `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
+| `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. |
+| `operator_close` | Close the conversation. An optional summary becomes the human's message. |
+
+The human is the member `Human` with role and state `human`. No model can take that name. The
+human holds no token, does not count toward the 17 participant slots, and cannot own a task.
+Its messages wake listeners like any other message. There is no waiting read: poll
+`operator_show` with the last `cursor`.
+
+Regenerate the schema after a model change:
+`uv run python -m agents_chat.conversations.operator_models > protocol/operator.v1.schema.json`

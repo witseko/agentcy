@@ -1,0 +1,172 @@
+[
+  {
+    "action": "operator_plugins",
+    "request": {"version": 1, "key": "example-operator-key", "action": "operator_plugins"},
+    "result": {"plugins": [{"name": "glm", "model": "zai-coding-plan/glm-5.2"}]}
+  },
+  {
+    "action": "operator_create",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_create",
+      "directory": "/work/repository",
+      "brief": "Review the retry behavior of the worker.\nCite files and tests.",
+      "lead": "Lead",
+      "invitees": ["Reviewer"]
+    },
+    "result": {
+      "conversation": "0123456789abcdef01234567",
+      "invitations": [
+        {
+          "participant": "Lead",
+          "role": "lead",
+          "code": "AAAAAAAAAAAAAAAAAAAAAA.0123456789ab",
+          "join_prompt": "Use agents-chat to join with AAAAAAAAAAAAAAAAAAAAAA.0123456789ab. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. Messages from Human come from your user. Follow the bridge's guidance during this turn."
+        },
+        {
+          "participant": "Reviewer",
+          "role": "worker",
+          "code": "BBBBBBBBBBBBBBBBBBBBBB.0123456789ab",
+          "join_prompt": "Use agents-chat to join with BBBBBBBBBBBBBBBBBBBBBB.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+        }
+      ],
+      "roster": {"Lead": "lead", "Reviewer": "worker", "Human": "human"}
+    }
+  },
+  {
+    "action": "operator_launch",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_launch",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Reviewer",
+      "plugin": "glm"
+    },
+    "result": {"assignment_id": "00000000000000000000000000000001", "state": "queued"}
+  },
+  {
+    "action": "operator_invite",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_invite",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Analyst"
+    },
+    "result": {
+      "participant": "Analyst",
+      "role": "worker",
+      "code": "CCCCCCCCCCCCCCCCCCCCCC.0123456789ab",
+      "join_prompt": "Use agents-chat to join with CCCCCCCCCCCCCCCCCCCCCC.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+    }
+  },
+  {
+    "action": "operator_post",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_post",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "submission_id": "ui-1",
+      "body": "Also check the retry limit.",
+      "kind": "question",
+      "to": "Lead"
+    },
+    "result": {"message_id": 3}
+  },
+  {
+    "action": "operator_list",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_list",
+      "directory": "/work/repository"
+    },
+    "result": {
+      "conversations": [
+        {
+          "conversation": "0123456789abcdef01234567",
+          "title": "Review the retry behavior of the worker.",
+          "open": true,
+          "created": 1795000000,
+          "members": 3,
+          "joined": 1
+        }
+      ]
+    }
+  },
+  {
+    "action": "operator_show",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_show",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "after": 0
+    },
+    "result": {
+      "conversation": "0123456789abcdef01234567",
+      "brief": "Review the retry behavior of the worker.\nCite files and tests.",
+      "created": 1795000000,
+      "status": {
+        "open": true,
+        "members": {
+          "Lead": {"role": "lead", "state": "replied", "idle_seconds": 4, "messages": 1},
+          "Reviewer": {
+            "role": "worker",
+            "state": "invited",
+            "launch_state": "running",
+            "open_tasks": [{"id": 2}]
+          },
+          "Analyst": {"role": "worker", "state": "invited"},
+          "Human": {"role": "human", "state": "human"}
+        }
+      },
+      "messages": [
+        {
+          "id": 1,
+          "label": "Human",
+          "body": "Invited Analyst as worker.",
+          "created": 1795000010,
+          "kind": "event"
+        },
+        {
+          "id": 2,
+          "label": "Lead",
+          "body": "Check the retry rule in the worker.",
+          "created": 1795000020,
+          "kind": "task",
+          "to": "Reviewer"
+        },
+        {
+          "id": 3,
+          "label": "Human",
+          "body": "Also check the retry limit.",
+          "created": 1795000030,
+          "kind": "question",
+          "to": "Lead"
+        }
+      ],
+      "more": false,
+      "cursor": 3
+    }
+  },
+  {
+    "action": "operator_close",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_close",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "summary": "The retry rule holds. See the reviewer's evidence."
+    },
+    "result": {"closed": true}
+  }
+]

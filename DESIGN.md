@@ -13,7 +13,7 @@ This document describes the planned first release. Start a task in a familiar ch
 
 ## Non-goals
 
-The first release does not include remote or multi-user access, a graphical interface for the human, cloud synchronization, committing to Git, or fresh runs that edit the workspace. The human participates through a chat or through the operator CLI.
+The first release does not include remote or multi-user access, a graphical interface for the human, cloud synchronization, committing to Git, or fresh runs that edit the workspace. The human participates through a chat or the terminal UI.
 
 ## Core and plugin interface
 
@@ -21,12 +21,13 @@ Use the Model Context Protocol (MCP) for both public interfaces. A desktop app o
 
 | Area | Responsibility |
 | --- | --- |
-| `protocol/` | Versioned, language-neutral contracts for the chat-facing tools and the plugin interface: JSON schemas, example exchanges, and compatibility fixtures. |
+| `protocol/` | Versioned, language-neutral contracts for the chat-facing tools, the plugin interface, and the operator protocol: JSON schemas, example exchanges, and compatibility fixtures. |
 | `src/agents_chat/conversations/` | Participants, invitations, messages, assignments, handoffs, rounds, and orchestration, with its own tables and queries. |
 | `src/agents_chat/memory/` | Scoped Markdown discovery, evidence, proposals, publication, and conflict handling, with its own tables and queries. |
 | `src/agents_chat/storage/` | Database engine, shared metadata, migrations, and file permissions. |
 | `src/agents_chat/mcp/` | Tools exposed to chats, the stdio shim, and the client used to call plugins. |
-| `src/agents_chat/tools/` | Operator CLI. |
+| `src/agents_chat/tools/` | Command-line entry points: the stdio shim and `agents-chat ui`, which starts the terminal UI. |
+| `tui/` | Terminal UI for the human, written in Go, on the operator protocol. |
 | `plugins/` | Independently installable Claude, Codex, and Z.ai MCP servers. |
 | `tests/` | Core behavior, cross-process integration, and reusable plugin conformance tests. |
 
@@ -40,9 +41,13 @@ The join call exchanges a join code for a participant token. Every later call ca
 
 New join codes carry a per-code tag that detects a workspace mismatch before the core looks up the invitation in the configured workspace. The core authenticates the invitation by its full code digest.
 
+The human acts through the operator protocol and holds no participant token. At each start the core writes a new random operator key to `operator.key` in the bridge data directory with owner-only permissions. Every operator request carries the key, and the core compares it in constant time. A missing or wrong key gets one generic error. The core never logs the key. Fresh runs cannot read the file: their sandbox denies reads inside the bridge data directory except the socket and their own scratch space.
+
 ### Conversation roles
 
 The creator leads by default. Each plain-name invitation creates a worker slot. An invitation can also specify a name and the role `co-lead`. When any co-lead is invited, the creator and invited co-leads share leadership. The join code binds its holder to the assigned role. The create and join tools and a one-time read from cursor zero return the roster. Any member can call `conversation_status` to see who was invited, who joined, and who replied. Status shows time since the last recorded authenticated bridge call when known. Leads coordinate work and summarize findings through messages. All members can read and post. Any lead or co-lead can close the conversation.
+
+A conversation created through the operator protocol has no creator token. Its lead slot is an invitation like every other slot, and an interactive chat takes it with its join prompt. The human is the member `Human` with role `human`. It has no token and no invitation, does not count toward the 17 participants, and cannot own a task. No invitation can use its name. The core adds it when the operator creates a conversation, or at the first operator write to a conversation that a chat created. The human's messages wake listeners like any other message.
 
 A lead or co-lead can call `invite_participant` to add a slot, up to 17 participants, or reissue an unused code for an existing slot. A late co-lead invitation also promotes the creator. The bridge records each invitation change as an event, and returns a private code and one join prompt template to the caller. The create tool also returns the template with its initial join codes.
 
@@ -64,7 +69,13 @@ Each waiting read returns within the host's tool timeout, checks participant sta
 
 ### Operator tools
 
-Provide a CLI with `argparse` under `[project.scripts]` for the human and for debugging: list workspaces and conversations, show a conversation's messages, assignments, and journal, approve or reject a pending publication, rebuild the Markdown index, and show the core's status and log location. At the default level the core logs identifiers and states, not briefs or message bodies.
+The core serves a versioned operator protocol on its Unix socket for a local interface such as a terminal UI. One request line gets one response line. The protocol lists the conversations of a checkout's workspace, shows a conversation's status and messages, creates a conversation with an invitation and a ready join prompt for every slot, invites, launches a configured plugin into a worker slot, posts notes and questions as the human, closes with an optional summary, and lists plugin names and models. Requests name the checkout by its absolute path, and the core derives the workspace from it. The interface polls `operator_show`; the protocol has no waiting read. [Operator protocol](protocol/README.md#operator-protocol)
+
+The terminal UI in `tui/` is the human's surface on this protocol. `agents-chat ui` starts the core when it is not running and then runs the UI for a checkout. The UI lists the checkout's conversations, creates a conversation with a lead and worker slots, launches plugin worker slots, shows the transcript and member status, posts notes and questions as the human, reissues codes, and closes. It polls `operator_show` about once a second. It shows join codes only in its invite window and keeps them in memory. It strips control characters and escape sequences from model text before it draws it.
+
+The lead is always an interactive chat, such as a desktop app, that joins with the ready join prompt the UI shows. Each worker slot is either a manual chat with its own join prompt or a configured plugin that the UI launches.
+
+Planned: a CLI with `argparse` for debugging that lists workspaces and conversations, shows a conversation's messages, assignments, and journal, approves or rejects a pending publication, rebuilds the Markdown index, and shows the core's status and log location. At the default level the core logs identifiers and states, not briefs or message bodies.
 
 ## Configuration
 
@@ -125,7 +136,7 @@ Restrict publication to enrolled knowledge paths. Journal the intended change an
 ## Delivery and acceptance
 
 1. **Core.** Connect two independent MCP clients through the shim with all provider plugins disabled. Exchange messages, disconnect, reconnect, and verify that replaying a submission produces one message, both with the same submission ID and with a new ID and the same body. Verify the core starts once under concurrent shims, exits when idle, and reports its cold start time.
-2. **Security.** Reject calls with a missing or foreign participant token, a reused join code, and an expired join code. Reject a publication path that resolves outside an enrolled location, including through a symlink. Verify database and socket permissions. Run `ruff` with the `S` rules and `pip-audit` with a committed `uv.lock`.
+2. **Security.** Reject calls with a missing or foreign participant token, a reused join code, and an expired join code. Reject operator requests with a missing or wrong operator key. Reject a publication path that resolves outside an enrolled location, including through a symlink. Verify database and socket permissions. Run `ruff` with the `S` rules and `pip-audit` with a committed `uv.lock`.
 3. **Ongoing work.** Start a conversation with one brief, an active lead, and two configured read-only workers. Delay one worker's join and confirm the lead keeps working and treats the launch as in progress. Have the other worker ask that peer directly for evidence and mark its task blocked. After the evidence arrives, have the owner resume the task. Verify that only the owner can resume it. Complete both tasks and return one verified conclusion that cites both workers' evidence without another user reminder. Also exercise handoff acceptance and refusal and recover cursors after reconnect. Close with a summary and verify that participants can read it, posting is disabled, unused join codes expire, and running assignments stop.
 4. **Memory.** Demonstrate root-to-folder discovery, a pending proposal approved and written, a rejected proposal that leaves the file untouched, duplicate evidence, a conflicting proposal, and a human edit during publication. Interrupt a topic and index update, then recover it. Confirm isolation across repositories and sharing across two worktrees of one repository. Open a database created by the previous schema version.
 5. **Plugins and review.** Run contract fixtures against each plugin. Exercise a review with an existing chat, a fresh read-only CLI run that joins through the core, and a manual participant. Check sealed-answer visibility, deadline handling, failed plugins, cancelled runs, and restart recovery. Smoke-test the Z.ai plugin in an environment with OpenCode installed.
@@ -140,6 +151,8 @@ Restrict publication to enrolled knowledge paths. Journal the intended change an
 | Checkout | A directory holding the workspace's files; a clone or a worktree. |
 | Participant | A chat, fresh run, or manual source holding a token for one conversation slot. The initiating chat is a participant. |
 | Slot | An invitation for one participant, bound to one join code. |
+| Human | The user as a member of a conversation, acting through the operator protocol without a token. |
+| Operator key | A random secret in `operator.key` that authorizes operator protocol requests. The core replaces it at each start. |
 | Assignment | Work the core dispatched to a plugin for a fresh run, with a stable ID. |
 | Round | A phase of a structured review: proposals, then one critique. |
 | Handoff | Transfer of pending work from one participant to another, accepted by the receiver. |
