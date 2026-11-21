@@ -8,11 +8,35 @@ Let the AI chats on your computer talk to each other. Desktop apps and command-l
 
 ## Quick start
 
-1. Clone and install: `git clone https://github.com/witseko/agents-chat.git && cd agents-chat && uv sync --locked --no-dev`
-2. From the clone, register the server in one chat app. For Claude Code: `claude mcp add agents-chat -- "$PWD/.venv/bin/agents-chat" --workspace /absolute/path/to/your/project`
-3. Build the terminal UI: `(cd tui && go install ./cmd/agents-chat-tui)`
-4. In your project, run `/absolute/path/to/agents-chat/.venv/bin/agents-chat ui`, press `n`, write a brief, and press `ctrl+s`.
-5. Paste the lead's join prompt into the chat from step 2.
+Run each command in the clone.
+
+1. Clone the repository and enter it:
+
+   ```bash
+   git clone https://github.com/witseko/agents-chat.git && cd agents-chat
+   ```
+
+2. Install the bridge and build the terminal UI:
+
+   ```bash
+   make setup
+   ```
+
+3. Register the server in Claude Code for your project:
+
+   ```bash
+   make register-claude WORKSPACE=/absolute/path/to/your/project
+   ```
+
+4. Open the terminal UI, press `n`, write a brief, and press `ctrl+s`:
+
+   ```bash
+   make ui WORKSPACE=/absolute/path/to/your/project
+   ```
+
+5. Paste the lead's join prompt into a Claude Code session in your project.
+
+Run `make` to list every target.
 
 The sections below explain each step and the other apps.
 
@@ -30,7 +54,8 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 - Python 3.12 or later.
 - [uv](https://docs.astral.sh/uv/).
 - Git, when you want linked worktrees of one repository to share conversations.
-- Go 1.26 or later, to build the optional terminal UI.
+- Go 1.26 or later, to build the terminal UI.
+- `make`, which macOS and most Linux systems include.
 
 ## Install
 
@@ -40,11 +65,13 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
    git clone https://github.com/witseko/agents-chat.git
    ```
 
-2. Run this command in the clone:
+2. Run this command in the clone. It installs the Python dependencies into `.venv` and builds the terminal UI into `.venv/bin`:
 
    ```bash
-   uv sync --locked --no-dev
+   make setup
    ```
+
+   Without Go, run `make deps` to install the bridge alone.
 
 3. Register the server in each app or CLI (next section).
 
@@ -63,16 +90,9 @@ Each app or CLI needs a local stdio MCP server named `agents-chat` with these va
 
 Use the same workspace path in every app and CLI. Chats see each other only when their workspaces match. Each chat window or CLI session is one participant, so two sessions of the same CLI can join one conversation.
 
-| App or CLI | Where to register it |
-| --- | --- |
-| Claude Desktop | Add the command and arguments under `mcpServers.agents-chat` in the developer configuration, then restart Claude. [Local server setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
-| Claude Code | Run `claude mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace` in your project. Add `--scope user` to register it for all projects. Check the entry with `claude mcp get agents-chat`. [Claude Code MCP settings](https://code.claude.com/docs/en/mcp) |
-| Codex | Run `codex mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`. Check the entry with `codex mcp get agents-chat`. [Codex MCP settings](https://developers.openai.com/codex/mcp) |
-| Gemini (Antigravity) | Run `agy mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`, or add `mcpServers.agents-chat` in `~/.gemini/config/mcp_config.json`. Check the entry with `agy mcp list`. [Antigravity MCP settings](https://antigravity.google/docs/mcp) |
-| OpenCode v2 | Run `opencode mcp add agents-chat --global -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace`, then `opencode reload`. Verify that `opencode mcp list` shows `agents-chat` as connected. [OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/) |
-| Z.ai ZCode | Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services) |
+### Claude Desktop
 
-Example for Claude Desktop:
+Add the server under `mcpServers` in the developer configuration, then restart Claude. [Local server setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
 
 ```json
 {
@@ -85,6 +105,82 @@ Example for Claude Desktop:
 }
 ```
 
+### Claude Code
+
+Run this in the clone. It registers the server for all projects. [Claude Code MCP settings](https://code.claude.com/docs/en/mcp)
+
+```bash
+make register-claude WORKSPACE=/absolute/path/to/workspace
+```
+
+Or run this in your project to register it there only:
+
+```bash
+claude mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+```
+
+Check the entry:
+
+```bash
+claude mcp get agents-chat
+```
+
+### Codex
+
+Run this in the clone. [Codex MCP settings](https://developers.openai.com/codex/mcp)
+
+```bash
+make register-codex WORKSPACE=/absolute/path/to/workspace
+```
+
+Or run the command directly:
+
+```bash
+codex mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+```
+
+Check the entry:
+
+```bash
+codex mcp get agents-chat
+```
+
+### Gemini (Antigravity)
+
+Run the command below, or add `mcpServers.agents-chat` in `~/.gemini/config/mcp_config.json`. [Antigravity MCP settings](https://antigravity.google/docs/mcp)
+
+```bash
+agy mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+```
+
+Check the entry:
+
+```bash
+agy mcp list
+```
+
+### OpenCode v2
+
+[OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/)
+
+```bash
+opencode mcp add agents-chat --global -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+```
+
+```bash
+opencode reload
+```
+
+Check that `agents-chat` shows as connected:
+
+```bash
+opencode mcp list
+```
+
+### Z.ai ZCode
+
+Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services)
+
 For a chat without local MCP support, ask a connected chat for the brief, paste it into the other chat, and paste the reply back with its source named.
 
 ## Terminal UI
@@ -93,22 +189,29 @@ The terminal UI lets you start, watch, and close conversations without a kickoff
 
 ### Build it
 
+`make setup` builds it. To rebuild only the UI after a change, run this in the clone:
+
 ```bash
-cd tui
-go install ./cmd/agents-chat-tui
+make tui
 ```
 
-`go install` puts `agents-chat-tui` in `$(go env GOPATH)/bin`. Put that directory on `PATH`, or build the binary elsewhere with `go build -o /absolute/path/agents-chat-tui ./cmd/agents-chat-tui` and set `AGENTS_CHAT_TUI` to that path.
+The binary goes to `.venv/bin/agents-chat-tui`, where `agents-chat ui` finds it. To use a binary elsewhere, set `AGENTS_CHAT_TUI` to its absolute path.
 
 ### Start it
 
-Run this in your project directory:
+Run this in the clone:
+
+```bash
+make ui WORKSPACE=/absolute/path/to/your/project
+```
+
+Or run the bridge directly in your project directory, with `--workspace DIR` to manage another checkout:
 
 ```bash
 /absolute/path/to/agents-chat/.venv/bin/agents-chat ui
 ```
 
-Add `--workspace DIR` to manage another checkout. The command starts the core when it is not running, then opens the UI.
+The command starts the core when it is not running, then opens the UI.
 
 The screen has three columns: the workspace's chats on the left, the open chat in the middle, and its team on the right.
 
