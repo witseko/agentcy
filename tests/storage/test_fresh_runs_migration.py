@@ -34,12 +34,13 @@ def test_upgrade_from_version_five_preserves_conversation(
     database.cache_clear()
     with sqlite3.connect(tmp_path / f"{workspace}.sqlite3") as previous:
         previous.execute("DROP TABLE assignment")
+        previous.execute("ALTER TABLE conversation DROP COLUMN created")
         previous.execute("PRAGMA user_version=5")
 
     upgraded = database(workspace)
     try:
         with upgraded.begin() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 6
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 7
             assert inspect(connection).has_table("assignment")
             status = repository.apply(
                 connection, models.Status(workspace=workspace, token=result["token"])

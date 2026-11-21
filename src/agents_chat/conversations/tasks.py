@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, RowMapping, or_, select
 
 from agents_chat.conversations.roles import Role
-from agents_chat.conversations.tables import message
+from agents_chat.conversations.tables import member, message
 
 RESPONSE_KINDS = ("accept", "decline")
 TASK_EVENT_KINDS = ("task", "handoff", "done", "blocker", "resume", *RESPONSE_KINDS)
@@ -95,6 +95,8 @@ def open_tasks(connection: Connection, room_id: str) -> dict[int, list[dict]]:
 def validate_transition(connection: Connection, participant: RowMapping, content: dict) -> None:
     """Check role and ownership before adding a new task or handoff message."""
     kind = content["kind"]
+    if kind in ("task", "handoff") and addressed_to_human(connection, content["recipient"]):
+        raise ValueError(f"The {Role.HUMAN.label} cannot own a task. Address it to a member")
     if kind == "task":
         if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
             raise ValueError("Only a lead or co-lead can assign a task")
@@ -106,6 +108,13 @@ def validate_transition(connection: Connection, participant: RowMapping, content
         validate_resume(connection, participant, content["reply_to"])
     elif kind in RESPONSE_KINDS:
         validate_response(connection, participant, content["reply_to"])
+
+
+def addressed_to_human(connection: Connection, recipient: int | None) -> bool:
+    """Recognize the human, who can read a task but cannot report on it."""
+    if recipient is None:
+        return False
+    return connection.scalar(select(member.c.role).where(member.c.id == recipient)) == Role.HUMAN
 
 
 def validate_resume(connection: Connection, participant: RowMapping, task_id: int | None) -> None:

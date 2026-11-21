@@ -10,7 +10,7 @@ from sqlalchemy.sql import ColumnElement
 
 from agents_chat.conversations import models, rounds, tasks
 from agents_chat.conversations.assignment_tables import PENDING_STATES, assignment
-from agents_chat.conversations.roles import Role
+from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, receipt, room
 
 ACTIVITY_UPDATE_SECONDS = 10
@@ -49,12 +49,20 @@ def new_join_code(workspace: str) -> tuple[str, dict[str, str | int]]:
     }
 
 
+def check_name(name: str) -> None:
+    """Keep the human's reserved name out of every invited slot."""
+    if name.casefold() == HUMAN_LABEL.casefold():
+        raise ValueError(f"The name {HUMAN_LABEL} is reserved for the user. Use a different name")
+
+
 def team_roles(request: models.Create) -> dict[str, Role]:
     """Build one roster and select shared leadership when a co-lead was invited."""
+    check_name(request.initiator)
     roles = {request.initiator: Role.LEAD}
     seen = {request.initiator.casefold()}
     for slot in request.invitees:
         invitation = models.Invitation(name=slot) if isinstance(slot, str) else slot
+        check_name(invitation.name)
         name = invitation.name.casefold()
         if name in seen:
             raise ValueError("Use a different name for each participant")
@@ -73,16 +81,42 @@ def roster(connection: Connection, room_id: str) -> dict[str, str]:
     return {name: Role(role).label for name, role in rows}
 
 
-def create(connection: Connection, request: models.Create) -> dict:
-    """Return the creator credential and a different invitation for each slot."""
-    roles = team_roles(request)
+def insert_room(connection: Connection, request: models.Create) -> tuple[str, dict]:
+    """Store an open conversation and return its ID and sealed-round fields."""
     room_id = secrets.token_hex(12)
-    token = secrets.token_urlsafe(32)
+    now = int(time.time())
     round_state = {}
     if request.sealed:
         minutes = request.deadline_minutes or rounds.DEFAULT_DEADLINE_MINUTES
-        round_state = {"round": rounds.SEALED, "round_deadline": int(time.time()) + minutes * 60}
-    connection.execute(insert(room).values(id=room_id, brief=request.brief, open=1, **round_state))
+        round_state = {"round": rounds.SEALED, "round_deadline": now + minutes * 60}
+    connection.execute(
+        insert(room).values(
+            id=room_id,
+            brief=request.brief,
+            open=1,
+            created=now,
+            **round_state,
+        )
+    )
+    return room_id, round_state
+
+
+def insert_invitation(
+    connection: Connection, room_id: str, workspace: str, label: str, role: Role
+) -> str:
+    """Reserve one slot and return its new join code."""
+    code, invitation_fields = new_join_code(workspace)
+    connection.execute(
+        insert(member).values(room=room_id, label=label, role=role, **invitation_fields)
+    )
+    return code
+
+
+def create(connection: Connection, request: models.Create) -> dict:
+    """Return the creator credential and a different invitation for each slot."""
+    roles = team_roles(request)
+    room_id, round_state = insert_room(connection, request)
+    token = secrets.token_urlsafe(32)
     connection.execute(
         insert(member).values(
             room=room_id,
@@ -91,20 +125,11 @@ def create(connection: Connection, request: models.Create) -> dict:
             token_hash=digest(token),
         )
     )
-    invitations = {}
-    for label, role in roles.items():
-        if label == request.initiator:
-            continue
-        code, invitation_fields = new_join_code(request.workspace)
-        invitations[label] = code
-        connection.execute(
-            insert(member).values(
-                room=room_id,
-                label=label,
-                role=role,
-                **invitation_fields,
-            )
-        )
+    invitations = {
+        label: insert_invitation(connection, room_id, request.workspace, label, role)
+        for label, role in roles.items()
+        if label != request.initiator
+    }
     return {
         "conversation": room_id,
         "token": token,
@@ -151,12 +176,22 @@ def join(connection: Connection, request: models.Join) -> dict:
     }
 
 
-def invite(connection: Connection, actor: RowMapping, request: models.Invite) -> dict:
-    """Reserve a slot or replace an unused code within the actor's conversation."""
-    if actor["role"] not in (Role.LEAD, Role.CO_LEAD):
+def invite(
+    connection: Connection,
+    actor: RowMapping,
+    workspace: str,
+    name: str,
+    requested_role: models.InviteRole | None,
+) -> dict:
+    """Reserve a slot or replace an unused code within the actor's conversation.
+
+    The actor is a lead, a co-lead, or the human. A role of None keeps a reissued slot's role.
+    """
+    if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
         raise ValueError("Only a lead or co-lead can invite participants")
     if not actor["open"]:
         raise ValueError("Conversation is closed")
+    check_name(name)
     room_id = actor["room"]
     slots = connection.execute(
         select(
@@ -164,10 +199,10 @@ def invite(connection: Connection, actor: RowMapping, request: models.Invite) ->
             member.c.label,
             member.c.role,
             member.c.token_hash.is_not(None).label("joined"),
-        ).where(member.c.room == room_id)
+        ).where(member.c.room == room_id, member.c.role != Role.HUMAN)
     ).all()
-    name = request.name.casefold()
-    slot = next((slot for slot in slots if slot.label.casefold() == name), None)
+    folded = name.casefold()
+    slot = next((slot for slot in slots if slot.label.casefold() == folded), None)
     if slot is None and len(slots) >= models.MAX_PARTICIPANTS:
         raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
     if slot is not None and slot.joined:
@@ -175,17 +210,15 @@ def invite(connection: Connection, actor: RowMapping, request: models.Invite) ->
     if slot is not None and active_assignment(connection, slot.id):
         raise ValueError(f"Invitation reserved for an active fresh run: {slot.label}")
 
-    label = request.name if slot is None else slot.label
-    role = Role.CO_LEAD if request.role == "co-lead" else Role.WORKER
-    if request.role is None and slot is not None:
+    label = name if slot is None else slot.label
+    role = Role.CO_LEAD if requested_role == "co-lead" else Role.WORKER
+    if requested_role is None and slot is not None:
         role = Role(slot.role)
-    code, invitation_fields = new_join_code(request.workspace)
     if slot is None:
-        connection.execute(
-            insert(member).values(room=room_id, label=label, role=role, **invitation_fields)
-        )
+        code = insert_invitation(connection, room_id, workspace, label, role)
         event = f"Invited {label} as {role.label}."
     else:
+        code, invitation_fields = new_join_code(workspace)
         connection.execute(
             update(member).where(member.c.id == slot.id).values(role=role, **invitation_fields)
         )
@@ -216,7 +249,13 @@ def authenticate(connection: Connection, token: str) -> RowMapping:
     """Resolve membership and the current state of the conversation."""
     participant = (
         connection.execute(
-            select(member, room.c.brief, room.c.open, room.c.round, room.c.round_deadline)
+            select(
+                member,
+                room.c.brief,
+                room.c.open,
+                room.c.round,
+                room.c.round_deadline,
+            )
             .join(room)
             .where(member.c.token_hash == digest(token))
         )
@@ -233,6 +272,27 @@ def record_activity(connection: Connection, participant: RowMapping, now: int) -
     seen = participant["seen"]
     if seen is None or now - seen > ACTIVITY_UPDATE_SECONDS:
         connection.execute(update(member).where(member.c.id == participant["id"]).values(seen=now))
+
+
+def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
+    """Describe one member's role, membership and launch state, and open tasks."""
+    if row["role"] == Role.HUMAN:
+        return {"role": Role.HUMAN.label, "state": "human"}
+    entry = {"role": Role(row["role"]).label, "state": "invited"}
+    if row["launch_state"] is not None:
+        entry["launch_state"] = row["launch_state"]
+    if row["joined"]:
+        entry["state"] = "joined"
+        if row["seen"] is not None:
+            entry["idle_seconds"] = max(0, now - row["seen"])
+        if row["count"]:
+            entry["state"] = {"done": "done", "blocker": "blocked"}.get(row["marker"], "replied")
+            entry["messages"] = row["count"]
+        if any(task.get("blocked") for task in owned_tasks):
+            entry["state"] = "blocked"
+    if owned_tasks:
+        entry["open_tasks"] = owned_tasks
+    return entry
 
 
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
@@ -260,11 +320,11 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.id,
             member.c.label,
             member.c.role,
-            member.c.token_hash.is_not(None),
+            member.c.token_hash.is_not(None).label("joined"),
             member.c.seen,
-            message_count,
-            progress,
-            assignment.c.state,
+            message_count.label("count"),
+            progress.label("marker"),
+            assignment.c.state.label("launch_state"),
         )
         .outerjoin(
             assignment,
@@ -274,25 +334,8 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         )
         .where(member.c.room == participant["room"])
         .order_by(member.c.id)
-    )
-    members = {}
-    for member_id, label, role, joined, seen, count, marker, launch_state in rows:
-        owned_tasks = open_tasks.get(member_id, [])
-        entry = {"role": Role(role).label, "state": "invited"}
-        if launch_state is not None:
-            entry["launch_state"] = launch_state
-        if joined:
-            entry["state"] = "joined"
-            if seen is not None:
-                entry["idle_seconds"] = max(0, now - seen)
-            if count:
-                entry["state"] = {"done": "done", "blocker": "blocked"}.get(marker, "replied")
-                entry["messages"] = count
-            if any(task.get("blocked") for task in owned_tasks):
-                entry["state"] = "blocked"
-        if owned_tasks:
-            entry["open_tasks"] = owned_tasks
-        members[label] = entry
+    ).mappings()
+    members = {row["label"]: member_entry(row, open_tasks.get(row["id"], []), now) for row in rows}
     result = {
         "open": bool(participant["open"]),
         "members": members,
@@ -304,7 +347,7 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     return result
 
 
-def post_content(connection: Connection, room_id: str, request: models.Post) -> dict:
+def post_content(connection: Connection, room_id: str, request: models.Submission) -> dict:
     """Resolve recipient and reply IDs within the authenticated conversation."""
     recipient = None
     if request.to is not None:
@@ -327,7 +370,7 @@ def post_content(connection: Connection, room_id: str, request: models.Post) -> 
     }
 
 
-def post(connection: Connection, participant: RowMapping, request: models.Post) -> dict:
+def post(connection: Connection, participant: RowMapping, request: models.Submission) -> dict:
     """Deduplicate retries with the same text, kind, addressee, and reply target."""
     author = participant["id"]
     content = post_content(connection, participant["room"], request)
@@ -475,20 +518,20 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
     return result
 
 
-def close(connection: Connection, participant: RowMapping, request: models.Close) -> dict:
-    """Record the lead's final message and close the conversation once."""
-    if participant["role"] not in (Role.LEAD, Role.CO_LEAD):
+def close(connection: Connection, participant: RowMapping, summary: str | None) -> dict:
+    """Record the final message of a lead, co-lead or the human and close the conversation once."""
+    if participant["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
         raise ValueError("Only a lead or co-lead can close the conversation")
     if not participant["open"]:
         return {"closed": True}
     if participant["round"] == rounds.SEALED:
         rounds.discard(connection, participant["room"])
-    if request.summary is not None:
+    if summary is not None:
         connection.execute(
             insert(message).values(
                 room=participant["room"],
                 author=participant["id"],
-                body=request.summary,
+                body=summary,
                 created=int(time.time()),
             )
         )
@@ -516,7 +559,7 @@ def release(connection: Connection, participant: RowMapping, now: int) -> dict:
 
 
 def post_in_round(
-    connection: Connection, participant: RowMapping, request: models.Post, now: int
+    connection: Connection, participant: RowMapping, request: models.Submission, now: int
 ) -> dict:
     """Route an ordinary message or a proposal through the correct submission store."""
     if not participant["open"]:
@@ -568,13 +611,13 @@ def apply(connection: Connection, request: models.Request) -> dict:
     if isinstance(request, models.Status):
         return status(connection, participant, now)
     if isinstance(request, models.Invite):
-        return invite(connection, participant, request)
+        return invite(connection, participant, request.workspace, request.name, request.role)
     if isinstance(request, models.Post):
         return post_in_round(connection, participant, request, now)
     if isinstance(request, models.Read):
         return read(connection, participant, request)
     if isinstance(request, models.Close):
-        return close(connection, participant, request)
+        return close(connection, participant, request.summary)
     if isinstance(request, models.Release):
         return release(connection, participant, now)
     raise TypeError("Unknown membership operation")

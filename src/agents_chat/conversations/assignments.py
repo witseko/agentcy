@@ -5,7 +5,7 @@ import time
 
 from sqlalchemy import Connection, RowMapping, insert, select, update
 
-from agents_chat.conversations import models, repository
+from agents_chat.conversations import repository
 from agents_chat.conversations.assignment_tables import PENDING_STATES, assignment
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, room
@@ -29,24 +29,29 @@ def launch_authority(connection: Connection, token: str) -> RowMapping:
 
 
 def queue(
-    connection: Connection, participant: RowMapping, request: models.Launch, timeout: int
+    connection: Connection,
+    participant: RowMapping,
+    workspace: str,
+    name: str,
+    plugin: str,
+    timeout: int,
 ) -> tuple[dict, str | None, str]:
-    """Persist a lead-approved assignment before handing its code to the dispatch worker."""
+    """Persist an approved assignment before handing its code to the dispatch worker."""
     room_id = participant["room"]
-    previous = find_assignment(connection, room_id, request.name)
+    previous = find_assignment(connection, room_id, name)
     if previous is not None:
-        if previous["plugin"] != request.plugin:
+        if previous["plugin"] != plugin:
             raise ValueError("This participant already has a fresh-run assignment")
         return {"assignment_id": previous["id"], "state": previous["state"]}, None, room_id
-    protect_lead_slot(connection, room_id, request.name)
-    code, slot = reserve_worker(connection, participant, request)
+    protect_lead_slot(connection, room_id, name)
+    code, slot = reserve_worker(connection, participant, workspace, name)
     assignment_id = secrets.token_hex(16)
     connection.execute(
         insert(assignment).values(
             id=assignment_id,
             slot=slot,
             room=room_id,
-            plugin=request.plugin,
+            plugin=plugin,
             invite_hash=repository.digest(code),
             state="queued",
             deadline=int(time.time()) + timeout,
@@ -67,16 +72,10 @@ def find_assignment(connection: Connection, room_id: str, name: str) -> RowMappi
 
 
 def reserve_worker(
-    connection: Connection, participant: RowMapping, request: models.Launch
+    connection: Connection, participant: RowMapping, workspace: str, name: str
 ) -> tuple[str, int]:
-    """Use the same invitation rules as a manual lead invitation."""
-    result = repository.invite(
-        connection,
-        participant,
-        models.Invite(
-            workspace=request.workspace, token=request.token, name=request.name, role="worker"
-        ),
-    )
+    """Use the same invitation rules as a manual invitation."""
+    result = repository.invite(connection, participant, workspace, name, "worker")
     slot = connection.scalar(
         select(member.c.id).where(
             member.c.room == participant["room"],
@@ -90,7 +89,7 @@ def protect_lead_slot(connection: Connection, room_id: str, name: str) -> None:
     """Leave an unused lead or co-lead invitation available to its intended user."""
     rows = connection.execute(select(member.c.label, member.c.role).where(member.c.room == room_id))
     for label, role in rows:
-        if label.casefold() == name.casefold() and role != Role.WORKER:
+        if label.casefold() == name.casefold() and role in (Role.LEAD, Role.CO_LEAD):
             raise ValueError("Fresh workers cannot replace a lead or co-lead slot")
 
 

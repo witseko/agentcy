@@ -2,7 +2,19 @@
 
 Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, Gemini, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
 
+![The terminal UI with the chat list, an open chat and its team](docs/images/terminal-ui.svg)
+
 **Status: early.** The bridge supports task coordination, sealed proposals, and fresh read-only workers through configured plugins. Publishing to project memory is planned in the [design](DESIGN.md).
+
+## Quick start
+
+1. Clone and install: `git clone https://github.com/witseko/agents-chat.git && cd agents-chat && uv sync --locked --no-dev`
+2. From the clone, register the server in one chat app. For Claude Code: `claude mcp add agents-chat -- "$PWD/.venv/bin/agents-chat" --workspace /absolute/path/to/your/project`
+3. Build the terminal UI: `(cd tui && go install ./cmd/agents-chat-tui)`
+4. In your project, run `/absolute/path/to/agents-chat/.venv/bin/agents-chat ui`, press `n`, write a brief, and press `ctrl+s`.
+5. Paste the lead's join prompt into the chat from step 2.
+
+The sections below explain each step and the other apps.
 
 ## How it works
 
@@ -18,6 +30,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 - Python 3.12 or later.
 - [uv](https://docs.astral.sh/uv/).
 - Git, when you want linked worktrees of one repository to share conversations.
+- Go 1.26 or later, to build the optional terminal UI.
 
 ## Install
 
@@ -74,6 +87,62 @@ Example for Claude Desktop:
 
 For a chat without local MCP support, ask a connected chat for the brief, paste it into the other chat, and paste the reply back with its source named.
 
+## Terminal UI
+
+The terminal UI lets you start, watch, and close conversations without a kickoff chat.
+
+### Build it
+
+```bash
+cd tui
+go install ./cmd/agents-chat-tui
+```
+
+`go install` puts `agents-chat-tui` in `$(go env GOPATH)/bin`. Put that directory on `PATH`, or build the binary elsewhere with `go build -o /absolute/path/agents-chat-tui ./cmd/agents-chat-tui` and set `AGENTS_CHAT_TUI` to that path.
+
+### Start it
+
+Run this in your project directory:
+
+```bash
+/absolute/path/to/agents-chat/.venv/bin/agents-chat ui
+```
+
+Add `--workspace DIR` to manage another checkout. The command starts the core when it is not running, then opens the UI.
+
+The screen has three columns: the workspace's chats on the left, the open chat in the middle, and its team on the right.
+
+### Start a chat
+
+1. Press `n`.
+2. Write the brief.
+3. Name the lead and the workers. For each worker, pick how it joins: a pasted prompt or a configured plugin.
+4. Press `ctrl+s`. The UI creates the chat, launches the plugin workers, and opens a window with the join prompts.
+5. Press `c` to copy a prompt (macOS) and paste it into its chat. The lead is always an interactive chat, such as Claude Desktop.
+
+A join code works once and expires after one hour. The UI keeps codes in memory only. After a restart of the UI, select the member in the team panel and press `c` or `r` to get a new code.
+
+### Keys
+
+| Key | Action |
+| --- | --- |
+| `tab` | Move between the message line, the team panel, and the chat list |
+| `↑` `↓` | Scroll, choose a chat or member, or move between form fields |
+| `⏎` | Send a message. Start it with `@Name` to address one member or `?` to ask a question |
+| `ctrl+p` | Open the join prompts window again |
+| `ctrl+x` | Close the chat, with an optional summary |
+| `ctrl+o` | Turn the mouse off so the terminal can select text, or back on |
+
+The bottom bar shows the keys for the part that has focus.
+
+### Mouse
+
+- Click a chat, a member, a field, a button, or a key in the bottom bar.
+- Scroll with the wheel.
+- Drag a column divider to resize it.
+
+Clickable parts light up under the pointer.
+
 ## Start your first conversation
 
 The first-run guide starts a retry review with one lead and two read-only workers from a single prompt. It also covers inviting chats that are already open. [Run your first agent team](docs/using-the-bridge.md).
@@ -103,7 +172,7 @@ Limits in this version:
 
 The first tool call starts the core. The core stops about one minute after the last conversation closes.
 
-All data is in `~/.agents-chat/`: one SQLite database per workspace, the Unix socket, and `core.log`. Set `AGENTS_CHAT_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
+All data is in `~/.agents-chat/`: one SQLite database per workspace, the Unix socket, `core.log`, and `operator.key`, which authorizes local operator interfaces. Set `AGENTS_CHAT_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
 
 A workspace is identified by the Git common directory of a checkout, so linked worktrees share conversations. A directory outside Git is identified by its path.
 

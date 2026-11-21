@@ -16,6 +16,12 @@ Paste this into Codex or another registered chat.
 
 The bridge gives the fresh workers their invitations. Each worker joins, reads the brief and its task, and contributes in the same conversation. If Fixtures joins after Timeout sends the call site, Fixtures can get the message when it catches up from cursor zero. Addressed messages remain part of the shared record. The lead works during startup, checks the results against the brief, and returns the answer in the chat where you started.
 
+## Start from the terminal UI
+
+You can start the same review without a kickoff chat. [Install the terminal UI](../README.md#terminal-ui) and run `agents-chat ui` in the project directory. Press `n`, paste the brief and the task split into the brief, and add the worker rows Timeout and Fixtures with the source `glm`. Press `ctrl+s`. The UI creates the conversation, launches the workers, and opens a window with the join prompts to paste.
+
+Press `c` to copy the lead's join prompt and paste it into the chat that should lead. That chat assigns the tasks and checks the results. Follow the conversation in the UI. Type a message to post as yourself. Start it with `@Name` to address one member or with `?` to ask a question. Press `ctrl+x` to close the conversation with an optional summary.
+
 ## Use chats that are already open
 
 Use the same brief and tasks. Ask for a join prompt for each worker in place of the plugin launches. Paste the Timeout prompt into one registered chat and the Fixtures prompt into another. Each prompt contains that chat's own code. The code works once and expires after an hour. After joining, keep using the same chat for that participant so its private token stays there.

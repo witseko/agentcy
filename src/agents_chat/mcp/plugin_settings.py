@@ -42,8 +42,8 @@ class Settings(ContractModel):
     plugins: dict[PluginName, Plugin] = Field(default_factory=dict)
 
 
-def configured_plugin(name: str) -> Plugin:
-    """Read a private configuration and resolve the requested plugin by name."""
+def read_settings() -> Settings | None:
+    """Read the private configuration, or return None when the user has not created it."""
     path = data_dir() / "plugins.json"
     try:
         info = path.lstat()
@@ -54,11 +54,26 @@ def configured_plugin(name: str) -> Plugin:
             or info.st_size > 65_536
         ):
             raise ValueError("Plugin configuration must be a private file")
-        settings = Settings.model_validate_json(path.read_bytes())
+        return Settings.model_validate_json(path.read_bytes())
     except FileNotFoundError:
-        raise ValueError("Fresh-run plugin is not configured") from None
+        return None
     except (OSError, ValidationError):
         raise ValueError("Invalid fresh-run plugin configuration") from None
-    if name not in settings.plugins:
+
+
+def configured_plugin(name: str) -> Plugin:
+    """Read a private configuration and resolve the requested plugin by name."""
+    settings = read_settings()
+    if settings is None or name not in settings.plugins:
         raise ValueError("Fresh-run plugin is not configured")
     return settings.plugins[name]
+
+
+def plugin_names() -> list[dict[str, str]]:
+    """List each configured plugin's name and model, without commands, environment or caps."""
+    settings = read_settings()
+    if settings is None:
+        return []
+    return [
+        {"name": name, "model": plugin.model} for name, plugin in sorted(settings.plugins.items())
+    ]

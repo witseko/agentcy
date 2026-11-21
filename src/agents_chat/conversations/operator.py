@@ -1,0 +1,268 @@
+"""Apply the human's operator actions through the same conversation rules as members."""
+
+import time
+from pathlib import Path
+
+from sqlalchemy import Connection, and_, func, insert, literal_column, select
+
+from agents_chat.conversations import assignments, models, operator_models, repository
+from agents_chat.conversations.assignment_tables import PENDING_STATES
+from agents_chat.conversations.roles import HUMAN_LABEL, Role
+from agents_chat.conversations.tables import member, message, room
+from agents_chat.storage.database import workspace_key
+
+LIST_LIMIT = 100
+PAGE_SIZE = 50
+TITLE_LENGTH = 80
+UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
+LEAD_JOIN_PROMPT = (
+    "Use agents-chat to join with CODE. You lead this conversation. Read the shared brief and "
+    "catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. "
+    f"Messages from {HUMAN_LABEL} come from your user. "
+    "Follow the bridge's guidance during this turn."
+)
+
+
+def checkout_workspace(directory: str) -> str:
+    """Derive the workspace key from an existing absolute checkout path."""
+    path = Path(directory)
+    if not path.is_absolute():
+        raise ValueError("Directory must be an absolute path")
+    try:
+        return workspace_key(path)
+    except (OSError, ValueError):
+        raise ValueError("Directory must be an existing directory") from None
+
+
+def ready_prompt(role: str, code: str) -> str:
+    """Return the join prompt for a slot's role with its code already substituted."""
+    template = repository.JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
+    return template.replace("CODE", code)
+
+
+def title(brief_start: str) -> str:
+    """Shorten the first line of a brief for a list view."""
+    first_line = brief_start.split("\n", 1)[0].strip()
+    if len(first_line) > TITLE_LENGTH:
+        return first_line[: TITLE_LENGTH - 3] + "..."
+    return first_line
+
+
+def list_conversations(connection: Connection) -> dict:
+    """Summarize the newest conversations. Conversations without a created time come last."""
+    slots = and_(member.c.room == room.c.id, member.c.role != Role.HUMAN)
+    members = select(func.count()).select_from(member).where(slots).scalar_subquery()
+    joined = (
+        select(func.count())
+        .select_from(member)
+        .where(slots, member.c.token_hash.is_not(None))
+        .scalar_subquery()
+    )
+    rows = connection.execute(
+        select(
+            room.c.id,
+            func.substr(room.c.brief, 1, TITLE_LENGTH + 1).label("brief_start"),
+            room.c.open,
+            room.c.created,
+            members.label("members"),
+            joined.label("joined"),
+        )
+        .order_by(
+            room.c.created.is_(None),
+            room.c.created.desc(),
+            literal_column("conversation.rowid").desc(),
+        )
+        .limit(LIST_LIMIT)
+    ).mappings()
+    return {
+        "conversations": [
+            {
+                "conversation": row["id"],
+                "title": title(row["brief_start"]),
+                "open": bool(row["open"]),
+                "created": row["created"],
+                "members": row["members"],
+                "joined": row["joined"],
+            }
+            for row in rows
+        ]
+    }
+
+
+def human_actor(connection: Connection, conversation_id: str) -> dict:
+    """Load the conversation with its human in the shape that authenticate returns.
+
+    The human's id is None until its first write to a conversation that a chat created.
+    """
+    row = (
+        connection.execute(
+            select(
+                room.c.id.label("room"),
+                room.c.brief,
+                room.c.open,
+                room.c.round,
+                room.c.round_deadline,
+                room.c.created,
+                member.c.id,
+            )
+            .select_from(
+                room.outerjoin(
+                    member, and_(member.c.room == room.c.id, member.c.role == Role.HUMAN)
+                )
+            )
+            .where(room.c.id == conversation_id)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise ValueError(UNKNOWN_CONVERSATION)
+    return {**row, "label": HUMAN_LABEL, "role": Role.HUMAN}
+
+
+def add_human(connection: Connection, room_id: str) -> int:
+    """Add the human participant. It has no token and no invitation."""
+    labels = connection.scalars(select(member.c.label).where(member.c.room == room_id))
+    if any(label.casefold() == HUMAN_LABEL.casefold() for label in labels):
+        raise ValueError(f"A member of this conversation already uses the name {HUMAN_LABEL}")
+    return connection.execute(
+        insert(member).values(room=room_id, label=HUMAN_LABEL, role=Role.HUMAN)
+    ).inserted_primary_key[0]
+
+
+def writing_actor(connection: Connection, conversation_id: str) -> dict:
+    """Return the human, adding it on its first write to a conversation that a chat created."""
+    human = human_actor(connection, conversation_id)
+    if human["id"] is None:
+        human["id"] = add_human(connection, conversation_id)
+    return human
+
+
+def invitation(label: str, role: str, code: str) -> dict:
+    """Describe one slot's invitation with a ready join prompt."""
+    return {
+        "participant": label,
+        "role": role,
+        "code": code,
+        "join_prompt": ready_prompt(role, code),
+    }
+
+
+def create(
+    connection: Connection, workspace: str, request: operator_models.CreateConversation
+) -> dict:
+    """Create a conversation with an invitation for every slot and add the human."""
+    team = models.Create(
+        workspace=workspace,
+        brief=request.brief,
+        initiator=request.lead,
+        invitees=request.invitees,
+        sealed=request.sealed,
+        deadline_minutes=request.deadline_minutes,
+    )
+    roles = repository.team_roles(team)
+    room_id, round_state = repository.insert_room(connection, team)
+    invitations = [
+        invitation(
+            label,
+            role.label,
+            repository.insert_invitation(connection, room_id, workspace, label, role),
+        )
+        for label, role in roles.items()
+    ]
+    add_human(connection, room_id)
+    return {
+        "conversation": room_id,
+        "invitations": invitations,
+        "roster": repository.roster(connection, room_id),
+        **round_state,
+    }
+
+
+def transcript(connection: Connection, room_id: str, after: int) -> dict:
+    """Return one page of every published message, the human's own included."""
+    recipient = member.alias("recipient")
+    rows = (
+        connection.execute(
+            select(
+                message.c.id,
+                member.c.label,
+                message.c.body,
+                message.c.created,
+                message.c.kind,
+                recipient.c.label.label("to"),
+                message.c.reply_to,
+            )
+            .join(member, message.c.author == member.c.id)
+            .outerjoin(recipient, message.c.recipient == recipient.c.id)
+            .where(message.c.room == room_id, message.c.id > after)
+            .order_by(message.c.id)
+            .limit(PAGE_SIZE + 1)
+        )
+        .mappings()
+        .all()
+    )
+    page = [
+        {field: value for field, value in row.items() if value is not None}
+        for row in rows[:PAGE_SIZE]
+    ]
+    return {
+        "messages": page,
+        "more": len(rows) > PAGE_SIZE,
+        "cursor": page[-1]["id"] if page else after,
+    }
+
+
+def show(connection: Connection, request: operator_models.ShowConversation) -> dict:
+    """Return the brief, member status and one transcript page without adding the human."""
+    human = human_actor(connection, request.conversation)
+    status = repository.status(connection, human, int(time.time()))
+    status.pop("participant")
+    return {
+        "conversation": request.conversation,
+        "brief": human["brief"],
+        "created": human["created"],
+        "status": status,
+        **transcript(connection, request.conversation, request.after),
+    }
+
+
+def invite(
+    connection: Connection, workspace: str, request: operator_models.InviteParticipant
+) -> dict:
+    """Add or reissue a slot as the human and return its ready join prompt."""
+    human = writing_actor(connection, request.conversation)
+    result = repository.invite(connection, human, workspace, request.name, request.role)
+    return invitation(result["participant"], result["role"], result["code"])
+
+
+def launch(
+    connection: Connection, workspace: str, request: operator_models.LaunchParticipant, timeout: int
+) -> tuple[dict, str | None, str]:
+    """Queue a fresh run for a worker slot. Relaunch is not supported yet."""
+    human = writing_actor(connection, request.conversation)
+    if not human["open"]:
+        raise ValueError("Conversation is closed")
+    previous = assignments.find_assignment(connection, request.conversation, request.name)
+    if previous is not None and previous["state"] not in PENDING_STATES:
+        raise ValueError("The fresh run for this slot has ended. Relaunch is not supported yet")
+    return assignments.queue(connection, human, workspace, request.name, request.plugin, timeout)
+
+
+def apply(connection: Connection, workspace: str, request: operator_models.OperatorRequest) -> dict:
+    """Dispatch one operator action that needs only the workspace store."""
+    if isinstance(request, operator_models.ListConversations):
+        return list_conversations(connection)
+    if isinstance(request, operator_models.ShowConversation):
+        return show(connection, request)
+    if isinstance(request, operator_models.CreateConversation):
+        return create(connection, workspace, request)
+    if isinstance(request, operator_models.InviteParticipant):
+        return invite(connection, workspace, request)
+    if isinstance(request, operator_models.PostMessage):
+        human = writing_actor(connection, request.conversation)
+        return repository.post_in_round(connection, human, request, int(time.time()))
+    if isinstance(request, operator_models.CloseConversation):
+        human = writing_actor(connection, request.conversation)
+        return repository.close(connection, human, request.summary)
+    raise TypeError("Unknown operator action")

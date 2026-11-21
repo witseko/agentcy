@@ -2,6 +2,9 @@
 
 from enum import IntEnum
 
+# Models cannot use this name, so a message from it always comes from the operator protocol.
+HUMAN_LABEL = "Human"
+
 
 class Role(IntEnum):
     """Keep the original worker and creator values when migrating old databases."""
@@ -9,6 +12,8 @@ class Role(IntEnum):
     WORKER = 0
     LEAD = 1
     CO_LEAD = 2
+    # The person at the operator protocol. The row has no token and no invitation.
+    HUMAN = 3
 
     @property
     def label(self) -> str:
