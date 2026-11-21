@@ -17,6 +17,7 @@ ACTIVITY_UPDATE_SECONDS = 10
 EVENT_KIND = "event"
 PROGRESS_KINDS = ("done", "blocker", "resume")
 PAGE_SIZE = 16
+TITLE_LENGTH = 80
 INVITE_LIFETIME_SECONDS = 3600
 JOIN_CODE_PATTERN = re.compile(r"([A-Za-z0-9_-]{22})\.([0-9a-f]{12})")
 JOIN_WORKSPACE_HELP = "Set both clients to the same --workspace and reconnect."
@@ -27,6 +28,30 @@ JOIN_PROMPT = (
     "peer who can act on them. Reply to your task with the result when it is complete. "
     "Follow the bridge's guidance during this turn."
 )
+
+
+def session_title(brief: str) -> str:
+    """Shorten the first line of a brief for list views and join prompts."""
+    first_line = brief.strip().split("\n", 1)[0].strip()
+    if len(first_line) > TITLE_LENGTH:
+        return first_line[: TITLE_LENGTH - 3] + "..."
+    return first_line
+
+
+def join_prompt(
+    brief: str,
+    *,
+    participant: str | None = None,
+    template: str = JOIN_PROMPT,
+    code: str | None = None,
+) -> str:
+    """Prefix a join prompt with the conversation topic and optional slot name."""
+    body = template.replace("CODE", code) if code is not None else template
+    topic = session_title(brief)
+    if not topic:
+        return body
+    heading = f"{topic} ({participant})" if participant else topic
+    return f"{heading}: {body}"
 
 
 def digest(value: str) -> str:
@@ -134,7 +159,7 @@ def create(connection: Connection, request: models.Create) -> dict:
         "conversation": room_id,
         "token": token,
         "invitations": invitations,
-        "join_prompt": JOIN_PROMPT,
+        "join_prompt": join_prompt(request.brief),
         "role": roles[request.initiator].label,
         "roster": roster(connection, room_id),
         **round_state,
@@ -230,7 +255,12 @@ def invite(
             .values(role=Role.CO_LEAD)
         )
     record_event(connection, actor, event)
-    return {"participant": label, "role": role.label, "code": code, "join_prompt": JOIN_PROMPT}
+    return {
+        "participant": label,
+        "role": role.label,
+        "code": code,
+        "join_prompt": join_prompt(actor["brief"], participant=label),
+    }
 
 
 def active_assignment(connection: Connection, slot_id: int) -> bool:
@@ -274,6 +304,20 @@ def record_activity(connection: Connection, participant: RowMapping, now: int) -
         connection.execute(update(member).where(member.c.id == participant["id"]).values(seen=now))
 
 
+def progress_state(row: RowMapping, owned_tasks: list[dict]) -> str:
+    """Resolve a joined member's current state from tasks and recent posts."""
+    if any(task.get("blocked") for task in owned_tasks):
+        return "blocked"
+    if not row["count"]:
+        return "joined"
+    marker = row["marker"]
+    if marker == "blocker":
+        return "blocked"
+    if marker == "done" and not owned_tasks and row["latest_id"] == row["marker_id"]:
+        return "done"
+    return "replied"
+
+
 def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
     """Describe one member's role, membership and launch state, and open tasks."""
     if row["role"] == Role.HUMAN:
@@ -282,14 +326,11 @@ def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
     if row["launch_state"] is not None:
         entry["launch_state"] = row["launch_state"]
     if row["joined"]:
-        entry["state"] = "joined"
+        entry["state"] = progress_state(row, owned_tasks)
         if row["seen"] is not None:
             entry["idle_seconds"] = max(0, now - row["seen"])
         if row["count"]:
-            entry["state"] = {"done": "done", "blocker": "blocked"}.get(row["marker"], "replied")
             entry["messages"] = row["count"]
-        if any(task.get("blocked") for task in owned_tasks):
-            entry["state"] = "blocked"
     if owned_tasks:
         entry["open_tasks"] = owned_tasks
     return entry
@@ -308,9 +349,33 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         )
         .scalar_subquery()
     )
+    latest_id = (
+        select(func.max(message.c.id))
+        .where(
+            message.c.author == member.c.id,
+            message.c.room == member.c.room,
+            message.c.kind.is_distinct_from(EVENT_KIND),
+        )
+        .scalar_subquery()
+    )
     progress = (
         select(message.c.kind)
-        .where(message.c.author == member.c.id, message.c.kind.in_(PROGRESS_KINDS))
+        .where(
+            message.c.author == member.c.id,
+            message.c.room == member.c.room,
+            message.c.kind.in_(PROGRESS_KINDS),
+        )
+        .order_by(message.c.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    progress_id = (
+        select(message.c.id)
+        .where(
+            message.c.author == member.c.id,
+            message.c.room == member.c.room,
+            message.c.kind.in_(PROGRESS_KINDS),
+        )
         .order_by(message.c.id.desc())
         .limit(1)
         .scalar_subquery()
@@ -323,7 +388,9 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.token_hash.is_not(None).label("joined"),
             member.c.seen,
             message_count.label("count"),
+            latest_id.label("latest_id"),
             progress.label("marker"),
+            progress_id.label("marker_id"),
             assignment.c.state.label("launch_state"),
         )
         .outerjoin(

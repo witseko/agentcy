@@ -13,13 +13,14 @@ from agents_chat.storage.database import workspace_key
 
 LIST_LIMIT = 100
 PAGE_SIZE = 50
-TITLE_LENGTH = 80
+TITLE_LENGTH = repository.TITLE_LENGTH
 UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
 LEAD_JOIN_PROMPT = (
     "Use agents-chat to join with CODE. You lead this conversation. Read the shared brief and "
     "catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. "
-    f"Messages from {HUMAN_LABEL} come from your user. "
-    "Follow the bridge's guidance during this turn."
+    "Track the team status in read_messages, assign follow-up work when workers finish, and post "
+    f"brief team updates so waiting teammates stay active. Messages from {HUMAN_LABEL} come from "
+    "your user. Follow the bridge's guidance during this turn."
 )
 
 
@@ -34,18 +35,15 @@ def checkout_workspace(directory: str) -> str:
         raise ValueError("Directory must be an existing directory") from None
 
 
-def ready_prompt(role: str, code: str) -> str:
-    """Return the join prompt for a slot's role with its code already substituted."""
+def ready_prompt(role: str, code: str, brief: str, participant: str) -> str:
+    """Return the join prompt for a slot with its topic, name, and code filled in."""
     template = repository.JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
-    return template.replace("CODE", code)
+    return repository.join_prompt(brief, participant=participant, template=template, code=code)
 
 
 def title(brief_start: str) -> str:
     """Shorten the first line of a brief for a list view."""
-    first_line = brief_start.split("\n", 1)[0].strip()
-    if len(first_line) > TITLE_LENGTH:
-        return first_line[: TITLE_LENGTH - 3] + "..."
-    return first_line
+    return repository.session_title(brief_start)
 
 
 def list_conversations(connection: Connection, archived: bool = False) -> dict:
@@ -143,13 +141,13 @@ def writing_actor(connection: Connection, conversation_id: str) -> dict:
     return human
 
 
-def invitation(label: str, role: str, code: str) -> dict:
+def invitation(label: str, role: str, code: str, brief: str) -> dict:
     """Describe one slot's invitation with a ready join prompt."""
     return {
         "participant": label,
         "role": role,
         "code": code,
-        "join_prompt": ready_prompt(role, code),
+        "join_prompt": ready_prompt(role, code, brief, label),
     }
 
 
@@ -172,6 +170,7 @@ def create(
             label,
             role.label,
             repository.insert_invitation(connection, room_id, workspace, label, role),
+            request.brief,
         )
         for label, role in roles.items()
     ]
@@ -239,7 +238,7 @@ def invite(
     """Add or reissue a slot as the human and return its ready join prompt."""
     human = writing_actor(connection, request.conversation)
     result = repository.invite(connection, human, workspace, request.name, request.role)
-    return invitation(result["participant"], result["role"], result["code"])
+    return invitation(result["participant"], result["role"], result["code"], human["brief"])
 
 
 def launch(

@@ -194,7 +194,7 @@ def test_guidance_names_only_open_tasks(
     post(conversation_db, alpha, "Retry limits checked", "done", reply_to=first)
 
     status = team_status(conversation_db, lead)
-    assert status["members"]["Bravo"]["state"] == "done"
+    assert status["members"]["Bravo"]["state"] == "replied"
     page = server.finish_wait({"messages": []}, status, {}, "lead")
     assert page["waiting_on"] == ["Bravo"]
     assert f"#{second} for Bravo" in page["next"]
@@ -260,3 +260,23 @@ def test_decline_leaves_owner_and_close_expires_offer(
     post(conversation_db, alpha, "Retry limits checked", "done", reply_to=task)
     with pytest.raises(ValueError, match="no longer pending"):
         post(conversation_db, bravo, "A late acceptance", "accept", reply_to=new_offer)
+
+
+def test_followup_task_clears_done_state(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Assigning a new task to a done worker marks them active until that task finishes."""
+    lead, alpha = task_team["Lead"], task_team["Alpha"]
+    first = post(conversation_db, lead, "Check retries", "task", to="Alpha")
+    post(conversation_db, alpha, "Retries checked", "done", reply_to=first)
+    assert team_status(conversation_db, lead)["members"]["Alpha"]["state"] == "done"
+
+    second = post(conversation_db, lead, "Check timeouts", "task", to="Alpha")
+    reassigned = team_status(conversation_db, lead)["members"]["Alpha"]
+    assert reassigned["state"] == "replied"
+    assert reassigned["open_tasks"] == [{"id": second}]
+
+    post(conversation_db, alpha, "Timeouts checked", "done", reply_to=second)
+    finished = team_status(conversation_db, lead)["members"]["Alpha"]
+    assert finished["state"] == "done"
+    assert "open_tasks" not in finished

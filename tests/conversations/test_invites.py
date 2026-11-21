@@ -87,10 +87,13 @@ def test_late_invite_returns_a_prompt_and_the_joiner_reads_full_history(
     assert invitation["participant"] == "Analyst"
     assert invitation["role"] == "worker"
     template = team["join_prompt"]
-    assert invitation["join_prompt"] == template
+    assert template == f"Review: {repository.JOIN_PROMPT}"
+    assert invitation["join_prompt"] == f"Review (Analyst): {repository.JOIN_PROMPT}"
     assert template.count("CODE") == 1
+    assert invitation["join_prompt"].count("CODE") == 1
     assert team["invitations"]["Worker"] not in template
     assert invitation["code"] not in template
+    assert invitation["code"] not in invitation["join_prompt"]
 
     joined = apply(conversation_db, "join", code=invitation["code"])
     read = apply(conversation_db, "read", token=joined["token"])
@@ -175,3 +178,21 @@ def test_invite_rejects_invalid_name_or_role(conversation_db: Connection, fields
     team = create(conversation_db)
     with pytest.raises(ValidationError):
         apply(conversation_db, "invite", token=team["token"], **fields)
+
+
+def test_join_prompt_truncates_multiline_briefs_and_keeps_code_placeholder(
+    conversation_db: Connection,
+) -> None:
+    """Derive a concise single-line session name from the first line of the brief."""
+    first_line = "x" * (repository.TITLE_LENGTH + 10)
+    short = "x" * (repository.TITLE_LENGTH - 3) + "..."
+    team = apply(
+        conversation_db,
+        "create",
+        initiator="Lead",
+        brief=f"{first_line}\nSecond line stays out of the title.",
+        invitees=["Worker"],
+    )
+    assert team["join_prompt"] == f"{short}: {repository.JOIN_PROMPT}"
+    invitation = apply(conversation_db, "invite", token=team["token"], name="Analyst")
+    assert invitation["join_prompt"] == f"{short} (Analyst): {repository.JOIN_PROMPT}"

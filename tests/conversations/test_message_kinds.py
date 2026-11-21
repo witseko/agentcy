@@ -168,3 +168,6 @@ def test_done_resolves_a_blocker_and_events_do_not_count(
 
     submit(conversation_db, worker, "done", body="Verified the retry test", kind="done")
     assert repository.apply(conversation_db, status)["members"]["Target"]["state"] == "done"
+
+    submit(conversation_db, worker, "followup", body="Starting round two", kind="note")
+    assert repository.apply(conversation_db, status)["members"]["Target"]["state"] == "replied"
