@@ -22,8 +22,8 @@ def test_new_store_has_the_retired_column(monkeypatch: pytest.MonkeyPatch, tmp_p
     engine = database(token_hex(32))
     try:
         with engine.begin() as connection:
-            assert SCHEMA_VERSION == 9
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 9
+            assert SCHEMA_VERSION >= 9
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             columns = {column["name"] for column in inspect(connection).get_columns("participant")}
             assert "retired" in columns
     finally:

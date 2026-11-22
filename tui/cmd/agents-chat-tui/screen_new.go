@@ -30,13 +30,14 @@ type fieldKind int
 const (
 	fieldBrief fieldKind = iota
 	fieldLeadName
+	fieldOpenInvite
 	fieldWorkerName
 	fieldWorkerSource
 	fieldCreate
 )
 
 // leadFields counts the fields before the first worker row.
-const leadFields = 2
+const leadFields = 3
 
 // workerRow is one worker slot: a name and a source, where source 0 is manual and source i
 // is the plugin at index i-1.
@@ -49,6 +50,7 @@ type workerRow struct {
 type formState struct {
 	brief      textarea.Model
 	leadName   textinput.Model
+	openInvite bool
 	workers    []workerRow
 	focus      int
 	submitting bool
@@ -195,6 +197,9 @@ func (m model) formKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.submitForm()
 	case key == "enter" && kind != fieldBrief:
 		return m, m.form.setFocus(m.form.focus + 1)
+	case isChoiceKey(key) && kind == fieldOpenInvite:
+		m.form.toggleOpenInvite(m.width, m.height)
+		return m, nil
 	case isChoiceKey(key) && kind == fieldWorkerSource:
 		m.form.changeSource(row, key, len(m.plugins))
 		return m, nil
@@ -202,6 +207,16 @@ func (m model) formKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var command tea.Cmd
 	m.form, command = m.form.updateFocused(msg)
 	return m, command
+}
+
+// toggleOpenInvite flips the shared open-invite toggle, restoring a default worker row when
+// disabling open invite on a form with no preset workers.
+func (f *formState) toggleOpenInvite(width int, height int) {
+	f.openInvite = !f.openInvite
+	if !f.openInvite && len(f.workers) == 0 {
+		f.workers = append(f.workers, workerRow{name: newNameInput("Worker")})
+		f.resize(width, height)
+	}
 }
 
 // isChoiceKey reports the keys that change a worker's source.
@@ -247,9 +262,20 @@ func (f formState) verticalNeighbor(step int) int {
 		if step < 0 {
 			return int(fieldBrief)
 		}
+		return int(fieldOpenInvite)
+	case fieldOpenInvite:
+		if step < 0 {
+			return int(fieldLeadName)
+		}
+		if len(f.workers) == 0 {
+			return create
+		}
 		return leadFields
 	case fieldCreate:
 		if step < 0 {
+			if len(f.workers) == 0 {
+				return int(fieldOpenInvite)
+			}
 			return leadFields + 2*last
 		}
 		return f.focus
@@ -257,7 +283,7 @@ func (f formState) verticalNeighbor(step int) int {
 	next := row + step
 	switch {
 	case next < 0:
-		return int(fieldLeadName)
+		return int(fieldOpenInvite)
 	case next > last:
 		return create
 	}
@@ -275,10 +301,10 @@ func (m model) addWorker() (tea.Model, tea.Cmd) {
 	return m, m.form.setFocus(leadFields + 2*(len(m.form.workers)-1))
 }
 
-// removeWorker removes a worker row. The form keeps at least one.
+// removeWorker removes a worker row. At least one worker is kept unless open invite is enabled.
 func (m model) removeWorker(row int) (tea.Model, tea.Cmd) {
-	if len(m.form.workers) == 1 {
-		return m.inform("A conversation needs at least one worker."), nil
+	if len(m.form.workers) == 1 && !m.form.openInvite {
+		return m.inform("A conversation needs at least one worker unless open invite is on."), nil
 	}
 	m.form.workers = append(m.form.workers[:row:row], m.form.workers[row+1:]...)
 	m.form.resize(m.width, m.height)
@@ -310,7 +336,13 @@ func (f formState) request(directory string, plugins []string) (CreateRequest, [
 	lead := strings.TrimSpace(f.leadName.Value())
 	names := []string{lead}
 	var launches []slotLaunch
-	request := CreateRequest{Directory: directory, Brief: brief, Lead: lead}
+	request := CreateRequest{
+		Directory:  directory,
+		Brief:      brief,
+		Lead:       lead,
+		Invitees:   []string{},
+		OpenInvite: f.openInvite,
+	}
 	for _, row := range f.workers {
 		name := strings.TrimSpace(row.name.Value())
 		names = append(names, name)
@@ -318,6 +350,9 @@ func (f formState) request(directory string, plugins []string) (CreateRequest, [
 		if plugin := sourceName(row.source, plugins); plugin != "" {
 			launches = append(launches, slotLaunch{name: name, plugin: plugin})
 		}
+	}
+	if len(request.Invitees) == 0 && !request.OpenInvite {
+		return CreateRequest{}, nil, errors.New("add a worker or turn on open invite")
 	}
 	if err := checkNames(names); err != nil {
 		return CreateRequest{}, nil, err
@@ -390,17 +425,24 @@ func (m model) onCreated(msg createdMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.invitations[msg.created.Conversation] = codes
+	if msg.created.OpenInvite != nil {
+		m.openInvites[msg.created.Conversation] = *msg.created.OpenInvite
+	}
 	next, command := m.openChat(msg.created.Conversation)
 	m = next.(model)
 	command = tea.Batch(command, m.loadList())
-	if len(codes) > 0 {
+	promptCount := len(codes)
+	if msg.created.OpenInvite != nil {
+		promptCount++
+	}
+	if promptCount > 0 {
 		m = m.openInvite("")
 	}
 	switch {
 	case len(msg.launchFailure) > 0:
 		m.status = "Created. Launch failed for " + cleanLine(strings.Join(msg.launchFailure, "; "))
-	case len(codes) > 0:
-		m.status = fmt.Sprintf("Created. %d join prompt(s) to paste.", len(codes))
+	case promptCount > 0:
+		m.status = fmt.Sprintf("Created. %d join prompt(s) to paste.", promptCount)
 	default:
 		m.status = "Created. Plugins are starting."
 	}
@@ -470,12 +512,17 @@ func (m model) formLayout() ([]string, []int, int) {
 
 	lines = append(lines, headStyle.Render("TEAM"),
 		dimStyle.Render(fmt.Sprintf("  %-*s  %-8s  %s", nameFieldWidth, "NAME", "ROLE", "JOINS VIA")))
-	if f.focus > 0 && f.focus < leadFields {
+	fieldOf = append(fieldOf, formLineNone, formLineNone)
+	if f.focus == int(fieldLeadName) {
 		focusLine = len(lines)
 	}
-	fieldOf = append(fieldOf, formLineNone, formLineNone)
 	lines = append(lines, m.leadLine(width))
 	fieldOf = append(fieldOf, int(fieldLeadName))
+	if f.focus == int(fieldOpenInvite) {
+		focusLine = len(lines)
+	}
+	lines = append(lines, m.openInviteLine(width))
+	fieldOf = append(fieldOf, int(fieldOpenInvite))
 	for row := range f.workers {
 		if f.focus == leadFields+2*row || f.focus == leadFields+2*row+1 {
 			focusLine = len(lines)
@@ -514,9 +561,9 @@ func (m model) formButtons() (string, []span) {
 	return m.buttons(button{id: "create", label: "Create  ctrl+s", primary: true}, button{id: "cancel", label: "Cancel"})
 }
 
-// removeButton draws the button that removes a worker row. A form keeps at least one worker.
+// removeButton draws the button that removes a worker row.
 func (m model) removeButton(row int) (string, []span) {
-	if len(m.form.workers) < 2 {
+	if len(m.form.workers) < 2 && !m.form.openInvite {
 		return "", nil
 	}
 	return m.buttons(button{id: fmt.Sprintf("remove:%d", row), label: "×"})
@@ -549,7 +596,11 @@ func (m model) createSummary() []string {
 	}
 	lines = append(lines, bar+textStyle.Render(fmt.Sprintf("You get %d join prompt(s) to paste: ", len(prompts)))+
 		strings.Join(prompts, dimStyle.Render(", "))+textStyle.Render("."))
-	return append(lines, bar+dimStyle.Render("Each code works once and expires in one hour."))
+	if f.openInvite {
+		lines = append(lines, bar+accentStyle.Render("Open invite on")+
+			textStyle.Render(": one shared prompt works for everyone who joins while the chat is open."))
+	}
+	return append(lines, bar+dimStyle.Render("Named slot codes work once and expire in one hour."))
 }
 
 // leadLine draws the lead's row. The lead always joins with a pasted join prompt.
@@ -560,6 +611,26 @@ func (m model) leadLine(width int) string {
 	}
 	return marker + pad(m.form.leadName.View(), nameFieldWidth) + "  " + dimStyle.Render(fmt.Sprintf("%-8s", "lead")) +
 		"  " + dimStyle.Render("a chat you paste the prompt into")
+}
+
+// openInviteLine draws the toggle for a reusable room-level join code.
+func (m model) openInviteLine(width int) string {
+	focused := m.form.focus == int(fieldOpenInvite)
+	marker := "  "
+	if focused {
+		marker = accentStyle.Render("› ")
+	}
+	state := "off"
+	if m.form.openInvite {
+		state = "on"
+	}
+	line := marker + pad(textStyle.Render("Open invite"), nameFieldWidth) + "  " +
+		dimStyle.Render(fmt.Sprintf("%-8s", "anyone")) + "  " + choice(state, focused) + "  " +
+		dimStyle.Render("one code works for everyone")
+	if focused {
+		return fill(line, width, colorSelect)
+	}
+	return line
 }
 
 // workerLine draws one worker row with its join source.

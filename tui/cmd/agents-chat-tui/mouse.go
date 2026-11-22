@@ -172,6 +172,12 @@ func (m model) clickInvite(x int, row int, height int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.inviteWindow.selected = slot
+	if slots[slot] == openInviteCard {
+		if _, found := m.knownOpenInvite(); !found {
+			return m.inform("Open invite is active from another session. Press r to rotate and get a prompt."), nil
+		}
+		return m.copyOpenPrompt()
+	}
 	if _, found := m.knownInvitation(slots[slot]); !found {
 		return m.inform("No prompt for " + cleanLine(slots[slot]) + " in this session. Press r for a new code."), nil
 	}
@@ -198,7 +204,13 @@ func (m model) clickForm(x int, row int, height int) (tea.Model, tea.Cmd) {
 	case field == m.form.fieldCount()-1:
 		return m.submitForm()
 	}
-	if kind, workerRow := m.form.field(field); kind == fieldWorkerName && x-formLeft(m.width) >= sourceColumn {
+	kind, workerRow := m.form.field(field)
+	if kind == fieldOpenInvite {
+		command := m.form.setFocus(field)
+		m.form.toggleOpenInvite(m.width, m.height)
+		return m, command
+	}
+	if kind == fieldWorkerName && x-formLeft(m.width) >= sourceColumn {
 		command := m.form.setFocus(field + 1)
 		m.form.changeSource(workerRow, "right", len(m.plugins))
 		return m, command

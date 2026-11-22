@@ -92,6 +92,11 @@ type (
 		invitation   JoinInvitation
 		err          error
 	}
+	openInviteMsg struct {
+		conversation string
+		status       OpenInviteStatus
+		err          error
+	}
 	launchedMsg struct {
 		name   string
 		queued LaunchQueued
@@ -148,6 +153,8 @@ type model struct {
 	// invitations holds the join codes this UI session received, by conversation and
 	// folded participant name. Codes stay in memory and appear only in the invite window.
 	invitations map[string]map[string]JoinInvitation
+	// openInvites holds reusable room-level join prompts this session received, by conversation.
+	openInvites map[string]OpenInviteInvitation
 }
 
 // newModel returns the UI on the chat list for one checkout directory.
@@ -163,6 +170,7 @@ func newModel(client Operator, directory string) model {
 		teamCols:    teamWidth,
 		search:      newSearch(),
 		invitations: map[string]map[string]JoinInvitation{},
+		openInvites: map[string]OpenInviteInvitation{},
 	}
 }
 
@@ -212,6 +220,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onCreated(msg)
 	case invitedMsg:
 		return m.onInvited(msg), nil
+	case openInviteMsg:
+		return m.onOpenInvite(msg)
 	case launchedMsg:
 		return m.onLaunched(msg), nil
 	case retiredMsg:

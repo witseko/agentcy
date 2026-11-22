@@ -155,6 +155,17 @@ def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) 
         return summary + lead_pending_guidance(members, pending, silent_waits, idle_note)
     if ended:
         return summary + "Stop listening, verify the evidence, and report what remains open."
+    has_other_members = any(
+        name != me and member["role"] != Role.HUMAN.label and not is_retired(member)
+        for name, member in members.items()
+    )
+    if status.get("open_invite") and not has_other_members:
+        if silent_waits >= LEAD_IDLE_WAITS:
+            return (
+                "No teammates have joined yet via the open invite. "
+                "Stop listening and tell your user."
+            )
+        return f"Waiting for teammates to join via the open invite. To keep listening, {LISTEN}."
     return (
         "All other members are done. Stop listening. Verify the evidence against the brief "
         "and report one conclusion to your user."
@@ -291,7 +302,10 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         ],
         instructions=(
             "Use one conversation and one brief for the team's work. Give each invited chat its "
-            "own join code, or launch a fresh worker through a configured plugin. "
+            "own join code, share an open invite code with open_invite=True / open_invite so any "
+            "agent can join, or launch a fresh worker through a configured plugin (see list_plugins). "
+            "As lead, you can add teammates with invite_participant, launch_participant, or "
+            "open_invite, and retire inactive or unneeded teammates with retire_participant. "
             "As lead, assign complementary tasks with kind='task' and the owner's name in 'to'. "
             "Take a substantive part yourself and work on it while the others work. "
             "Read the brief and work on your part. Outside sealed rounds, send evidence and "
@@ -323,7 +337,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
     def create_conversation(
         brief: models.Body,
         your_name: models.Label,
-        invitees: models.Slots,
+        invitees: models.OptionalSlots | None = None,
+        open_invite: bool = False,
         sealed: bool = False,
         deadline_minutes: models.DeadlineMinutes | None = None,
     ) -> dict:
@@ -331,6 +346,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
 
         Give the team one brief. Assign complementary tasks and take a part yourself.
         For an existing chat, give it the returned join_prompt with CODE replaced by its code.
+        Set open_invite=True to also create a reusable room-level join code that works for
+        everyone who joins (invitees may be omitted when open_invite=True).
         For slots you fill with launch_participant, the plugin delivers the invitations.
         Use sealed=True for independent proposals. The deadline defaults to 10 minutes.
         """
@@ -339,7 +356,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
                 workspace=workspace,
                 brief=brief,
                 initiator=your_name,
-                invitees=invitees,
+                invitees=list(invitees) if invitees is not None else [],
+                open_invite=open_invite,
                 sealed=sealed,
                 deadline_minutes=deadline_minutes,
             )
@@ -357,15 +375,41 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         return exchange(models.Invite(workspace=workspace, token=token, name=name, role=role))
 
     @server.tool()
-    def join_conversation(code: models.Key) -> dict:
-        """Redeem a one-time invitation to get the brief and a private participant token.
+    def open_invite(token: models.Key, enabled: bool = True) -> dict:
+        """As a lead or co-lead, enable, rotate, or disable a reusable room-level join code.
 
+        When enabled=True, returns a code that works for everyone who joins until the
+        conversation closes or the code is rotated or disabled (up to 17 participants).
+        Pass enabled=False to revoke the shared invite code.
+        """
+        return exchange(models.OpenInvite(workspace=workspace, token=token, enabled=enabled))
+
+    @server.tool()
+    def retire_participant(token: models.Key, name: models.Label) -> dict:
+        """As a lead or co-lead, retire a participant from an open conversation.
+
+        Unused invitations expire, further writes are blocked, held sealed proposals are
+        discarded, and any active fresh run for that slot is cancelled.
+        """
+        return exchange(models.Retire(workspace=workspace, token=token, name=name))
+
+    @server.tool()
+    def list_plugins(token: models.Key) -> dict:
+        """As a lead or co-lead, list configured fresh-run plugins and their models."""
+        return exchange(models.Plugins(workspace=workspace, token=token))
+
+    @server.tool()
+    def join_conversation(code: models.Key, name: models.Label | None = None) -> dict:
+        """Redeem a one-time slot invitation or a shared open invite to join the conversation.
+
+        When joining with a shared open invite code, you may pass your preferred 'name'
+        (if omitted or already taken, a unique worker name is assigned automatically).
         Catch up with read_messages after zero and take your part of the shared brief.
         In open discussion, send questions and evidence to the roster member who can act on them.
         If the round is sealed and your role is worker, post your independent proposal using
         kind='proposal'. Then listen for the release before critiquing other proposals.
         """
-        return exchange(models.Join(workspace=workspace, code=code))
+        return exchange(models.Join(workspace=workspace, code=code, name=name))
 
     @server.tool()
     def post_message(
