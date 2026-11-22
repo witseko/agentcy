@@ -41,9 +41,11 @@ const (
 
 const (
 	// listRefreshTicks spaces list refreshes. Any request also keeps an idle core alive.
-	listRefreshTicks = 5
-	pollInterval     = time.Second
-	offlineStatus    = "Core not reachable. Retrying every second. Run agents-chat ui to start it again."
+	listRefreshTicks = 2
+	// statusDurationTicks clears transient notices so the top bar returns to live core status.
+	statusDurationTicks = 6
+	pollInterval        = time.Second
+	offlineStatus       = "Core not reachable. Retrying every second. Run agents-chat ui to start it again."
 )
 
 var (
@@ -59,6 +61,7 @@ const (
 	showOlder
 	showStart
 	showJump
+	showStatus
 )
 
 // Messages that commands send back to Update.
@@ -142,6 +145,7 @@ type model struct {
 	height       int
 	screen       screen
 	status       string
+	statusTicks  int
 	offline      bool
 	ticks        int
 	plugins      []string
@@ -150,6 +154,7 @@ type model struct {
 	chat         chatState
 	search       searchState
 	inviteWindow inviteState
+	contextMenu  contextMenuState
 	// mouseOff hands the mouse back to the terminal so its own text selection works.
 	mouseOff bool
 	// sidebarCols and teamCols are the side column widths, changed by dragging a divider.
@@ -224,6 +229,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onList(msg), nil
 	case showMsg:
 		return m.onShow(msg)
+	case tasksMsg:
+		return m.onTasks(msg), nil
 	case createdMsg:
 		return m.onCreated(msg)
 	case invitedMsg:
@@ -248,12 +255,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onSearched(msg), nil
 	case copiedMsg:
 		return m.onCopied(msg), nil
+	case textCopiedMsg:
+		return m.onTextCopied(msg), nil
 	}
 	return m.updateFocusedInput(msg)
 }
 
 // handleKey sends a key press to the active screen.
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.contextMenu.open {
+		return m.contextMenuKey(msg)
+	}
 	switch m.screen {
 	case screenNew:
 		return m.formKey(msg)
@@ -284,14 +296,32 @@ func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, command
 }
 
-// onTick polls the open conversation, or refreshes the list every few ticks.
+// onTick polls the open conversation, expires transient notices, and refreshes the list.
 func (m model) onTick() (tea.Model, tea.Cmd) {
 	m.ticks++
+	if m.statusTicks > 0 {
+		m.statusTicks--
+		if m.statusTicks == 0 && !m.offline {
+			m.status = ""
+		}
+	}
 	commands := []tea.Cmd{tick()}
-	if m.chat.id != "" && m.screen == screenChat && !m.chat.hasNewer {
+	if m.chat.id != "" && m.screen == screenChat {
 		var poll tea.Cmd
-		m, poll = m.pollChat()
+		switch {
+		case !m.chat.loaded:
+			m, poll = m.loadTail()
+		case m.chat.hasNewer:
+			m, poll = m.pollStatus()
+		default:
+			m, poll = m.pollChat()
+		}
 		commands = append(commands, poll)
+		if m.chat.tab == tabTasks {
+			var pollTasks tea.Cmd
+			m, pollTasks = m.loadTasks()
+			commands = append(commands, pollTasks)
+		}
 	}
 	if m.ticks%listRefreshTicks == 0 {
 		commands = append(commands, m.loadList())
@@ -316,9 +346,11 @@ func (m model) fail(err error) model {
 	if errors.Is(err, errCoreUnreachable) {
 		m.offline = true
 		m.status = offlineStatus
+		m.statusTicks = 0
 		return m
 	}
 	m.status = "Error: " + cleanLine(err.Error())
+	m.statusTicks = statusDurationTicks
 	return m
 }
 
@@ -327,13 +359,15 @@ func (m model) succeed() model {
 	if m.offline {
 		m.offline = false
 		m.status = ""
+		m.statusTicks = 0
 	}
 	return m
 }
 
-// inform shows a notice in the status line.
+// inform shows a transient notice in the status line.
 func (m model) inform(text string) model {
 	m.status = text
+	m.statusTicks = statusDurationTicks
 	return m
 }
 
@@ -381,6 +415,10 @@ func (m model) View() tea.View {
 		body, help = m.mainView(bodyHeight), m.searchHelp()
 	default:
 		body, help = m.mainView(bodyHeight), m.mainHelp()
+	}
+	if m.contextMenu.open {
+		body = m.drawContextMenu(body)
+		help = m.contextMenuHelp()
 	}
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.topBar())

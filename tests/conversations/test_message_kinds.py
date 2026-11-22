@@ -157,7 +157,9 @@ def test_done_resolves_a_blocker_and_events_do_not_count(
     page = read(conversation_db, worker, after=prior)
     assert page["messages"][-1]["id"] == event
     assert page["messages"][-1]["kind"] == "event"
-    assert page["wake"] is True
+    assert page["wake"] is False
+    lead_page = read(conversation_db, participants["Lead"], after=prior)
+    assert lead_page["wake"] is True
     assert repository.apply(conversation_db, status)["members"]["Target"]["state"] == "joined"
 
     submit(conversation_db, worker, "blocked", body="Missing a test fixture", kind="blocker")

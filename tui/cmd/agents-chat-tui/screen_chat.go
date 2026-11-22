@@ -53,23 +53,25 @@ type transcriptLinesCache struct {
 
 // chatState holds the open conversation and the transcript read so far.
 type chatState struct {
-	id           string
-	view         ConversationView
-	loaded       bool
-	messages     []TranscriptMessage
-	cursor       int64
-	polling      bool
-	loadingOlder bool
-	hasOlder     bool
-	hasNewer     bool
-	version      uint64
-	linesCache   *transcriptLinesCache
-	input        textinput.Model
-	summary      textinput.Model
-	closing      bool
-	retiring     string
-	focus        chatFocus
-	selected     int
+	id             string
+	view           ConversationView
+	loaded         bool
+	messages       []TranscriptMessage
+	cursor         int64
+	polling        bool
+	refreshPending bool
+	tailPending    bool
+	loadingOlder   bool
+	hasOlder       bool
+	hasNewer       bool
+	version        uint64
+	linesCache     *transcriptLinesCache
+	input          textinput.Model
+	summary        textinput.Model
+	closing        bool
+	retiring       string
+	focus          chatFocus
+	selected       int
 	// scroll counts transcript lines hidden below the view. Zero follows the tail.
 	scroll int
 	// jumping asks the view to scroll to jumpTarget once the initial page has loaded.
@@ -78,6 +80,9 @@ type chatState struct {
 	jumpTarget int64
 	// highlight is the ID of the message a search opened the chat at, or zero.
 	highlight int64
+	// tab selects between the Chat transcript and the Tasks view.
+	tab   chatTab
+	tasks tasksState
 }
 
 // humanPost is a parsed input line.
@@ -176,11 +181,47 @@ func (m model) loadTail() (model, tea.Cmd) {
 	})
 }
 
+// loadTailRefresh jumps to the newest transcript page, queuing the jump if a poll is in flight.
+func (m model) loadTailRefresh() (model, tea.Cmd) {
+	if m.chat.polling {
+		m.chat.tailPending = true
+		return m, nil
+	}
+	return m.loadTail()
+}
+
 // pollChat requests the transcript after the cursor unless a request is in flight.
 func (m model) pollChat() (model, tea.Cmd) {
 	return m.requestShow(showAfter, ShowRequest{
 		Directory: m.directory, Conversation: m.chat.id, After: m.chat.cursor,
 	})
+}
+
+// pollStatus refreshes header and team status while viewing an older search page without
+// disturbing the loaded transcript window.
+func (m model) pollStatus() (model, tea.Cmd) {
+	return m.requestShow(showStatus, ShowRequest{
+		Directory: m.directory, Conversation: m.chat.id, Tail: true,
+	})
+}
+
+// refreshChat requests fresh state after a mutation or screen return, queuing one follow-up
+// if another Show request is already in flight.
+func (m model) refreshChat() (model, tea.Cmd) {
+	if m.chat.id == "" {
+		return m, nil
+	}
+	if m.chat.polling {
+		m.chat.refreshPending = true
+		return m, nil
+	}
+	if !m.chat.loaded {
+		return m.loadTail()
+	}
+	if m.chat.hasNewer {
+		return m.pollStatus()
+	}
+	return m.pollChat()
 }
 
 // requestShow sends a forward or initial Show request unless one is already in flight.
@@ -243,7 +284,24 @@ func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	if msg.mode == showAfter {
 		return m.onShowAfter(msg)
 	}
+	if msg.mode == showStatus {
+		return m.onShowStatus(msg)
+	}
 	return m.onShowWindow(msg)
+}
+
+// onShowStatus refreshes status metadata without replacing the loaded transcript window.
+func (m model) onShowStatus(msg showMsg) (tea.Model, tea.Cmd) {
+	selectedName := m.selectedMember()
+	rolesChanged := memberRolesChanged(m.chat.view.Status.Members, msg.view.Status.Members)
+	m.chat.view.Status = msg.view.Status
+	m.chat.view.Archived = msg.view.Archived
+	m.chat.view.TotalMessages = msg.view.TotalMessages
+	m.restoreSelection(selectedName)
+	if rolesChanged {
+		m.chat.version++
+	}
+	return m.succeed(), nil
 }
 
 // onShowWindow replaces the loaded window after an initial tail, start, or search-jump load.
@@ -484,7 +542,15 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.prefillLaunch()
 	case "ctrl+r":
 		return m.reissueSelected()
+	case "ctrl+t":
+		if m.chat.tab == tabTasks {
+			return m.setChatTab(tabChat)
+		}
+		return m.setChatTab(tabTasks)
 	case "pgup", "pgdown":
+		if m.chat.tab == tabTasks && m.chat.focus == focusInput {
+			return m.tasksKey(msg)
+		}
 		return m.scrollTranscript(msg.String())
 	}
 	switch m.chat.focus {
@@ -493,13 +559,16 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case focusList:
 		return m.chatListKey(msg)
 	}
+	if m.chat.tab == tabTasks {
+		return m.tasksKey(msg)
+	}
 	return m.inputKey(msg)
 }
 
 // setChatFocus moves keys to the input, the team panel or the chat list, in that cycle.
 func (m model) setChatFocus(focus chatFocus) (tea.Model, tea.Cmd) {
 	m.chat.focus = focus % 3
-	if m.chat.focus == focusInput {
+	if m.chat.focus == focusInput && m.chat.tab == tabChat {
 		return m, m.chat.input.Focus()
 	}
 	m.chat.input.Blur()
@@ -1179,8 +1248,11 @@ func (m model) mainHelp() []hint {
 			{"l", "launch"}, {"m", "make lead"}, {"d", "retire"}, {"x", "close chat"}, {"tab", "chat list"}}
 	case m.chat.focus == focusList:
 		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), hint{"tab", "message"}, mouse)...)
+	case m.chat.tab == tabTasks:
+		return []hint{{"↑↓", "select"}, {"⏎", "jump to chat"}, {"f", "filter"}, {"pgdn", "scroll details"},
+			{"ctrl+t", "chat"}, {"tab", "team"}, mouse}
 	}
-	return []hint{{"⏎", "send"}, {"tab", "team"}, {"↑↓", "scroll"}, {"ctrl+p", "join prompts"},
+	return []hint{{"⏎", "send"}, {"ctrl+t", "tasks"}, {"tab", "team"}, {"↑↓", "scroll"}, {"ctrl+p", "join prompts"},
 		{"ctrl+x", "close chat"}, mouse}
 }
 
@@ -1200,9 +1272,13 @@ func (m model) mouseHint() string {
 	return "mouse off"
 }
 
-// chatView draws the header, the transcript and the message line in the center column.
+// chatView draws the header, the active tab (transcript or tasks), and the composer on Chat.
 func (m model) chatView(width int, height int) []string {
 	header := m.chatHeader(width)
+	if m.chat.tab == tabTasks {
+		contentHeight := max(height-len(header), 1)
+		return append(header, m.tasksView(width, contentHeight)...)
+	}
 	footer := m.composer(width)
 	transcriptHeight := max(height-len(header)-len(footer), 1)
 	lines := append(header, m.visibleTranscript(width, transcriptHeight)...)
@@ -1243,6 +1319,8 @@ func (m model) chatHeader(width int) []string {
 			lines = append(lines, dimStyle.Render(line))
 		}
 	}
+	tabs, _ := m.chatTabButtons()
+	lines = append(lines, " "+tabs)
 	return append(lines, rule(width))
 }
 
@@ -1556,7 +1634,7 @@ func (m model) memberBlock(name string, member MemberStatus, selected string, wi
 }
 
 // memberTasks formats open task lines for one member.
-func memberTasks(label string, member MemberStatus) []string {
+func (m model) memberTasks(label string, member MemberStatus, width int) []string {
 	var tasks []string
 	for _, task := range member.OpenTasks {
 		state := dimStyle.Render("open")
@@ -1567,7 +1645,11 @@ func memberTasks(label string, member MemberStatus) []string {
 		} else if member.State == "invited" {
 			state = dimStyle.Render("waiting to join")
 		}
-		tasks = append(tasks, " "+accentStyle.Render(fmt.Sprintf("#%d", task.ID))+" "+label+" "+state)
+		line := " " + accentStyle.Render(fmt.Sprintf("#%d", task.ID)) + " " + label + " " + state
+		if m.hover == fmt.Sprintf("team-task:%d", task.ID) {
+			line = fill(accentStyle.Render("▎")+line[1:], width, colorBand)
+		}
+		tasks = append(tasks, line)
 	}
 	return tasks
 }
@@ -1588,7 +1670,7 @@ func (m model) teamView(width int, height int) []string {
 			if member.Role == "human" {
 				label = "You"
 			}
-			tasks = append(tasks, memberTasks(label, member)...)
+			tasks = append(tasks, m.memberTasks(label, member, width)...)
 		}
 	}
 	appendGroup(active)
@@ -1653,6 +1735,46 @@ func (m model) teamRows() []teamRow {
 	if len(archived) > 0 {
 		top += 2
 		addGroup(archived)
+	}
+	return rows
+}
+
+// teamTaskRow places one open task line in the team panel footer.
+type teamTaskRow struct {
+	id  int64
+	row int
+}
+
+// teamTaskRows returns the body row of each open task drawn in teamView.
+func (m model) teamTaskRows(height int) []teamTaskRow {
+	members := m.chat.view.Status.Members
+	active, archived := partitionMembers(members)
+	var taskIDs []int64
+	for _, name := range append(active, archived...) {
+		for _, task := range members[name].OpenTasks {
+			taskIDs = append(taskIDs, task.ID)
+		}
+	}
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	memberLines := 2
+	for _, row := range m.teamRows() {
+		memberLines = max(memberLines, row.top+row.size+1)
+	}
+	footerLen := 1 + len(taskIDs)
+	tasksOffset := 1
+	if balance := m.chat.view.Status.TokenBalance; balance != nil && !balance.Balanced {
+		footerLen += 3
+		tasksOffset += 3
+	}
+	if m.chat.view.Status.Open {
+		footerLen += 2
+	}
+	footerStart := max(height-footerLen, memberLines)
+	rows := make([]teamTaskRow, 0, len(taskIDs))
+	for index, id := range taskIDs {
+		rows = append(rows, teamTaskRow{id: id, row: footerStart + tasksOffset + index})
 	}
 	return rows
 }

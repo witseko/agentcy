@@ -83,6 +83,23 @@ def test_last_joined_worker_releases_to_advanced_and_late_readers(
     assert read(conversation_db, late["token"])["messages"][-3:] == result["messages"]
 
 
+def test_retiring_last_pending_worker_releases_sealed_round(conversation_db: Connection) -> None:
+    """Auto-release held proposals when retiring the only remaining non-submitting worker."""
+    team = create_round(conversation_db, ["First", "Second"])
+    lead = team["token"]
+    first = join(conversation_db, team, "First")["token"]
+    join(conversation_db, team, "Second")
+    post(conversation_db, first, "p1", "First proposal", kind="proposal")
+
+    repository.apply(
+        conversation_db,
+        models.Retire(workspace=conversation_db.info["workspace"], token=lead, name="Second"),
+    )
+    visible = read(conversation_db, lead)
+    assert visible["round"] == "critique"
+    assert any(item.get("kind") == "proposal" and item["body"] == "First proposal" for item in visible["messages"])
+
+
 def test_manual_release_permissions_and_proposal_retries(conversation_db: Connection) -> None:
     """Deduplicate private and public receipts and allow only leads to publish."""
     team = create_round(conversation_db, ["First", "Second"])

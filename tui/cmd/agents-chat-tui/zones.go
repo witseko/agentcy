@@ -27,6 +27,10 @@ func place(spans []span, x int, y int) []zone {
 // zones lists the buttons and key hints on screen. It follows the layout the views draw:
 // row 0 is the top bar, the body starts at row 1, and the key bar is the last row.
 func (m model) zones() []zone {
+	if m.contextMenu.open {
+		_, hintSpans := m.hintBar(m.contextMenuHelp())
+		return place(hintSpans, 1, m.height-1)
+	}
 	bodyHeight := max(m.height-2, 1)
 	help := m.mainHelp()
 	switch m.screen {
@@ -57,10 +61,25 @@ func (m model) zones() []zone {
 	if list > 0 {
 		centerStart = list + 1
 	}
+	headerLen := len(m.chatHeader(center))
 	if _, spans := m.headerButtons(); m.headerLayout(center).actions {
 		zones = append(zones, place(spans, centerStart+center-1-buttonsWidth(spans), 1)...)
 	}
-	if !m.chat.closing && m.chat.retiring == "" {
+	if _, tabSpans := m.chatTabButtons(); len(tabSpans) > 0 {
+		zones = append(zones, place(visibleSpans(tabSpans, center-1), centerStart+1, headerLen-1)...)
+	}
+	if m.chat.tab == tabTasks {
+		toolbarY := 1 + headerLen
+		_, filterSpans := m.taskFilterButtons()
+		zones = append(zones, place(visibleSpans(filterSpans, center-1), centerStart+1, toolbarY)...)
+		if _, jumpSpans := m.taskJumpButton(); len(jumpSpans) > 0 {
+			filterWidth := buttonsWidth(filterSpans)
+			jumpWidth := buttonsWidth(jumpSpans)
+			if center-1-(1+filterWidth)-jumpWidth >= 2 {
+				zones = append(zones, place(jumpSpans, centerStart+center-1-jumpWidth, toolbarY)...)
+			}
+		}
+	} else if !m.chat.closing && m.chat.retiring == "" {
 		_, spans := m.sendButton()
 		zones = append(zones, place(spans, centerStart+center-1-buttonsWidth(spans), bodyHeight-1)...)
 	}
@@ -166,6 +185,9 @@ func (m model) zoneAt(x int, y int) string {
 // hoverAt names what is under the pointer: a button or key hint, a chat, a member, a prompt
 // card or a divider.
 func (m model) hoverAt(x int, y int) string {
+	if m.contextMenu.open {
+		return m.contextMenuHoverAt(x, y)
+	}
 	if id := m.zoneAt(x, y); id != "" {
 		return id
 	}
@@ -195,10 +217,20 @@ func (m model) hoverAt(x int, y int) string {
 		if index, found := m.searchHitAt(row, bodyHeight); found && m.screen == screenSearch {
 			return fmt.Sprintf("hit:%d", index)
 		}
+		if m.screen == screenChat && m.chat.tab == tabTasks {
+			if taskID, found := m.taskRowAt(row, bodyHeight); found {
+				return fmt.Sprintf("task:%d", taskID)
+			}
+		}
 	case regionTeam:
 		for _, block := range m.teamRows() {
 			if row >= block.top && row < block.top+block.size && m.chat.view.Status.Members[block.name].Role != "human" {
 				return "member:" + block.name
+			}
+		}
+		for _, item := range m.teamTaskRows(bodyHeight) {
+			if row == item.row {
+				return fmt.Sprintf("team-task:%d", item.id)
 			}
 		}
 	}
@@ -219,6 +251,23 @@ func (m model) clickZone(id string) (tea.Model, tea.Cmd) {
 		return m.openSearch()
 	case "view":
 		return m.showArchive(argument == "archived")
+	case "tab":
+		if argument == "tasks" {
+			return m.setChatTab(tabTasks)
+		}
+		return m.setChatTab(tabChat)
+	case "task-filter":
+		switch argument {
+		case "open":
+			m.setTaskFilter(filterOpen)
+		case "all":
+			m.setTaskFilter(filterAll)
+		case "done":
+			m.setTaskFilter(filterDone)
+		}
+		return m, nil
+	case "task-jump":
+		return m.jumpToSelectedTask()
 	case "archive":
 		return m, m.archive(m.chat.id, !m.chat.view.Archived)
 	case "prompts":

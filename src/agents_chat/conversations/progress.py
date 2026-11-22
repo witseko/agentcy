@@ -88,6 +88,60 @@ def is_current_blocker(message: dict, members: dict, task_blocker: bool) -> bool
     )
 
 
+def quietest_working_peer(
+    members: dict, candidates: list[str], owners: dict[str, dict]
+) -> tuple[str, int, list[int]] | None:
+    """Identify the working peer with the longest recorded silence and its open task IDs."""
+    best: tuple[int, str, list[int]] | None = None
+    for name in candidates:
+        member = members.get(name)
+        if not member or not member_is_working(member):
+            continue
+        idle = member.get("idle_seconds")
+        if idle is None:
+            continue
+        task_ids = [
+            task["id"]
+            for task in owners.get(name, {}).get("open_tasks", [])
+            if not task.get("blocked")
+        ]
+        if best is None or idle > best[0]:
+            best = (idle, name, task_ids)
+    if best is None:
+        return None
+    return best[1], best[0], best[2]
+
+
+def blocked_peers(members: dict, caller: str) -> list[dict]:
+    """List other active peers who are blocked so teammates can proactively offer help."""
+    result: list[dict] = []
+    for name, member in members.items():
+        if (
+            name == caller
+            or member["role"] == Role.HUMAN.label
+            or is_retired(member)
+            or fresh_run_ended(member)
+            or member["state"] != "blocked"
+        ):
+            continue
+        entry: dict = {"name": name}
+        blocked_ids = [
+            task["id"] for task in member.get("open_tasks", []) if task.get("blocked")
+        ]
+        if blocked_ids:
+            entry["tasks"] = blocked_ids
+        result.append(entry)
+    return result
+
+
+def has_active_peers(members: dict, caller: str) -> bool:
+    """Check whether any other non-human member is currently working or starting."""
+    return any(
+        name != caller and member["role"] != Role.HUMAN.label and member_is_working(member)
+        for name, member in members.items()
+    )
+
+
 def lead_waiting_on(status: dict, caller: str) -> list[str]:
     """List the most urgent group of peers with incomplete work."""
     members = status["members"]

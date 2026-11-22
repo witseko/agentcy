@@ -69,7 +69,10 @@ class Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         """Commit before acknowledging a submission and keep secrets out of errors."""
         self.connection.settimeout(5)
-        line = self.rfile.readline(MAX_REQUEST + 1)
+        try:
+            line = self.rfile.readline(MAX_REQUEST + 1)
+        except (TimeoutError, ConnectionResetError, BrokenPipeError):
+            return
         if not line:
             return
         try:
@@ -88,7 +91,10 @@ class Handler(socketserver.StreamRequestHandler):
         except (OSError, SQLAlchemyError):
             LOG.error("Core operation failed")
             response = {"error": "Core operation failed"}
-        self.wfile.write(json.dumps(response, ensure_ascii=False).encode() + b"\n")
+        try:
+            self.wfile.write(json.dumps(response, ensure_ascii=False).encode() + b"\n")
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            return
 
 
 class Core(socketserver.ThreadingUnixStreamServer):

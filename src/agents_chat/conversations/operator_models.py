@@ -24,6 +24,7 @@ RoundName = Literal["sealed", "critique"]
 SearchQuery = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 UsageSource = Literal["estimated", "reported", "plugin"]
 BudgetStatus = Literal["ok", "warning", "exhausted"]
+TaskState = Literal["open", "blocked", "done"]
 
 
 class OperatorRequest(BaseModel):
@@ -180,9 +181,16 @@ class SetMemberBudget(ConversationRequest):
         return self
 
 
+class ListTasks(ConversationRequest):
+    """List all tasks in one conversation with their current state and event history."""
+
+    action: Literal["operator_tasks"]
+
+
 OperatorAction = (
     ListConversations
     | ShowConversation
+    | ListTasks
     | CreateConversation
     | InviteParticipant
     | SetOpenInvite
@@ -417,9 +425,43 @@ class MemberBudgetUpdated(Result):
     token_budget: int | None = None
 
 
+class TaskEvent(Result):
+    """One message in a task's timeline."""
+
+    id: int
+    author: str
+    body: str
+    created: int
+    kind: str | None = None
+    to: str | None = None
+    reply_to: int | None = None
+
+
+class TaskDetail(Result):
+    """Summarize one task with its current owner, state, and chronological events."""
+
+    id: int
+    title: str
+    body: str
+    author: str
+    owner: str
+    state: TaskState
+    created: int
+    updated: int
+    pending_handoff_to: str | None = None
+    events: list[TaskEvent]
+
+
+class TaskList(Result):
+    """List every task in a conversation, newest first."""
+
+    tasks: list[TaskDetail]
+
+
 CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     ListConversations: ConversationList,
     ShowConversation: ConversationView,
+    ListTasks: TaskList,
     CreateConversation: CreatedConversation,
     InviteParticipant: JoinInvitation,
     SetOpenInvite: OpenInviteStatus,

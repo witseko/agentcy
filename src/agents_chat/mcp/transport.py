@@ -14,6 +14,19 @@ from agents_chat.storage.database import data_dir
 
 MAX_REQUEST = 128 * 1024
 MAX_RESPONSE = 2 * 1024 * 1024
+INVALID_ARGUMENTS = "Invalid bridge arguments"
+CORE_VERSION_HELP = (
+    "This shim built a valid request, so the running core is likely an older or newer "
+    "version. Stop the process running agents_chat.mcp.core and retry. The next call starts "
+    "the installed core. Join codes and conversations are kept."
+)
+IDEMPOTENT_ACTIONS = frozenset(
+    {"read", "status", "plugins", "post", "close", "release", "report_usage"}
+)
+
+
+class IncompleteResponseError(RuntimeError):
+    """Raised when the local core closes the socket before sending a full JSON line."""
 
 
 def connect(path: Path) -> socket.socket:
@@ -64,14 +77,28 @@ def core_connection() -> socket.socket:
         raise RuntimeError(f"Bridge startup failed. See {root / 'core.log'}")
 
 
-def exchange(request: Request) -> dict:
-    """Exchange a bounded JSON line. Never log prompts or participant tokens."""
+def _exchange_once(request: Request) -> dict:
+    """Send one bounded JSON line and decode the bridge response."""
     with core_connection() as client, client.makefile("rb") as reader:
         client.sendall(request.model_dump_json().encode() + b"\n")
         line = reader.readline(MAX_RESPONSE + 1)
         if not line.endswith(b"\n") or len(line) > MAX_RESPONSE:
-            raise RuntimeError("Incomplete bridge response")
+            raise IncompleteResponseError("Incomplete bridge response")
         response = json.loads(line)
         if "error" in response:
-            raise ValueError(response["error"])
+            error = response["error"]
+            # The request passed this shim's own validation, so a rejection is a version skew.
+            if error.startswith(INVALID_ARGUMENTS):
+                error = f"{error}. {CORE_VERSION_HELP}"
+            raise ValueError(error)
         return response["result"]
+
+
+def exchange(request: Request) -> dict:
+    """Exchange a bounded JSON line, retrying once on transient disconnects for idempotent calls."""
+    try:
+        return _exchange_once(request)
+    except (BrokenPipeError, ConnectionResetError, IncompleteResponseError):
+        if getattr(request, "action", None) not in IDEMPOTENT_ACTIONS:
+            raise
+        return _exchange_once(request)

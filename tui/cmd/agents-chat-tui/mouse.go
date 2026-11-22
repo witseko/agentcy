@@ -20,6 +20,7 @@ const wheelLines = 3
 func (m model) toggleMouse() model {
 	m.mouseOff = !m.mouseOff
 	m.dragging = noDivider
+	m.contextMenu = contextMenuState{}
 	if m.mouseOff {
 		return m.inform("Mouse off: select text with your terminal. ctrl+o turns it back on.")
 	}
@@ -62,11 +63,22 @@ func (m model) regionAt(x int) region {
 	return regionNone
 }
 
-// onClick routes a left click to the window, form or main screen part under it. Row 0 is
-// the top bar, so body rows start at 1.
+// onClick routes a left or right click to the window, form or main screen part under it.
+// Row 0 is the top bar, so body rows start at 1.
 func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
+	if mouse.Button == tea.MouseRight {
+		return m.onRightClick(mouse)
+	}
 	if mouse.Button != tea.MouseLeft {
 		return m, nil
+	}
+	if m.contextMenu.open {
+		if mouse.Y == m.height-1 {
+			if id := m.zoneAt(mouse.X, mouse.Y); id != "" {
+				return m.clickZone(id)
+			}
+		}
+		return m.clickContextMenu(mouse.X, mouse.Y)
 	}
 	if id := m.zoneAt(mouse.X, mouse.Y); id != "" {
 		return m.clickZone(id)
@@ -90,10 +102,13 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	case regionList:
 		return m.clickList(row, bodyHeight)
 	case regionTeam:
-		return m.clickTeam(row)
+		return m.clickTeam(row, bodyHeight)
 	case regionCenter:
 		if m.screen == screenSearch {
 			return m.clickSearch(row, bodyHeight)
+		}
+		if m.screen == screenChat && m.chat.tab == tabTasks {
+			return m.clickTasks(row, bodyHeight)
 		}
 		if m.screen == screenChat && row >= bodyHeight-3 && !m.chat.closing && m.chat.retiring == "" {
 			return m.setChatFocus(focusInput)
@@ -133,9 +148,9 @@ func (m model) listItemAt(row int, height int) (int, bool) {
 	return index, true
 }
 
-// clickTeam selects the clicked member, and copies its join prompt when the click is on the
-// copy line.
-func (m model) clickTeam(row int) (tea.Model, tea.Cmd) {
+// clickTeam selects the clicked member, copies its join prompt on the copy line, or opens
+// a clicked open task in the Tasks tab.
+func (m model) clickTeam(row int, bodyHeight int) (tea.Model, tea.Cmd) {
 	names := m.slotNames()
 	for _, block := range m.teamRows() {
 		if row < block.top || row >= block.top+block.size {
@@ -152,6 +167,11 @@ func (m model) clickTeam(row int) (tea.Model, tea.Cmd) {
 				return copied, tea.Batch(command, copyCommand)
 			}
 			return next, command
+		}
+	}
+	for _, item := range m.teamTaskRows(bodyHeight) {
+		if row == item.row {
+			return m.openTaskInTab(item.id)
 		}
 	}
 	return m, nil
@@ -250,6 +270,10 @@ func (m model) onWheel(mouse tea.Mouse) (model, tea.Cmd) {
 	default:
 		return m, nil
 	}
+	if m.contextMenu.open {
+		m.contextMenu.selected = min(max(m.contextMenu.selected+step, 0), max(len(m.contextMenu.items)-1, 0))
+		return m, nil
+	}
 	if m.screen == screenNew || m.inviteWindow.open {
 		return m, nil
 	}
@@ -259,6 +283,16 @@ func (m model) onWheel(mouse tea.Mouse) (model, tea.Cmd) {
 	case regionCenter:
 		switch m.screen {
 		case screenChat:
+			if m.chat.tab == tabTasks {
+				row := mouse.Y - 1
+				bodyHeight := max(m.height-2, 1)
+				if m.isTaskDetailRow(row, bodyHeight) {
+					m.scrollTaskDetail(step * wheelLines)
+				} else {
+					m.moveTaskSelection(step)
+				}
+				return m, nil
+			}
 			return m.scrollTranscriptBy(-step * wheelLines)
 		case screenSearch:
 			m.search.selected = min(max(m.search.selected+step, 0), max(len(m.search.hits)-1, 0))

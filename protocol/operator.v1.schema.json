@@ -820,6 +820,48 @@
       "title": "ListPlugins",
       "type": "object"
     },
+    "ListTasks": {
+      "additionalProperties": false,
+      "description": "List all tasks in one conversation with their current state and event history.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_tasks",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "ListTasks",
+      "type": "object"
+    },
     "MemberBudgetUpdated": {
       "additionalProperties": false,
       "description": "Confirm the participant's updated model and/or starting token budget.",
@@ -1801,6 +1843,165 @@
       "title": "ShowConversation",
       "type": "object"
     },
+    "TaskDetail": {
+      "additionalProperties": false,
+      "description": "Summarize one task with its current owner, state, and chronological events.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "author": {
+          "title": "Author",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "blocked",
+            "done"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "updated": {
+          "title": "Updated",
+          "type": "integer"
+        },
+        "pending_handoff_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pending Handoff To"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/TaskEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "body",
+        "author",
+        "owner",
+        "state",
+        "created",
+        "updated",
+        "events"
+      ],
+      "title": "TaskDetail",
+      "type": "object"
+    },
+    "TaskEvent": {
+      "additionalProperties": false,
+      "description": "One message in a task's timeline.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "author": {
+          "title": "Author",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To"
+        }
+      },
+      "required": [
+        "id",
+        "author",
+        "body",
+        "created"
+      ],
+      "title": "TaskEvent",
+      "type": "object"
+    },
+    "TaskList": {
+      "additionalProperties": false,
+      "description": "List every task in a conversation, newest first.",
+      "properties": {
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskDetail"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tasks"
+      ],
+      "title": "TaskList",
+      "type": "object"
+    },
     "TokenBalance": {
       "additionalProperties": false,
       "description": "Summarize whether active models are spending evenly relative to their initial budgets.",
@@ -1937,6 +2138,9 @@
     },
     {
       "$ref": "#/$defs/ShowConversation"
+    },
+    {
+      "$ref": "#/$defs/ListTasks"
     },
     {
       "$ref": "#/$defs/CreateConversation"

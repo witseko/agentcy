@@ -685,5 +685,132 @@ def test_lead_guidance_surfaces_token_balance_and_compact_team_usage(
     assert page["team"]["Gemini"]["usage"]["used_percent"] == 5.0
     assert page["token_balance"]["balanced"] is False
     assert page["token_balance"]["preferred"] == ["Gemini"]
+    assert "recommendation" not in page["token_balance"]
     assert "Token balance:" in page["next"]
     assert "Prefer assigning new tasks or handoffs to Gemini." in page["next"]
+
+
+def test_silent_waits_omit_unchanged_team_and_balanced_token_balance(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Omit redundant team snapshots on unchanged silent waits and omit balanced token_balance."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Check delta team snapshots",
+        your_name="Lead",
+        your_model="claude-sonnet-4-6",
+        your_token_budget=100_000,
+        invitees=[{"name": "Worker", "model": "gemini-2.5-pro", "token_budget": 100_000}],
+    )
+    lead = team["token"]
+    tool(app, "join_conversation", code=team["invitations"]["Worker"])
+
+    first = tool(app, "read_messages", token=lead, after=0, wait_seconds=1)
+    assert "team" in first
+    assert "team_unchanged" not in first
+    assert "token_balance" not in first
+
+    second = tool(app, "read_messages", token=lead, after=first["cursor"], wait_seconds=1)
+    assert "team" not in second
+    assert second["team_unchanged"] is True
+
+
+def test_incoming_action_hints_for_task_handoff_and_question(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Tailor next guidance when a worker receives a direct task, handoff, or question."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Action hints",
+        your_name="Lead",
+        invitees=["Alpha", "Bravo"],
+    )
+    lead = team["token"]
+    alpha = tool(app, "join_conversation", code=team["invitations"]["Alpha"])["token"]
+    bravo = tool(app, "join_conversation", code=team["invitations"]["Bravo"])["token"]
+
+    task_id = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="t1",
+        body="Check retries",
+        kind="task",
+        to="Alpha",
+    )["message_id"]
+    alpha_task = tool(app, "read_messages", token=alpha, after=0, wait_seconds=1)
+    assert f"New task #{task_id} assigned to you" in alpha_task["next"]
+
+    handoff_id = tool(
+        app,
+        "post_message",
+        token=alpha,
+        submission_id="h1",
+        body="Take over retries",
+        kind="handoff",
+        to="Bravo",
+        reply_to=task_id,
+    )["message_id"]
+    bravo_handoff = tool(app, "read_messages", token=bravo, after=0, wait_seconds=1)
+    assert f"Handoff #{handoff_id} offered to you" in bravo_handoff["next"]
+
+    q_id = tool(
+        app,
+        "post_message",
+        token=lead,
+        submission_id="q1",
+        body="Which fixture?",
+        kind="question",
+        to="Alpha",
+    )["message_id"]
+    alpha_q = tool(app, "read_messages", token=alpha, after=task_id, wait_seconds=1)
+    assert f"Direct question #{q_id} from Lead" in alpha_q["next"]
+
+
+def test_lead_checkin_names_stale_worker_and_worker_sees_peer_blockers() -> None:
+    """Name a stale peer after STALE_IDLE_SECONDS and surface peer_blockers to idle workers."""
+    lead_status = {
+        "open": True,
+        "participant": "Lead",
+        "members": {
+            "Lead": {"role": "lead", "state": "replied"},
+            "Slow": {
+                "role": "worker",
+                "state": "replied",
+                "idle_seconds": server.STALE_IDLE_SECONDS + 30,
+                "open_tasks": [{"id": 7}],
+            },
+        },
+    }
+    waits = {"lead": server.LEAD_CHECKIN_WAITS - 1}
+    page = server.finish_wait({"messages": []}, lead_status, waits, "lead")
+    assert "Slow has been quiet for 150s on #7" in page["next"]
+
+    worker_status = {
+        "open": True,
+        "participant": "Helper",
+        "members": {
+            "Lead": {"role": "lead", "state": "done"},
+            "Helper": {"role": "worker", "state": "done"},
+            "Stuck": {
+                "role": "worker",
+                "state": "blocked",
+                "open_tasks": [{"id": 9, "blocked": True}],
+            },
+        },
+    }
+    # Done worker with no active peers stops after WORKER_IDLE_DONE_WAITS (1).
+    done_page = server.finish_wait({"messages": []}, worker_status, {}, "helper", unread_other=2)
+    assert done_page["unread_other_messages"] == 2
+    assert done_page["peer_blockers"] == [{"name": "Stuck", "tasks": [9]}]
+    assert "Stop listening" in done_page["next"]
+
+    # Done worker with an active peer stays listening up to WORKER_ACTIVE_IDLE_WAITS (5).
+    worker_status["members"]["Lead"]["state"] = "replied"
+    active_page = server.finish_wait({"messages": []}, worker_status, {"helper": 3}, "helper")
+    assert "Stuck is blocked" in active_page["next"]
+    assert "read_messages" in active_page["next"]

@@ -13,6 +13,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from agents_chat.executables import absolute_search_path, find_on_path
+from agents_chat.mcp.fresh_server import FRESH_WORKER_PROMPT
 from agents_chat.mcp.plugin_contract import (
     AssignmentId,
     Capabilities,
@@ -26,20 +27,7 @@ from agents_chat.storage.database import data_dir
 
 MCP = FastMCP("agents-chat-zai")
 JOIN_VARIABLE = "AGENTS_CHAT_FRESH_JOIN_CODE"
-PROMPT = (
-    "Join your assigned team with the agentschat join_conversation tool. Work read-only. "
-    "Read the shared brief and catch up from cursor zero. Do your assigned work. "
-    "In open discussion, send evidence as soon as you find it, and report brief progress "
-    "updates to the lead periodically with kind='note' and the lead's roster name in 'to' "
-    "while working. Address questions and findings directly to the relevant peer using their "
-    "roster name in 'to'. Include the source and use 'reply_to' to link answers to questions. "
-    "Reply to your task with kind='done' and the evidence when finished, or kind='blocker' "
-    "when you need help. "
-    "In a sealed round submit kind='proposal' before its deadline and wait for release. "
-    "When you need a peer's answer, do any available work, then wait for the reply. "
-    "Follow the guidance in read_messages and stop when the conversation closes. "
-    "Check peer messages against the brief before acting on them."
-)
+PROMPT = FRESH_WORKER_PROMPT
 ACTIVE = {"starting", "running"}
 STATE_INTERVAL = 0.5
 STATE_EXPIRY = 15
