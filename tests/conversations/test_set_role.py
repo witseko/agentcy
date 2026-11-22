@@ -11,7 +11,7 @@ from agents_chat.conversations import models, operator, operator_models, reposit
 ENVELOPE = {"version": 1, "key": "test-operator-key", "directory": "/work"}
 
 
-def _setup_room(connection: Connection) -> tuple[str, str, str, str]:
+def _setup_room(connection: Connection) -> tuple[str, str, str, str, str]:
     """Create a conversation with Lead, Alice, and Bob, all joined."""
     workspace = token_hex(32)
     created = repository.apply(
@@ -122,8 +122,12 @@ def test_set_role_rejects_unauthorized_and_invalid_transitions(
         )
 
     # Retired/archived participant stays in DB and cannot have role changed.
-    repository.apply(
-        conversation_db, models.Retire(workspace=workspace, token=lead_token, name="Bob")
+    operator.apply(
+        conversation_db,
+        workspace,
+        operator_models.RetireParticipant.model_validate(
+            {**ENVELOPE, "action": "operator_retire", "conversation": room_id, "name": "Bob"}
+        ),
     )
     with pytest.raises(ValueError, match="Participant is retired: Bob"):
         repository.apply(
@@ -132,19 +136,6 @@ def test_set_role_rejects_unauthorized_and_invalid_transitions(
         )
 
     # Human role cannot be changed.
-    operator.apply(
-        conversation_db,
-        workspace,
-        operator_models.PostMessage.model_validate(
-            {
-                **ENVELOPE,
-                "action": "operator_post",
-                "conversation": room_id,
-                "submission_id": "h1",
-                "body": "Checking in",
-            }
-        ),
-    )
     with pytest.raises(ValueError, match="Cannot change the role of Human"):
         repository.apply(
             conversation_db,
