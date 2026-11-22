@@ -307,6 +307,18 @@
         "cursor": {
           "title": "Cursor",
           "type": "integer"
+        },
+        "total_messages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Messages"
         }
       },
       "required": [
@@ -1344,7 +1356,7 @@
     },
     "ShowConversation": {
       "additionalProperties": false,
-      "description": "Read status, the brief and one page of the full transcript after a cursor.",
+      "description": "Read status, the brief and one page of the full transcript.",
       "properties": {
         "version": {
           "const": 1,
@@ -1379,6 +1391,25 @@
           "minimum": 0,
           "title": "After",
           "type": "integer"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "tail": {
+          "default": false,
+          "title": "Tail",
+          "type": "boolean"
         }
       },
       "required": [

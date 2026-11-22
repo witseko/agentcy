@@ -16,6 +16,9 @@ const (
 	inputPlaceholder = "Message everyone. @Name addresses one member, ? asks a question."
 	maxBriefLines    = 2
 	scrollPageSize   = 10
+	// autoPageThreshold loads the next transcript page when scrolling comes within this many
+	// lines of the top or bottom edge of the loaded window.
+	autoPageThreshold = 12
 	// sendButtonWidth is the width of the Send button and the gap before it.
 	sendButtonWidth = 10
 	// messageIndent lines a message body up under its author, after the time column.
@@ -34,23 +37,40 @@ const (
 // roleOrder sorts members in the team panel: leads first, the human last.
 var roleOrder = map[string]int{"lead": 0, "co-lead": 1, "worker": 2, "human": 3}
 
+// transcriptLinesCache stores the wrapped transcript lines for one width and state version,
+// so redraws on mouse motion, typing, and scrolling do not re-wrap every message.
+type transcriptLinesCache struct {
+	valid        bool
+	width        int
+	highlight    int64
+	version      uint64
+	hasOlder     bool
+	loadingOlder bool
+	lines        []string
+}
+
 // chatState holds the open conversation and the transcript read so far.
 type chatState struct {
-	id       string
-	view     ConversationView
-	loaded   bool
-	messages []TranscriptMessage
-	cursor   int64
-	polling  bool
-	input    textinput.Model
-	summary  textinput.Model
-	closing  bool
-	retiring string
-	focus    chatFocus
-	selected int
+	id           string
+	view         ConversationView
+	loaded       bool
+	messages     []TranscriptMessage
+	cursor       int64
+	polling      bool
+	loadingOlder bool
+	hasOlder     bool
+	hasNewer     bool
+	version      uint64
+	linesCache   *transcriptLinesCache
+	input        textinput.Model
+	summary      textinput.Model
+	closing      bool
+	retiring     string
+	focus        chatFocus
+	selected     int
 	// scroll counts transcript lines hidden below the view. Zero follows the tail.
 	scroll int
-	// jumping asks the view to scroll to jumpTarget once the whole transcript has loaded.
+	// jumping asks the view to scroll to jumpTarget once the initial page has loaded.
 	// A jumpTarget of zero is the brief, at the start of the transcript.
 	jumping    bool
 	jumpTarget int64
@@ -75,7 +95,12 @@ func newChat(conversation string, width int) chatState {
 	summary.Prompt = ""
 	summary.Placeholder = "Summary for the team (optional)"
 	summary.CharLimit = maxBriefLength
-	chat := chatState{id: conversation, input: input, summary: summary}
+	chat := chatState{
+		id:         conversation,
+		input:      input,
+		summary:    summary,
+		linesCache: &transcriptLinesCache{},
+	}
 	chat.resize(width)
 	return chat
 }
@@ -97,11 +122,30 @@ func (c chatState) updateInput(msg tea.Msg) (chatState, tea.Cmd) {
 	return c, command
 }
 
-// openChat shows a conversation and reads its transcript from the start.
+// openChat shows a conversation and reads its newest page first.
 func (m model) openChat(conversation string) (tea.Model, tea.Cmd) {
+	return m.openChatMode(conversation, showTail, 0)
+}
+
+// openChatAt opens a conversation at a search target: target 0 opens at the brief (first page),
+// and a positive target opens at the page ending at that message ID.
+func (m model) openChatAt(conversation string, target int64) (tea.Model, tea.Cmd) {
+	mode := showStart
+	if target > 0 {
+		mode = showJump
+	}
+	return m.openChatMode(conversation, mode, target)
+}
+
+// openChatMode initializes the chat view and fetches its first transcript page.
+func (m model) openChatMode(conversation string, mode showMode, target int64) (tea.Model, tea.Cmd) {
 	m.screen = screenChat
 	_, center, _ := m.columnWidths()
 	m.chat = newChat(conversation, center)
+	if mode == showStart || mode == showJump {
+		m.chat.jumping = true
+		m.chat.jumpTarget = target
+	}
 	m.inviteWindow = inviteState{}
 	m.status = ""
 	for index, item := range m.list.items {
@@ -110,53 +154,234 @@ func (m model) openChat(conversation string) (tea.Model, tea.Cmd) {
 		}
 	}
 	focus := m.chat.input.Focus()
-	m, poll := m.pollChat()
-	return m, tea.Batch(focus, poll)
+	var load tea.Cmd
+	switch mode {
+	case showStart:
+		m, load = m.requestShow(showStart, ShowRequest{Directory: m.directory, Conversation: conversation})
+	case showJump:
+		before := target + 1
+		m, load = m.requestShow(showJump, ShowRequest{Directory: m.directory, Conversation: conversation, Before: &before})
+	default:
+		m, load = m.loadTail()
+	}
+	return m, tea.Batch(focus, load)
+}
+
+// loadTail requests the newest transcript page of the open conversation.
+func (m model) loadTail() (model, tea.Cmd) {
+	return m.requestShow(showTail, ShowRequest{
+		Directory: m.directory, Conversation: m.chat.id, Tail: true,
+	})
 }
 
 // pollChat requests the transcript after the cursor unless a request is in flight.
 func (m model) pollChat() (model, tea.Cmd) {
+	return m.requestShow(showAfter, ShowRequest{
+		Directory: m.directory, Conversation: m.chat.id, After: m.chat.cursor,
+	})
+}
+
+// requestShow sends a forward or initial Show request unless one is already in flight.
+func (m model) requestShow(mode showMode, request ShowRequest) (model, tea.Cmd) {
 	if m.chat.polling {
 		return m, nil
 	}
 	m.chat.polling = true
-	request := ShowRequest{Directory: m.directory, Conversation: m.chat.id, After: m.chat.cursor}
+	before := int64(0)
+	if request.Before != nil {
+		before = *request.Before
+	}
 	client := m.client
 	return m, func() tea.Msg {
 		view, err := client.Show(request)
-		return showMsg{conversation: request.Conversation, after: request.After, view: view, err: err}
+		return showMsg{
+			conversation: request.Conversation,
+			mode:         mode,
+			after:        request.After,
+			before:       before,
+			view:         view,
+			err:          err,
+		}
 	}
 }
 
-// onShow appends a new transcript page, keeps a scrolled view in place and reads on while
-// the core reports more messages.
+// loadOlderMessages fetches the page immediately preceding the oldest loaded message.
+func (m model) loadOlderMessages() (model, tea.Cmd) {
+	if m.chat.loadingOlder || !m.chat.hasOlder || len(m.chat.messages) == 0 {
+		return m, nil
+	}
+	m.chat.loadingOlder = true
+	before := m.chat.messages[0].ID
+	request := ShowRequest{Directory: m.directory, Conversation: m.chat.id, Before: &before}
+	client := m.client
+	return m, func() tea.Msg {
+		view, err := client.Show(request)
+		return showMsg{
+			conversation: request.Conversation,
+			mode:         showOlder,
+			before:       before,
+			view:         view,
+			err:          err,
+		}
+	}
+}
+
+// onShow routes one transcript page response by its pagination mode.
 func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	if msg.conversation != m.chat.id {
 		return m, nil
+	}
+	if msg.mode == showOlder {
+		return m.onShowOlder(msg)
 	}
 	m.chat.polling = false
 	if msg.err != nil {
 		return m.fail(msg.err), nil
 	}
-	if msg.after != m.chat.cursor {
-		return m, nil
+	if msg.mode == showAfter {
+		return m.onShowAfter(msg)
 	}
-	if m.chat.scroll > 0 {
-		_, center, _ := m.columnWidths()
-		m.chat.scroll += len(messageLines(msg.view.Messages, msg.view.Status.Members, center, 0))
-	}
-	m.chat.messages = append(m.chat.messages, msg.view.Messages...)
+	return m.onShowWindow(msg)
+}
+
+// onShowWindow replaces the loaded window after an initial tail, start, or search-jump load.
+func (m model) onShowWindow(msg showMsg) (tea.Model, tea.Cmd) {
+	m.chat.messages = msg.view.Messages
 	m.chat.cursor = msg.view.Cursor
 	m.chat.view = msg.view
 	m.chat.loaded = true
+	m.chat.version++
 	m = m.succeed()
-	if msg.view.More {
-		return m.pollChat()
+	switch msg.mode {
+	case showStart:
+		m.chat.hasOlder = false
+		m.chat.hasNewer = msg.view.More
+	case showJump:
+		m.chat.hasOlder = msg.view.More
+		m.chat.hasNewer = jumpHasNewer(msg.view)
+	default:
+		m.chat.hasOlder = msg.view.More
+		m.chat.hasNewer = false
+		m.chat.scroll = 0
 	}
 	if m.chat.jumping {
 		m = m.scrollToTarget()
 	}
+	m.clampChatScroll()
+	if msg.mode == showTail && m.chat.hasOlder && !m.chat.loadingOlder {
+		_, center, _ := m.columnWidths()
+		if len(m.transcriptLines(center)) < m.transcriptHeight(center) {
+			return m.loadOlderMessages()
+		}
+	}
 	return m, nil
+}
+
+// jumpHasNewer reports whether messages after the jump page may exist.
+func jumpHasNewer(view ConversationView) bool {
+	if view.TotalMessages != nil && !view.More && len(view.Messages) >= *view.TotalMessages {
+		return false
+	}
+	return len(view.Messages) > 0
+}
+
+// onShowOlder prepends an older page above the loaded messages without shifting the viewport.
+func (m model) onShowOlder(msg showMsg) (tea.Model, tea.Cmd) {
+	m.chat.loadingOlder = false
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	if len(m.chat.messages) == 0 || msg.before != m.chat.messages[0].ID {
+		return m, nil
+	}
+	rolesChanged := memberRolesChanged(m.chat.view.Status.Members, msg.view.Status.Members)
+	m.chat.view.Status = msg.view.Status
+	m.chat.view.TotalMessages = msg.view.TotalMessages
+	m.chat.hasOlder = msg.view.More
+	older := filterBefore(msg.view.Messages, m.chat.messages[0].ID)
+	if len(older) > 0 {
+		combined := make([]TranscriptMessage, 0, len(older)+len(m.chat.messages))
+		combined = append(combined, older...)
+		combined = append(combined, m.chat.messages...)
+		m.chat.messages = combined
+		m.chat.version++
+	} else if rolesChanged {
+		m.chat.version++
+	}
+	m.clampChatScroll()
+	return m.succeed(), nil
+}
+
+// onShowAfter appends newer messages, preserving scroll only when genuinely scrolled up.
+func (m model) onShowAfter(msg showMsg) (tea.Model, tea.Cmd) {
+	if msg.after != m.chat.cursor {
+		return m, nil
+	}
+	_, center, _ := m.columnWidths()
+	maxBefore := m.maxTranscriptScroll()
+	wasScrolledUp := m.chat.scroll > 0 && maxBefore > 0
+	rolesChanged := memberRolesChanged(m.chat.view.Status.Members, msg.view.Status.Members)
+	added := msg.view.Messages
+	if len(m.chat.messages) > 0 {
+		added = filterAfter(added, m.chat.messages[len(m.chat.messages)-1].ID)
+	}
+	if len(added) > 0 {
+		m.chat.messages = append(m.chat.messages, added...)
+		m.chat.version++
+	} else if rolesChanged {
+		m.chat.version++
+	}
+	m.chat.cursor = msg.view.Cursor
+	m.chat.view = msg.view
+	m.chat.loaded = true
+	if wasScrolledUp && len(added) > 0 {
+		m.chat.scroll += len(messageLines(added, msg.view.Status.Members, center, 0))
+	}
+	m.clampChatScroll()
+	m = m.succeed()
+	if m.chat.hasNewer {
+		m.chat.hasNewer = msg.view.More
+		return m, nil
+	}
+	if msg.view.More && m.chat.scroll == 0 {
+		return m.pollChat()
+	}
+	return m, nil
+}
+
+// filterBefore returns messages strictly older than limit.
+func filterBefore(messages []TranscriptMessage, limit int64) []TranscriptMessage {
+	var out []TranscriptMessage
+	for _, message := range messages {
+		if message.ID < limit {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+// filterAfter returns messages strictly newer than limit.
+func filterAfter(messages []TranscriptMessage, limit int64) []TranscriptMessage {
+	var out []TranscriptMessage
+	for _, message := range messages {
+		if message.ID > limit {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+// memberRolesChanged reports whether any participant role was added or changed.
+func memberRolesChanged(before map[string]MemberStatus, after map[string]MemberStatus) bool {
+	if len(before) != len(after) {
+		return true
+	}
+	for name, member := range after {
+		if prev, found := before[name]; !found || prev.Role != member.Role {
+			return true
+		}
+	}
+	return false
 }
 
 // scrollToTarget scrolls the transcript so the target message starts at the top of the
@@ -166,11 +391,16 @@ func (m model) scrollToTarget() model {
 	m.chat.jumping = false
 	_, center, _ := m.columnWidths()
 	members := m.chat.view.Status.Members
-	total := len(messageLines(m.chat.messages, members, center, 0))
+	lines := m.transcriptLines(center)
+	total := len(lines)
 	top := 0
+	bannerLines := 0
+	if m.chat.hasOlder {
+		bannerLines = 1
+	}
 	for index, message := range m.chat.messages {
 		if message.ID == m.chat.jumpTarget {
-			top = len(messageLines(m.chat.messages[:index], members, center, 0))
+			top = bannerLines + len(messageLines(m.chat.messages[:index], members, center, 0))
 			m.chat.highlight = message.ID
 		}
 	}
@@ -209,8 +439,7 @@ func (m model) chatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		return m.reissueSelected()
 	case "pgup", "pgdown":
-		m.chat.scrollBy(msg.String())
-		return m, nil
+		return m.scrollTranscript(msg.String())
 	}
 	switch m.chat.focus {
 	case focusTeam:
@@ -239,8 +468,7 @@ func (m model) inputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		return m.setChatFocus(focusList)
 	case "up", "down":
-		m.chat.scrollBy(msg.String())
-		return m, nil
+		return m.scrollTranscript(msg.String())
 	}
 	var command tea.Cmd
 	m.chat, command = m.chat.updateInput(msg)
@@ -307,19 +535,53 @@ func (m model) copyMemberPrompt() (tea.Model, tea.Cmd) {
 	return m.copyPrompt(name)
 }
 
-// scrollBy moves the transcript view. The view clamps the offset when it draws.
-func (c *chatState) scrollBy(key string) {
+// scrollTranscript moves the transcript for a scroll key and triggers auto-pagination near edges.
+func (m model) scrollTranscript(key string) (model, tea.Cmd) {
 	switch key {
 	case "up":
-		c.scroll++
+		return m.scrollTranscriptBy(1)
 	case "down":
-		c.scroll--
+		return m.scrollTranscriptBy(-1)
 	case "pgup":
-		c.scroll += scrollPageSize
+		return m.scrollTranscriptBy(scrollPageSize)
 	case "pgdown":
-		c.scroll -= scrollPageSize
+		return m.scrollTranscriptBy(-scrollPageSize)
 	}
-	c.scroll = max(c.scroll, 0)
+	return m, nil
+}
+
+// scrollTranscriptBy shifts the transcript offset by delta lines (positive scrolls up),
+// clamps it to the real scroll bounds, and auto-loads older or newer pages near the edges.
+func (m model) scrollTranscriptBy(delta int) (model, tea.Cmd) {
+	maxScroll := m.maxTranscriptScroll()
+	m.chat.scroll = min(max(m.chat.scroll+delta, 0), maxScroll)
+	if delta > 0 && m.chat.loaded && m.chat.hasOlder && !m.chat.loadingOlder &&
+		maxScroll-m.chat.scroll <= autoPageThreshold {
+		return m.loadOlderMessages()
+	}
+	if delta < 0 && m.chat.loaded && m.chat.hasNewer && !m.chat.polling &&
+		m.chat.scroll <= autoPageThreshold {
+		return m.pollChat()
+	}
+	return m, nil
+}
+
+// maxTranscriptScroll returns the largest valid scroll offset for the current viewport.
+func (m model) maxTranscriptScroll() int {
+	if m.chat.id == "" {
+		return 0
+	}
+	_, center, _ := m.columnWidths()
+	return max(len(m.transcriptLines(center))-m.transcriptHeight(center), 0)
+}
+
+// clampChatScroll keeps m.chat.scroll within [0, maxTranscriptScroll] so resizing or
+// short chats never leave a stale non-zero offset that hides new messages.
+func (m *model) clampChatScroll() {
+	if m.chat.id == "" {
+		return
+	}
+	m.chat.scroll = min(max(m.chat.scroll, 0), m.maxTranscriptScroll())
 }
 
 // startClosing asks for an optional summary before the conversation closes.
@@ -451,12 +713,15 @@ func (m model) submitInput() (tea.Model, tea.Cmd) {
 	}
 }
 
-// onPosted shows a failed post and otherwise reads the new message at once.
+// onPosted shows a failed post and otherwise jumps to the tail and reads the new message at once.
 func (m model) onPosted(msg postedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.fail(msg.err), nil
 	}
 	m.chat.scroll = 0
+	if m.chat.hasNewer {
+		return m.loadTail()
+	}
 	return m.pollChat()
 }
 
@@ -797,7 +1062,11 @@ func (m model) headerLayout(width int) headerParts {
 	case !view.Status.Open:
 		parts.state = badge("CLOSED", colorDim)
 	}
-	detail := fmt.Sprintf("%d messages", len(m.chat.messages))
+	count := len(m.chat.messages)
+	if view.TotalMessages != nil {
+		count = *view.TotalMessages
+	}
+	detail := fmt.Sprintf("%d messages", count)
 	if view.Created != nil {
 		detail = "started " + time.Unix(*view.Created, 0).Format("15:04") + " · " + detail
 	}
@@ -891,9 +1160,42 @@ func (m model) inputPreview() string {
 	return post.kind + " to " + target + " · ⏎ send"
 }
 
+// transcriptLines returns the cached wrapped lines for the loaded messages and any top banner.
+func (m model) transcriptLines(width int) []string {
+	cache := m.chat.linesCache
+	if cache != nil && cache.valid &&
+		cache.width == width &&
+		cache.highlight == m.chat.highlight &&
+		cache.version == m.chat.version &&
+		cache.hasOlder == m.chat.hasOlder &&
+		cache.loadingOlder == m.chat.loadingOlder {
+		return cache.lines
+	}
+	lines := messageLines(m.chat.messages, m.chat.view.Status.Members, width, m.chat.highlight)
+	if m.chat.hasOlder {
+		label := "  ↑ Scroll up for older messages"
+		if m.chat.loadingOlder {
+			label = "  ↑ Loading older messages…"
+		}
+		lines = append([]string{dimStyle.Render(label)}, lines...)
+	}
+	if cache != nil {
+		*cache = transcriptLinesCache{
+			valid:        true,
+			width:        width,
+			highlight:    m.chat.highlight,
+			version:      m.chat.version,
+			hasOlder:     m.chat.hasOlder,
+			loadingOlder: m.chat.loadingOlder,
+			lines:        lines,
+		}
+	}
+	return lines
+}
+
 // visibleTranscript returns the transcript lines that fit, honoring the scroll offset.
 func (m model) visibleTranscript(width int, height int) []string {
-	lines := messageLines(m.chat.messages, m.chat.view.Status.Members, width, m.chat.highlight)
+	lines := m.transcriptLines(width)
 	if len(lines) == 0 && m.chat.loaded {
 		lines = []string{"", " " + dimStyle.Render("No messages yet. The lead posts tasks here once it joins.")}
 	}

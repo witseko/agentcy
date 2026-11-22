@@ -51,10 +51,21 @@ class ListConversations(WorkspaceRequest):
 
 
 class ShowConversation(ConversationRequest):
-    """Read status, the brief and one page of the full transcript after a cursor."""
+    """Read status, the brief and one page of the full transcript."""
 
     action: Literal["operator_show"]
     after: models.Cursor = 0
+    before: models.MessageId | None = None
+    tail: bool = False
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "ShowConversation":
+        """Allow at most one pagination mode: after, before, or tail."""
+        if self.before is not None and (self.after != 0 or self.tail):
+            raise ValueError("Specify only one of after, before, or tail")
+        if self.tail and self.after != 0:
+            raise ValueError("Specify only one of after, before, or tail")
+        return self
 
 
 class CreateConversation(WorkspaceRequest):
@@ -232,6 +243,7 @@ class ConversationView(Result):
     messages: list[TranscriptMessage]
     more: bool
     cursor: int
+    total_messages: int | None = None
 
 
 class JoinInvitation(Result):

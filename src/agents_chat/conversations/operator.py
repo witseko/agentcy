@@ -198,37 +198,55 @@ def create(
     return result
 
 
-def transcript(connection: Connection, room_id: str, after: int) -> dict:
-    """Return one page of every published message, the human's own included."""
+def transcript(
+    connection: Connection,
+    room_id: str,
+    after: int = 0,
+    before: int | None = None,
+    tail: bool = False,
+) -> dict:
+    """Return one page of published messages in ascending ID order.
+
+    Forward reads use ``after``. Backward reads use ``tail=True`` (latest page)
+    or ``before=<id>`` (older page) and set ``more`` when older messages exist.
+    """
     recipient = member.alias("recipient")
-    rows = (
-        connection.execute(
-            select(
-                message.c.id,
-                member.c.label,
-                message.c.body,
-                message.c.created,
-                message.c.kind,
-                recipient.c.label.label("to"),
-                message.c.reply_to,
-            )
-            .join(member, message.c.author == member.c.id)
-            .outerjoin(recipient, message.c.recipient == recipient.c.id)
-            .where(message.c.room == room_id, message.c.id > after)
-            .order_by(message.c.id)
-            .limit(PAGE_SIZE + 1)
+    query = (
+        select(
+            message.c.id,
+            member.c.label,
+            message.c.body,
+            message.c.created,
+            message.c.kind,
+            recipient.c.label.label("to"),
+            message.c.reply_to,
         )
-        .mappings()
-        .all()
+        .join(member, message.c.author == member.c.id)
+        .outerjoin(recipient, message.c.recipient == recipient.c.id)
+        .where(message.c.room == room_id)
     )
-    page = [
-        {field: value for field, value in row.items() if value is not None}
-        for row in rows[:PAGE_SIZE]
-    ]
+    backward = tail or before is not None
+    if backward:
+        if before is not None:
+            query = query.where(message.c.id < before)
+        query = query.order_by(message.c.id.desc())
+    else:
+        query = query.where(message.c.id > after).order_by(message.c.id)
+    rows = connection.execute(query.limit(PAGE_SIZE + 1)).mappings().all()
+    page_rows = list(reversed(rows[:PAGE_SIZE])) if backward else rows[:PAGE_SIZE]
+    page = [{field: value for field, value in row.items() if value is not None} for row in page_rows]
+    total = (
+        connection.scalar(
+            select(func.count()).select_from(message).where(message.c.room == room_id)
+        )
+        or 0
+    )
+    cursor = page[-1]["id"] if page else (0 if backward else after)
     return {
         "messages": page,
         "more": len(rows) > PAGE_SIZE,
-        "cursor": page[-1]["id"] if page else after,
+        "cursor": cursor,
+        "total_messages": total,
     }
 
 
@@ -243,7 +261,13 @@ def show(connection: Connection, request: operator_models.ShowConversation) -> d
         "created": human["created"],
         "archived": bool(human["archived"]),
         "status": status,
-        **transcript(connection, request.conversation, request.after),
+        **transcript(
+            connection,
+            request.conversation,
+            after=request.after,
+            before=request.before,
+            tail=request.tail,
+        ),
     }
 
 
