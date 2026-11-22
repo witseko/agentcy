@@ -249,6 +249,7 @@ def test_show_pages_after_the_cursor(conversation_db: Connection) -> None:
         human_post(conversation_db, conversation, f"Note {number}")
     first = show(conversation_db, conversation)
     assert first["more"] is True
+    assert first["total_messages"] == operator.PAGE_SIZE + 2
     assert len(first["messages"]) == operator.PAGE_SIZE
     rest = show(conversation_db, conversation, first["cursor"])
     assert [message["body"] for message in rest["messages"]] == [
@@ -256,6 +257,77 @@ def test_show_pages_after_the_cursor(conversation_db: Connection) -> None:
         f"Note {operator.PAGE_SIZE + 1}",
     ]
     assert rest["more"] is False
+    assert rest["total_messages"] == operator.PAGE_SIZE + 2
+
+
+def test_show_tail_and_before_paginate_backward(conversation_db: Connection) -> None:
+    """Tail loads the newest page in ascending order, and before loads older pages."""
+    conversation = create(conversation_db)["conversation"]
+    total = operator.PAGE_SIZE * 2 + 3
+    for number in range(total):
+        human_post(conversation_db, conversation, f"Note {number}")
+
+    tail = run(
+        conversation_db,
+        actions.ShowConversation,
+        action="operator_show",
+        conversation=conversation,
+        tail=True,
+    )
+    assert tail["more"] is True
+    assert tail["total_messages"] == total
+    assert [m["body"] for m in tail["messages"]] == [
+        f"Note {number}" for number in range(total - operator.PAGE_SIZE, total)
+    ]
+    assert tail["cursor"] == tail["messages"][-1]["id"]
+
+    middle = run(
+        conversation_db,
+        actions.ShowConversation,
+        action="operator_show",
+        conversation=conversation,
+        before=tail["messages"][0]["id"],
+    )
+    assert middle["more"] is True
+    assert middle["total_messages"] == total
+    assert [m["body"] for m in middle["messages"]] == [
+        f"Note {number}"
+        for number in range(total - operator.PAGE_SIZE * 2, total - operator.PAGE_SIZE)
+    ]
+
+    oldest = run(
+        conversation_db,
+        actions.ShowConversation,
+        action="operator_show",
+        conversation=conversation,
+        before=middle["messages"][0]["id"],
+    )
+    assert oldest["more"] is False
+    assert [m["body"] for m in oldest["messages"]] == ["Note 0", "Note 1", "Note 2"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"after": 5, "tail": True},
+        {"after": 5, "before": 10},
+        {"before": 10, "tail": True},
+        {"before": 0},
+    ],
+)
+def test_show_rejects_conflicting_or_invalid_pagination(
+    conversation_db: Connection, fields: dict[str, Any]
+) -> None:
+    """Show rejects combining pagination modes or passing a non-positive before ID."""
+    conversation = create(conversation_db)["conversation"]
+    with pytest.raises(ValueError):
+        run(
+            conversation_db,
+            actions.ShowConversation,
+            action="operator_show",
+            conversation=conversation,
+            **fields,
+        )
 
 
 def test_first_write_adds_the_human_to_a_chat_conversation(conversation_db: Connection) -> None:

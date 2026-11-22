@@ -121,7 +121,7 @@ func (m model) onSearched(msg searchedMsg) model {
 }
 
 // openHit opens the chat of a result and scrolls to the matching message once the
-// transcript has loaded. The chat list switches to the archive for an archived chat.
+// transcript page has loaded. The chat list switches to the archive for an archived chat.
 func (m model) openHit(hit SearchHit) (tea.Model, tea.Cmd) {
 	var listCommand tea.Cmd
 	if m.list.archived != hit.Archived {
@@ -129,13 +129,12 @@ func (m model) openHit(hit SearchHit) (tea.Model, tea.Cmd) {
 		listCommand = m.loadList()
 	}
 	m.search.input.Blur()
-	next, command := m.openChat(hit.Conversation)
-	opened := next.(model)
-	opened.chat.jumping = true
+	target := int64(0)
 	if hit.MessageID != nil {
-		opened.chat.jumpTarget = *hit.MessageID
+		target = *hit.MessageID
 	}
-	return opened, tea.Batch(command, listCommand)
+	next, command := m.openChatAt(hit.Conversation, target)
+	return next, tea.Batch(command, listCommand)
 }
 
 // searchHelp returns the key hints for the search screen.

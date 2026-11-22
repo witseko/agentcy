@@ -63,11 +63,14 @@ type ListRequest struct {
 	Archived  bool   `json:"archived,omitempty"`
 }
 
-// ShowRequest reads status, the brief and one transcript page after a cursor.
+// ShowRequest reads status, the brief and one transcript page: forward after a cursor,
+// the newest page when Tail is set, or an older page before a message ID.
 type ShowRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	After        int64  `json:"after"`
+	Before       *int64 `json:"before,omitempty"`
+	Tail         bool   `json:"tail,omitempty"`
 }
 
 // CreateRequest creates a conversation in which every slot is an invitation.
@@ -193,14 +196,15 @@ type TranscriptMessage struct {
 
 // ConversationView holds the brief, status and one transcript page.
 type ConversationView struct {
-	Conversation string              `json:"conversation"`
-	Brief        string              `json:"brief"`
-	Created      *int64              `json:"created"`
-	Archived     bool                `json:"archived"`
-	Status       ConversationStatus  `json:"status"`
-	Messages     []TranscriptMessage `json:"messages"`
-	More         bool                `json:"more"`
-	Cursor       int64               `json:"cursor"`
+	Conversation  string              `json:"conversation"`
+	Brief         string              `json:"brief"`
+	Created       *int64              `json:"created"`
+	Archived      bool                `json:"archived"`
+	Status        ConversationStatus  `json:"status"`
+	Messages      []TranscriptMessage `json:"messages"`
+	More          bool                `json:"more"`
+	Cursor        int64               `json:"cursor"`
+	TotalMessages *int                `json:"total_messages,omitempty"`
 }
 
 // JoinInvitation holds a slot's join code and a ready join prompt. The code is a secret.

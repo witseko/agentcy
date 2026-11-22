@@ -45,7 +45,7 @@ from it, as the stdio shim does with `--workspace`.
 | --- | --- |
 | `operator_plugins` | List configured plugin names and models. Takes no `directory`. |
 | `operator_list` | List up to 100 active conversations, newest first. Pass `archived: true` to list archived ones instead. A checkout without a store lists none. |
-| `operator_show` | Return the brief, member status, and one page of messages after `after`. |
+| `operator_show` | Return the brief, member status, and one page of messages: forward after `after`, the latest page with `tail: true`, or an older page before `before`. |
 | `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. |
 | `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
 | `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
