@@ -283,3 +283,85 @@ def test_operator_set_member_budget_and_security_rejections(conversation_db: Con
                 token_budget=100_000,
             ),
         )
+
+
+def test_waiting_read_records_estimated_tokens_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Waiting reads record read tokens once on delivery and never on non-waking timeouts."""
+    from agents_chat.mcp import concurrency
+    from agents_chat.tokens import estimator
+
+    root = tmp_path / "bridge"
+    root.mkdir(mode=0o700)
+    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setattr(concurrency, "SETTLE_SECONDS", 0.05)
+    ledger.clear_ledger_cache()
+    workspace = token_hex(32)
+    notifications = concurrency.Notifications()
+    with concurrency.transaction(workspace) as conn:
+        created = repository.apply(
+            conn,
+            models.Create(
+                workspace=workspace,
+                brief="Token check",
+                initiator="Lead",
+                initiator_model="claude-sonnet-4-6",
+                invitees=[
+                    models.Invitation(name="Target", model="gemini-2.5-pro"),
+                    models.Invitation(name="Observer", model="gemini-2.5-pro"),
+                ],
+            ),
+        )
+        observer = repository.apply(
+            conn, models.Join(workspace=workspace, code=created["invitations"]["Observer"])
+        )
+        msg_body = "Only for Target " * 10
+        first = repository.apply(
+            conn,
+            models.Post(
+                workspace=workspace,
+                token=created["token"],
+                submission_id="m1",
+                body=msg_body,
+                to="Target",
+            ),
+        )["message_id"]
+        before = repository.apply(
+            conn, models.Status(workspace=workspace, token=observer["token"])
+        )["members"]["Observer"]["usage"]["input_tokens"]
+
+    # Non-waking waiting read must not add estimated input tokens.
+    quiet = concurrency.wait_for_read(
+        models.Read(workspace=workspace, token=observer["token"], after=0, wait_seconds=1),
+        notifications,
+    )
+    assert quiet["wake"] is False
+    with concurrency.transaction(workspace) as conn:
+        after_quiet = repository.apply(
+            conn, models.Status(workspace=workspace, token=observer["token"])
+        )["members"]["Observer"]["usage"]["input_tokens"]
+    assert after_quiet == before
+
+    # Waking read records tokens exactly once for the delivered messages.
+    broadcast_body = "Broadcast update for everyone"
+    with concurrency.transaction(workspace) as conn:
+        repository.apply(
+            conn,
+            models.Post(
+                workspace=workspace,
+                token=created["token"],
+                submission_id="m2",
+                body=broadcast_body,
+            ),
+        )
+    waking = concurrency.wait_for_read(
+        models.Read(workspace=workspace, token=observer["token"], after=first, wait_seconds=1),
+        notifications,
+    )
+    assert waking["wake"] is True
+    with concurrency.transaction(workspace) as conn:
+        after_wake = repository.apply(
+            conn, models.Status(workspace=workspace, token=observer["token"])
+        )["members"]["Observer"]["usage"]["input_tokens"]
+    assert after_wake - before == estimator.estimate_text(broadcast_body)

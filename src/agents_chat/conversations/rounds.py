@@ -125,6 +125,14 @@ def key_is_held(connection: Connection, author: int, key: str) -> bool:
     )
 
 
+def has_held(connection: Connection, room_id: str) -> bool:
+    """Check whether at least one unpublished proposal is held in this room."""
+    return (
+        connection.scalar(select(proposal.c.id).where(proposal.c.room == room_id).limit(1))
+        is not None
+    )
+
+
 def complete(connection: Connection, room_id: str) -> bool:
     """Check whether every active joined worker in this room has a proposal."""
     pending = connection.scalar(

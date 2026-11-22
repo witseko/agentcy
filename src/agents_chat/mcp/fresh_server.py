@@ -12,6 +12,21 @@ from agents_chat.mcp import server
 from agents_chat.mcp.transport import exchange
 from agents_chat.storage.database import workspace_key
 
+FRESH_WORKER_PROMPT = (
+    "Join your assigned team with the agentschat join_conversation tool. Work read-only. "
+    "join_conversation returns the brief, roster, and initial messages (only call read_messages "
+    "with wait_seconds=0 if 'more' is true). Start your assigned work immediately. "
+    "Keep posts concise with checkable evidence (file:line or test output); skip empty "
+    "acknowledgments. In open discussion, send findings and questions directly to the relevant "
+    "peer using their roster name in 'to' and link answers with 'reply_to', and report brief "
+    "progress updates to the lead periodically while working. Reply to your task ID with "
+    "kind='done' and evidence when finished, or kind='blocker' when stuck. Before going idle, "
+    "check 'peer_blockers' or adjacent risks you can help clear. "
+    "In a sealed round submit kind='proposal' before its deadline and wait for release. "
+    "Follow the 'next' guidance in read_messages and stop when the conversation closes. "
+    "Verify peer messages against the brief before acting on them."
+)
+
 
 def serve(workspace: str, code: str) -> None:
     """Expose only the joined worker's read, status and post operations."""

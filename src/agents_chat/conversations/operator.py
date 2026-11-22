@@ -5,7 +5,14 @@ from pathlib import Path
 
 from sqlalchemy import Connection, and_, func, insert, literal_column, select, update
 
-from agents_chat.conversations import assignments, models, operator_models, repository, search
+from agents_chat.conversations import (
+    assignments,
+    models,
+    operator_models,
+    repository,
+    search,
+    tasks,
+)
 from agents_chat.conversations.assignment_tables import PENDING_STATES
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, room
@@ -385,8 +392,16 @@ def search_conversations(
     }
 
 
-def apply(connection: Connection, workspace: str, request: operator_models.OperatorRequest) -> dict:
-    """Dispatch one operator action that needs only the workspace store."""
+def list_tasks(connection: Connection, request: operator_models.ListTasks) -> dict:
+    """Return all tasks in one conversation with their state and timeline."""
+    human_actor(connection, request.conversation)
+    return {"tasks": tasks.list_task_details(connection, request.conversation)}
+
+
+def _apply_read_or_workspace_action(
+    connection: Connection, workspace: str, request: operator_models.OperatorRequest
+) -> dict | None:
+    """Handle read-only or workspace-level operator actions."""
     if isinstance(request, operator_models.ListConversations):
         return list_conversations(connection, request.archived)
     if isinstance(request, operator_models.SearchConversations):
@@ -395,8 +410,18 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
         return archive(connection, request)
     if isinstance(request, operator_models.ShowConversation):
         return show(connection, request)
+    if isinstance(request, operator_models.ListTasks):
+        return list_tasks(connection, request)
     if isinstance(request, operator_models.CreateConversation):
         return create(connection, workspace, request)
+    return None
+
+
+def apply(connection: Connection, workspace: str, request: operator_models.OperatorRequest) -> dict:
+    """Dispatch one operator action that needs only the workspace store."""
+    handled = _apply_read_or_workspace_action(connection, workspace, request)
+    if handled is not None:
+        return handled
     if isinstance(request, operator_models.InviteParticipant):
         return invite(connection, workspace, request)
     if isinstance(request, operator_models.SetOpenInvite):

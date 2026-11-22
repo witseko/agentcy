@@ -44,6 +44,7 @@ type Operator interface {
 	Plugins() (PluginList, error)
 	List(request ListRequest) (ConversationList, error)
 	Show(request ShowRequest) (ConversationView, error)
+	Tasks(request TasksRequest) (TaskList, error)
 	Create(request CreateRequest) (CreatedConversation, error)
 	Invite(request InviteRequest) (JoinInvitation, error)
 	OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
@@ -74,6 +75,12 @@ type ShowRequest struct {
 	After        int64  `json:"after"`
 	Before       *int64 `json:"before,omitempty"`
 	Tail         bool   `json:"tail,omitempty"`
+}
+
+// TasksRequest lists every task in a conversation with its current state and timeline.
+type TasksRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
 }
 
 // CreateRequest creates a conversation in which every slot is an invitation.
@@ -198,6 +205,36 @@ type ConversationList struct {
 type OpenTask struct {
 	ID      int64 `json:"id"`
 	Blocked *bool `json:"blocked,omitempty"`
+}
+
+// TaskEvent is one message in a task's timeline.
+type TaskEvent struct {
+	ID      int64  `json:"id"`
+	Author  string `json:"author"`
+	Body    string `json:"body"`
+	Created int64  `json:"created"`
+	Kind    string `json:"kind,omitempty"`
+	To      string `json:"to,omitempty"`
+	ReplyTo *int64 `json:"reply_to,omitempty"`
+}
+
+// TaskDetail holds one task's summary, owner, state, and chronological events.
+type TaskDetail struct {
+	ID               int64       `json:"id"`
+	Title            string      `json:"title"`
+	Body             string      `json:"body"`
+	Author           string      `json:"author"`
+	Owner            string      `json:"owner"`
+	State            string      `json:"state"`
+	Created          int64       `json:"created"`
+	Updated          int64       `json:"updated"`
+	PendingHandoffTo string      `json:"pending_handoff_to,omitempty"`
+	Events           []TaskEvent `json:"events"`
+}
+
+// TaskList holds every task in a conversation, newest first.
+type TaskList struct {
+	Tasks []TaskDetail `json:"tasks"`
 }
 
 // MemberUsage reports one member's token spend and remaining budget.
@@ -406,6 +443,13 @@ func (c *Client) List(request ListRequest) (ConversationList, error) {
 func (c *Client) Show(request ShowRequest) (ConversationView, error) {
 	var result ConversationView
 	err := c.call("operator_show", request, &result)
+	return result, err
+}
+
+// Tasks returns all tasks in one conversation with their state and timeline.
+func (c *Client) Tasks(request TasksRequest) (TaskList, error) {
+	var result TaskList
+	err := c.call("operator_tasks", request, &result)
 	return result, err
 }
 

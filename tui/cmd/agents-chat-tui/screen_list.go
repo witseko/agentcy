@@ -105,15 +105,15 @@ func (m model) onArchived(msg archivedMsg) (tea.Model, tea.Cmd) {
 	commands := []tea.Cmd{m.loadList()}
 	if msg.conversation == m.chat.id {
 		var poll tea.Cmd
-		m, poll = m.pollChat()
+		m, poll = m.refreshChat()
 		commands = append(commands, poll)
 	}
 	return m, tea.Batch(commands...)
 }
 
-// onList replaces the list and keeps the selection in range. An answer for the other view
-// arrives after a switch and is dropped. The first answer after a switch selects the open
-// chat when it is in the list.
+// onList replaces the list and keeps selection on the same conversation when it still exists.
+// An answer for the other view arrives after a switch and is dropped. The first answer after
+// a switch selects the open chat when it is in the list.
 func (m model) onList(msg listMsg) model {
 	if msg.err != nil {
 		return m.fail(msg.err)
@@ -122,18 +122,62 @@ func (m model) onList(msg listMsg) model {
 		return m
 	}
 	firstLoad := !m.list.loaded
+	selectedID := ""
+	if !firstLoad && m.list.selected >= 0 && m.list.selected < len(m.list.items) {
+		selectedID = m.list.items[m.list.selected].Conversation
+	}
 	m.list.items = msg.list.Conversations
 	m.list.loaded = true
-	m.list.selected = min(m.list.selected, max(len(m.list.items)-1, 0))
-	for index, item := range m.list.items {
-		if firstLoad && item.Conversation == m.chat.id {
-			m.list.selected = index
-		}
-	}
+	m.restoreListSelection(firstLoad, selectedID)
+	m.syncOpenChatInList()
 	if m.status == "Refreshing." {
 		m.status = ""
+		m.statusTicks = 0
 	}
 	return m.succeed()
+}
+
+// restoreListSelection keeps m.list.selected on the target conversation or clamps it in range.
+func (m *model) restoreListSelection(firstLoad bool, previousID string) {
+	target := previousID
+	if firstLoad && m.chat.id != "" {
+		target = m.chat.id
+	}
+	if target != "" {
+		for index, item := range m.list.items {
+			if item.Conversation == target {
+				m.list.selected = index
+				return
+			}
+		}
+	}
+	m.list.selected = min(max(m.list.selected, 0), max(len(m.list.items)-1, 0))
+}
+
+// syncOpenChatInList updates the sidebar summary of the open conversation from its latest
+// loaded status so the sidebar and open view never disagree.
+func (m *model) syncOpenChatInList() {
+	if m.chat.id == "" || !m.chat.loaded {
+		return
+	}
+	members, joined := 0, 0
+	for _, member := range m.chat.view.Status.Members {
+		if member.Role == "human" || member.State == "retired" {
+			continue
+		}
+		members++
+		if member.State != "invited" {
+			joined++
+		}
+	}
+	for index := range m.list.items {
+		if m.list.items[index].Conversation == m.chat.id {
+			m.list.items[index].Open = m.chat.view.Status.Open
+			m.list.items[index].Members = members
+			m.list.items[index].Joined = joined
+			return
+		}
+	}
 }
 
 // listFocused reports whether keys go to the chat list.

@@ -210,6 +210,7 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_plugins":           {reflect.TypeFor[PluginsRequest](), reflect.TypeFor[PluginList]()},
 	"operator_list":              {reflect.TypeFor[ListRequest](), reflect.TypeFor[ConversationList]()},
 	"operator_show":              {reflect.TypeFor[ShowRequest](), reflect.TypeFor[ConversationView]()},
+	"operator_tasks":             {reflect.TypeFor[TasksRequest](), reflect.TypeFor[TaskList]()},
 	"operator_create":            {reflect.TypeFor[CreateRequest](), reflect.TypeFor[CreatedConversation]()},
 	"operator_invite":            {reflect.TypeFor[InviteRequest](), reflect.TypeFor[JoinInvitation]()},
 	"operator_open_invite":       {reflect.TypeFor[OpenInviteRequest](), reflect.TypeFor[OpenInviteStatus]()},

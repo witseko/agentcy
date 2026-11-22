@@ -23,6 +23,9 @@ type fakeOperator struct {
 	view        ConversationView
 	showFunc    func(ShowRequest) (ConversationView, error)
 	showErr     error
+	tasks       TaskList
+	tasksErr    error
+	taskCalls   []TasksRequest
 	plugins     PluginList
 	creates     []CreateRequest
 	launches    []LaunchRequest
@@ -62,6 +65,11 @@ func (f *fakeOperator) Show(request ShowRequest) (ConversationView, error) {
 		return f.showFunc(request)
 	}
 	return f.view, f.showErr
+}
+
+func (f *fakeOperator) Tasks(request TasksRequest) (TaskList, error) {
+	f.taskCalls = append(f.taskCalls, request)
+	return f.tasks, f.tasksErr
 }
 
 func (f *fakeOperator) Create(request CreateRequest) (CreatedConversation, error) {
@@ -1471,5 +1479,297 @@ func TestBudgetSlashCommandSendsOperatorSetMemberBudget(t *testing.T) {
 	req := fake.budgets[0]
 	if req.Name != "Reviewer" || req.Model != "gemini-2.5-pro" || req.TokenBudget == nil || *req.TokenBudget != 250000 {
 		t.Fatalf("unexpected SetMemberBudget request: %+v", req)
+	}
+}
+
+func TestTasksTabShowsListDetailsFiltersAndJumpsToChat(t *testing.T) {
+	replyID := int64(93)
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Build the tasks tab",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead":            {Role: "lead", State: "replied"},
+					"claude designer": {Role: "worker", State: "replied", OpenTasks: []OpenTask{{ID: 93}}},
+					"Gemini Neon":     {Role: "worker", State: "replied"},
+				},
+			},
+			Messages: []TranscriptMessage{
+				{ID: 93, Label: "Lead", To: "claude designer", Kind: "task", Body: "Design the tasks tab layout\nInclude list and detail panes.", Created: 1700000000},
+				{ID: 105, Label: "Lead", To: "Gemini Neon", Kind: "task", Body: "Wire operator_tasks endpoint", Created: 1700000100},
+			},
+		},
+		tasks: TaskList{
+			Tasks: []TaskDetail{
+				{
+					ID:               93,
+					Title:            "Design the tasks tab layout",
+					Body:             "Design the tasks tab layout\nInclude list and detail panes.",
+					Author:           "Lead",
+					Owner:            "claude designer",
+					State:            "open",
+					Created:          1700000000,
+					Updated:          1700000060,
+					PendingHandoffTo: "Gemini Neon",
+					Events: []TaskEvent{
+						{ID: 93, Kind: "task", Author: "Lead", To: "claude designer", Body: "Design the tasks tab layout\nInclude list and detail panes.", Created: 1700000000},
+						{ID: 99, Kind: "handoff", Author: "claude designer", To: "Gemini Neon", Body: "Passing the UI polish to Gemini Neon.", Created: 1700000060, ReplyTo: &replyID},
+					},
+				},
+				{
+					ID:      105,
+					Title:   "Wire operator_tasks endpoint",
+					Body:    "Wire operator_tasks endpoint",
+					Author:  "Lead",
+					Owner:   "Gemini Neon",
+					State:   "done",
+					Created: 1700000100,
+					Updated: 1700000200,
+					Events: []TaskEvent{
+						{ID: 105, Kind: "task", Author: "Lead", To: "Gemini Neon", Body: "Wire operator_tasks endpoint", Created: 1700000100},
+						{ID: 110, Kind: "done", Author: "Gemini Neon", Body: "Endpoint and schema ready.", Created: 1700000200, ReplyTo: &replyID},
+					},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	// Header shows the Tasks tab button with open task count from status before loading tasks.
+	screenText := ansi.Strip(m.View().Content)
+	if !strings.Contains(screenText, "Tasks (1)") {
+		t.Fatalf("expected Tasks (1) tab button in header:\n%s", screenText)
+	}
+
+	// Switch to Tasks tab with ctrl+t.
+	m, cmd = press(t, m, "ctrl+t")
+	m = drive(t, m, cmd)
+	if m.chat.tab != tabTasks || len(fake.taskCalls) != 1 {
+		t.Fatalf("expected tabTasks and 1 Tasks() call, got tab=%v calls=%d", m.chat.tab, len(fake.taskCalls))
+	}
+
+	tasksText := ansi.Strip(m.View().Content)
+	for _, want := range []string{
+		"Open (1)", "All (2)", "Done (1)",
+		"#93", "Design the tasks tab layout",
+		"HANDOFF → Gemini Neon",
+		"Include list and detail panes.",
+		"ACTIVITY (1)",
+		"Passing the UI polish to Gemini Neon.",
+	} {
+		if !strings.Contains(tasksText, want) {
+			t.Fatalf("Tasks tab missing %q:\n%s", want, tasksText)
+		}
+	}
+
+	// Cycle filter with 'f' from Open -> All -> Done, and select the done task.
+	m, _ = press(t, m, "f")
+	if m.chat.tasks.filter != filterAll || len(m.filteredTasks()) != 2 {
+		t.Fatalf("expected filterAll with 2 tasks, got filter=%v count=%d", m.chat.tasks.filter, len(m.filteredTasks()))
+	}
+	m, _ = press(t, m, "down")
+	selected, _, ok := m.selectedTask()
+	if !ok || selected.ID != 105 {
+		t.Fatalf("expected task #105 selected after down key, got %+v", selected)
+	}
+	allText := ansi.Strip(m.View().Content)
+	if !strings.Contains(allText, "Endpoint and schema ready.") {
+		t.Fatalf("expected task #105 activity details after selecting it:\n%s", allText)
+	}
+
+	// Pressing enter on the selected task jumps back to the Chat tab at that message ID.
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if m.chat.tab != tabChat || m.chat.highlight != 105 {
+		t.Fatalf("expected jump to Chat tab highlighting #105, got tab=%v highlight=%d", m.chat.tab, m.chat.highlight)
+	}
+
+	// Clicking an open task row in the right-hand TEAM panel opens it in the Tasks tab.
+	teamRows := m.teamTaskRows(28)
+	if len(teamRows) != 1 || teamRows[0].id != 93 {
+		t.Fatalf("expected 1 teamTaskRow for #93, got %+v", teamRows)
+	}
+	m, cmd = click(t, m, 130, 1+teamRows[0].row)
+	m = drive(t, m, cmd)
+	if m.chat.tab != tabTasks || m.chat.tasks.selectedID != 93 {
+		t.Fatalf("clicking team open task did not open #93 in Tasks tab: tab=%v selected=%d", m.chat.tab, m.chat.tasks.selectedID)
+	}
+}
+
+func rightClick(t *testing.T, m model, x int, y int) (model, tea.Cmd) {
+	t.Helper()
+	next, command := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseRight})
+	return next.(model), command
+}
+
+func TestRightClickTeamMemberShowsContextOperationsAndRunsThem(t *testing.T) {
+	fake := &fakeOperator{}
+	m := sized(chatModel(t, fake), 140, 30)
+
+	var reviewer teamRow
+	for _, row := range m.teamRows() {
+		if row.name == "Reviewer" {
+			reviewer = row
+		}
+	}
+	// Right-click on Reviewer in the team panel.
+	m, cmd := rightClick(t, m, 130, 1+reviewer.top)
+	m = drive(t, m, cmd)
+	if !m.contextMenu.open || m.selectedMember() != "Reviewer" {
+		t.Fatalf("expected context menu open for Reviewer, got open=%v selected=%q", m.contextMenu.open, m.selectedMember())
+	}
+	rendered := ansi.Strip(m.View().Content)
+	for _, want := range []string{
+		"Reviewer (worker)",
+		"Message @Reviewer",
+		"Ask ?@Reviewer",
+		"Copy join prompt",
+		"Make lead",
+		"Make co-lead",
+		"Set token budget…",
+		"Retire member…",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("context menu missing %q:\n%s", want, rendered)
+		}
+	}
+
+	// Left-click the first item ("Message @Reviewer") inside the context menu.
+	_, top, left, itemOf := m.contextMenuLayout(28)
+	firstItemRow := -1
+	for idx, itemIdx := range itemOf {
+		if itemIdx == 0 {
+			firstItemRow = top + idx
+			break
+		}
+	}
+	m, cmd = click(t, m, left+3, 1+firstItemRow)
+	m = drive(t, m, cmd)
+	if m.contextMenu.open {
+		t.Fatal("expected context menu to close after clicking an item")
+	}
+	if m.chat.focus != focusInput || m.chat.input.Value() != "@Reviewer " {
+		t.Fatalf("expected composer prefilled with '@Reviewer ', got focus=%v value=%q", m.chat.focus, m.chat.input.Value())
+	}
+
+	// Right-click Reviewer again and press shortcut 'm' to Make lead.
+	m, cmd = rightClick(t, m, 130, 1+reviewer.top)
+	m = drive(t, m, cmd)
+	m, cmd = press(t, m, "m")
+	m = drive(t, m, cmd)
+	if m.contextMenu.open || len(fake.roleChanges) != 1 || fake.roleChanges[0].Name != "Reviewer" || fake.roleChanges[0].Role != "lead" {
+		t.Fatalf("expected SetRole(Reviewer, lead) from context menu, got open=%v calls=%+v", m.contextMenu.open, fake.roleChanges)
+	}
+
+	// Right-click Reviewer and click outside the menu to dismiss it.
+	m, cmd = rightClick(t, m, 130, 1+reviewer.top)
+	m = drive(t, m, cmd)
+	if !m.contextMenu.open {
+		t.Fatal("expected context menu open")
+	}
+	m, _ = click(t, m, 2, 2)
+	if m.contextMenu.open {
+		t.Fatal("expected clicking outside to close the context menu")
+	}
+}
+
+func TestRightClickChatListItemArchivesOrOpensConversation(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
+		{Conversation: "open-1", Title: "Open chat", Open: true},
+		{Conversation: "closed-2", Title: "Closed chat", Open: false},
+	}}}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	// Right-click the second (closed) chat in the sidebar list.
+	m, cmd := rightClick(t, m, 5, 1+2+3)
+	m = drive(t, m, cmd)
+	if !m.contextMenu.open || m.list.selected != 1 {
+		t.Fatalf("expected context menu on second chat, got open=%v selected=%d", m.contextMenu.open, m.list.selected)
+	}
+	rendered := ansi.Strip(m.View().Content)
+	if !strings.Contains(rendered, "Archive chat") || !strings.Contains(rendered, "Copy title") {
+		t.Fatalf("expected Archive chat and Copy title in list context menu:\n%s", rendered)
+	}
+
+	// Press 'a' shortcut in the context menu to archive the closed chat.
+	m, cmd = press(t, m, "a")
+	m = drive(t, m, cmd)
+	if m.contextMenu.open || len(fake.archives) != 1 || fake.archives[0].Conversation != "closed-2" || !fake.archives[0].Archived {
+		t.Fatalf("expected archive request for closed-2, got open=%v archives=%+v", m.contextMenu.open, fake.archives)
+	}
+}
+
+func TestRightClickTranscriptMessageCopiesAndOpensTask(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Inspect context menu on messages",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead":   {Role: "lead", State: "replied"},
+					"Worker": {Role: "worker", State: "replied"},
+					"Human":  {Role: "human", State: "human"},
+				},
+			},
+			Messages: []TranscriptMessage{
+				{ID: 42, Label: "Lead", To: "Worker", Kind: "task", Body: "Implement right-click menu", Created: 1700000000},
+			},
+		},
+		tasks: TaskList{
+			Tasks: []TaskDetail{
+				{ID: 42, Title: "Implement right-click menu", Body: "Implement right-click menu", Author: "Lead", Owner: "Worker", State: "open"},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	var copied []string
+	m.clipboard = func(text string) error {
+		copied = append(copied, text)
+		return nil
+	}
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	// In a short chat, the first message starts right below chatHeader.
+	_, center, _ := m.columnWidths()
+	msgRow := len(m.chatHeader(center))
+
+	m, cmd = rightClick(t, m, 60, 1+msgRow)
+	m = drive(t, m, cmd)
+	if !m.contextMenu.open || m.chat.highlight != 42 {
+		t.Fatalf("expected context menu on message #42 with highlight, got open=%v highlight=%d", m.contextMenu.open, m.chat.highlight)
+	}
+	menuView := ansi.Strip(m.View().Content)
+	for _, want := range []string{"Message #42 · Lead", "Copy message", "Message @Lead", "Open Task #42 in Tasks"} {
+		if !strings.Contains(menuView, want) {
+			t.Fatalf("message context menu missing %q:\n%s", want, menuView)
+		}
+	}
+
+	// Press enter on the first item ("Copy message").
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(copied) != 1 || copied[0] != "Implement right-click menu" {
+		t.Fatalf("expected copied message body, got %v", copied)
+	}
+
+	// Right-click message #42 again and choose "Open Task #42 in Tasks".
+	m, cmd = rightClick(t, m, 60, 1+msgRow)
+	m = drive(t, m, cmd)
+	for index, item := range m.contextMenu.items {
+		if item.id == "msg:open-task" {
+			m.contextMenu.selected = index
+		}
+	}
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if m.chat.tab != tabTasks || m.chat.tasks.selectedID != 42 {
+		t.Fatalf("expected Tasks tab with task #42 selected, got tab=%v selected=%d", m.chat.tab, m.chat.tasks.selectedID)
 	}
 }

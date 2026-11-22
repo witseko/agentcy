@@ -56,6 +56,17 @@ def ready(page: dict) -> bool:
     )
 
 
+def _record_delivered_usage(request: models.Read, page: dict) -> None:
+    """Record estimated input tokens once when a waiting read actually delivers messages."""
+    if not ready(page) or not page["messages"]:
+        return
+    with transaction(request.workspace) as connection:
+        participant = repository.authenticate(connection, request.token)
+        repository.record_read_usage(
+            connection, participant, request.workspace, page["messages"], page.get("brief")
+        )
+
+
 def wait_for_read(request: models.Read, notifications: Notifications) -> dict:
     """Wait on committed room changes and settle a newly arrived burst."""
     with transaction(request.workspace) as connection:
@@ -66,6 +77,7 @@ def wait_for_read(request: models.Read, notifications: Notifications) -> dict:
     with condition:
         page = read_page(request)
         if ready(page):
+            _record_delivered_usage(request, page)
             return page
         while (remaining := deadline - time.monotonic()) > 0:
             if round_deadline is not None:
@@ -74,22 +86,26 @@ def wait_for_read(request: models.Read, notifications: Notifications) -> dict:
             page = read_page(request)
             round_deadline = page.get("round_deadline")
             if ready(page):
-                return settle(request, condition, page)
+                settled = settle(request, condition, page)
+                _record_delivered_usage(request, settled)
+                return settled
         return page
 
 
 def read_page(request: models.Read) -> dict:
-    """Load one page in a transaction that ends before returning."""
+    """Load one page in a transaction without counting intermediate polls toward token usage."""
     with transaction(request.workspace) as connection:
-        return repository.apply(connection, request)
+        participant = repository.refresh_participant(connection, request, int(time.time()))
+        return repository.read(connection, participant, request, record_usage=False)
 
 
 def settle(request: models.Read, condition: Condition, page: dict) -> dict:
-    """Collect a short burst while returning promptly if the room closes or member retires."""
+    """Collect a short burst while returning promptly if the page is full, closed, or retired."""
     deadline = time.monotonic() + SETTLE_SECONDS
     while (
         not page.get("closed")
         and not page.get("retired")
+        and not page.get("more")
         and (remaining := deadline - time.monotonic()) > 0
     ):
         condition.wait(remaining)

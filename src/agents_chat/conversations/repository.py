@@ -20,6 +20,7 @@ from agents_chat.tokens import usage as token_usage
 LOG = logging.getLogger(__name__)
 
 ACTIVITY_UPDATE_SECONDS = 10
+CONTENT_DEDUP_SECONDS = 60
 EVENT_KIND = "event"
 RETIRED_ERROR = "You have been retired from this conversation"
 PROGRESS_KINDS = ("done", "blocker", "resume")
@@ -29,20 +30,22 @@ INVITE_LIFETIME_SECONDS = 3600
 JOIN_CODE_PATTERN = re.compile(r"([A-Za-z0-9_-]{22})\.([0-9a-f]{12})")
 JOIN_WORKSPACE_HELP = "Set both clients to the same --workspace and reconnect."
 JOIN_PROMPT = (
-    "Use agents-chat to join with CODE. Read the shared brief and say which role you joined as. "
-    "Catch up from cursor zero. "
-    "Do your assigned part. In open discussion, send evidence and questions directly to the "
-    "peer who can act on them, and report brief progress updates to the lead periodically "
-    "while working. Reply to your task with the result when it is complete. "
-    "Follow the bridge's guidance during this turn."
+    "Use agents-chat to join with CODE. It returns the brief, roster, and initial messages "
+    "(only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as "
+    "and start your part. Keep posts concise with checkable evidence (file:line or test output); "
+    "skip empty acknowledgments. Send findings and questions directly to the peer who can act on "
+    "them, report brief progress updates to the lead periodically while working, reply to your "
+    "task ID with kind='done' or 'blocker', and check peer blockers before going idle. "
+    "Follow the bridge's 'next' guidance."
 )
 OPEN_JOIN_PROMPT = (
-    "Use agents-chat to join with CODE (pass your preferred name if you want one). "
-    "Read the shared brief and say which role you joined as. Catch up from cursor zero. "
-    "Do your assigned part. In open discussion, send evidence and questions directly to the "
-    "peer who can act on them, and report brief progress updates to the lead periodically "
-    "while working. Reply to your task with the result when it is complete. "
-    "Follow the bridge's guidance during this turn."
+    "Use agents-chat to join with CODE (pass your preferred name if you want one). It returns "
+    "the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if "
+    "'more' is true). Say which role you joined as and start your part. Keep posts concise with "
+    "checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and "
+    "questions directly to the peer who can act on them, report brief progress updates to the "
+    "lead periodically while working, reply to your task ID with kind='done' or 'blocker', and "
+    "check peer blockers before going idle. Follow the bridge's 'next' guidance."
 )
 MAX_LABEL_LENGTH = 64
 ASSIGNABLE_ROLES = {
@@ -269,6 +272,55 @@ def resolve_open_name(existing_labels: list[str], requested: str | None) -> str:
         number += 1
 
 
+def initial_messages(
+    connection: Connection,
+    room_id: str,
+    member_id: int,
+    workspace: str,
+    brief: str,
+) -> dict:
+    """Load the first page of existing messages on join and estimate initial context tokens once."""
+    recipient = member.alias("recipient")
+    rows = (
+        connection.execute(
+            select(
+                message.c.id,
+                member.c.label,
+                message.c.body,
+                message.c.kind,
+                recipient.c.label.label("to"),
+                message.c.reply_to,
+            )
+            .join(member, message.c.author == member.c.id)
+            .outerjoin(recipient, message.c.recipient == recipient.c.id)
+            .where(message.c.room == room_id)
+            .order_by(message.c.id)
+            .limit(PAGE_SIZE + 1)
+        )
+        .mappings()
+        .all()
+    )
+    page = [
+        {field: value for field, value in row.items() if value is not None}
+        for row in rows[:PAGE_SIZE]
+    ]
+    read_tokens = estimator.estimate_read(page, brief)
+    if read_tokens > 0:
+        snapshot = token_usage.add_estimated(
+            connection,
+            room_id,
+            member_id,
+            input_tokens=read_tokens,
+            now=int(time.time()),
+        )
+        token_usage.sync_ledger(workspace, snapshot)
+    return {
+        "messages": page,
+        "cursor": page[-1]["id"] if page else 0,
+        "more": len(rows) > PAGE_SIZE,
+    }
+
+
 def join_open(connection: Connection, request: models.Join, code_digest: str) -> dict | None:
     """Join an open conversation via its reusable room-level invite code."""
     open_room = (
@@ -305,6 +357,7 @@ def join_open(connection: Connection, request: models.Join, code_digest: str) ->
     record_event(
         connection, {"room": room_id, "id": member_id}, f"{label} joined via the open invite."
     )
+    history = initial_messages(connection, room_id, member_id, request.workspace, open_room["brief"])
     return {
         "conversation": room_id,
         "participant": label,
@@ -312,6 +365,7 @@ def join_open(connection: Connection, request: models.Join, code_digest: str) ->
         "roster": roster(connection, room_id),
         "brief": open_room["brief"],
         "token": token,
+        **history,
         **rounds.fields(open_room),
     }
 
@@ -351,6 +405,9 @@ def join(connection: Connection, request: models.Join) -> dict:
     if request.token_budget is not None:
         values["token_budget"] = request.token_budget
     connection.execute(update(member).where(member.c.id == slot["id"]).values(**values))
+    history = initial_messages(
+        connection, slot["room"], slot["id"], request.workspace, slot["brief"]
+    )
     return {
         "conversation": slot["room"],
         "participant": slot["label"],
@@ -358,6 +415,7 @@ def join(connection: Connection, request: models.Join) -> dict:
         "roster": roster(connection, slot["room"]),
         "brief": slot["brief"],
         "token": token,
+        **history,
         **rounds.fields(slot),
     }
 
@@ -443,8 +501,21 @@ def invite(
     }
 
 
+def _release_if_sealed_complete(connection: Connection, actor: RowMapping, target_id: int) -> None:
+    """Discard a retired author's proposal and auto-release if remaining workers are complete."""
+    if actor["round"] != rounds.SEALED:
+        return
+    rounds.discard_author(connection, actor["room"], target_id)
+    if rounds.has_held(connection, actor["room"]) and rounds.complete(connection, actor["room"]):
+        release_round(connection, actor, int(time.time()))
+
+
 def retire(connection: Connection, actor: RowMapping, name: str) -> dict:
-    """Retire a participant, expiring unused invites and stopping further writes."""
+    """Retire a participant, expiring unused invites and stopping further writes.
+
+    The lead cannot be retired until another participant becomes lead. The retired
+    participant's unfinished tasks move to an available worker, or to the lead.
+    """
     if actor.get("retired"):
         raise ValueError(RETIRED_ERROR)
     if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
@@ -463,13 +534,30 @@ def retire(connection: Connection, actor: RowMapping, name: str) -> dict:
         raise ValueError(f"Cannot retire {HUMAN_LABEL}")
     if target["retired"]:
         return {"participant": target["label"], "retired": True}
+    if target["role"] == Role.LEAD:
+        raise ValueError("Cannot retire the lead. Assign a new lead first")
     connection.execute(
         update(member).where(member.c.id == target["id"]).values(retired=1, expires=0)
     )
-    if actor["round"] == rounds.SEALED:
-        rounds.discard_author(connection, actor["room"], target["id"])
+    if target["role"] == Role.CO_LEAD:
+        _promote_sole_co_lead(connection, actor["room"])
     record_event(connection, actor, f"Retired {target['label']}.")
+    tasks.redelegate_tasks(connection, actor, target["id"], target["label"])
+    _release_if_sealed_complete(connection, actor, target["id"])
     return {"participant": target["label"], "retired": True}
+
+
+def _promote_sole_co_lead(connection: Connection, room_id: str) -> None:
+    """Make the last active co-lead the lead so the conversation keeps one leader."""
+    co_leads = connection.execute(
+        select(member.c.id).where(
+            member.c.room == room_id, member.c.role == Role.CO_LEAD, member.c.retired == 0
+        )
+    ).all()
+    if len(co_leads) == 1:
+        connection.execute(
+            update(member).where(member.c.id == co_leads[0].id).values(role=Role.LEAD)
+        )
 
 
 def _apply_lead_role(
@@ -810,14 +898,20 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
 
 
 def post_content(connection: Connection, room_id: str, request: models.Submission) -> dict:
-    """Resolve recipient and reply IDs within the authenticated conversation."""
+    """Resolve recipient (case-insensitively) and reply IDs within the authenticated conversation."""
     recipient = None
     if request.to is not None:
-        recipient = connection.scalar(
-            select(member.c.id).where(member.c.room == room_id, member.c.label == request.to)
-        )
-        if recipient is None:
-            raise ValueError("Unknown recipient in this conversation")
+        members = connection.execute(
+            select(member.c.id, member.c.label, member.c.retired).where(member.c.room == room_id)
+        ).all()
+        folded = request.to.casefold()
+        match = next((row for row in members if row.label.casefold() == folded), None)
+        if match is None:
+            active = ", ".join(row.label for row in members if not row.retired)
+            raise ValueError(
+                f"Unknown recipient '{request.to}' in this conversation. Active members: {active}"
+            )
+        recipient = match.id
     if request.reply_to is not None:
         parent = connection.scalar(
             select(message.c.id).where(message.c.room == room_id, message.c.id == request.reply_to)
@@ -830,6 +924,40 @@ def post_content(connection: Connection, room_id: str, request: models.Submissio
         "recipient": recipient,
         "reply_to": request.reply_to,
     }
+
+
+def _record_post_usage(
+    connection: Connection,
+    participant: RowMapping,
+    body: str,
+    now: int,
+    workspace: str | None,
+) -> None:
+    """Record bridge-estimated output tokens for a new post by a non-human member."""
+    if participant["role"] == Role.HUMAN:
+        return
+    snapshot = token_usage.add_estimated(
+        connection,
+        participant["room"],
+        participant["id"],
+        output_tokens=estimator.estimate_post(body),
+        now=now,
+    )
+    if workspace:
+        token_usage.sync_ledger(workspace, snapshot)
+
+
+def _attach_done_warning(
+    connection: Connection, room_id: str, author: int, kind: str | None, owned_before: list[dict], result: dict
+) -> dict:
+    """Attach an unclosed-task warning when a done post left the author's open tasks untouched."""
+    if kind != "done" or not owned_before:
+        return result
+    owned_after = tasks.open_tasks(connection, room_id).get(author, [])
+    warning = tasks.unclosed_done_warning(owned_before, owned_after)
+    if warning is not None:
+        result["warning"] = warning
+    return result
 
 
 def post(
@@ -866,31 +994,29 @@ def post(
         select(message.c.id)
         .where(
             message.c.author == author,
-            message.c.created >= now - 30,
+            message.c.created >= now - CONTENT_DEDUP_SECONDS,
         )
         .filter_by(**content)
         .order_by(message.c.id.desc())
         .limit(1)
+    )
+    owned_before = (
+        tasks.open_tasks(connection, participant["room"]).get(author, [])
+        if content["kind"] == "done"
+        else []
     )
     if number is None or tasks.changes_blocked_state(connection, participant, content):
         tasks.validate_transition(connection, participant, content)
         number = connection.execute(
             insert(message).values(room=participant["room"], author=author, created=now, **content)
         ).inserted_primary_key[0]
-        if participant["role"] != Role.HUMAN:
-            snapshot = token_usage.add_estimated(
-                connection,
-                participant["room"],
-                author,
-                output_tokens=estimator.estimate_post(request.body),
-                now=now,
-            )
-            if workspace:
-                token_usage.sync_ledger(workspace, snapshot)
+        _record_post_usage(connection, participant, request.body, now, workspace)
     connection.execute(
         insert(receipt).values(author=author, key=request.submission_id, message_id=number)
     )
-    return {"message_id": number}
+    return _attach_done_warning(
+        connection, participant["room"], author, content["kind"], owned_before, {"message_id": number}
+    )
 
 
 def record_event(connection: Connection, actor: RowMapping, body: str) -> int:
@@ -912,11 +1038,41 @@ def wakes_listener(participant: RowMapping) -> ColumnElement[bool]:
         return literal(True)
     return or_(
         message.c.recipient == participant["id"],
-        and_(message.c.recipient.is_(None), message.c.kind.is_distinct_from("blocker")),
+        and_(
+            message.c.recipient.is_(None),
+            message.c.kind.is_distinct_from("blocker"),
+            message.c.kind.is_distinct_from(EVENT_KIND),
+        ),
     )
 
 
-def read(connection: Connection, participant: RowMapping, request: models.Read) -> dict:
+def record_read_usage(
+    connection: Connection,
+    participant: RowMapping,
+    workspace: str,
+    messages: list[dict],
+    brief: str | None = None,
+) -> None:
+    """Record bridge-estimated input tokens for a page delivered to a non-human member."""
+    read_tokens = estimator.estimate_read(messages, brief)
+    if read_tokens > 0 and participant["role"] != Role.HUMAN:
+        snapshot = token_usage.add_estimated(
+            connection,
+            participant["room"],
+            participant["id"],
+            input_tokens=read_tokens,
+            now=int(time.time()),
+        )
+        token_usage.sync_ledger(workspace, snapshot)
+
+
+def read(
+    connection: Connection,
+    participant: RowMapping,
+    request: models.Read,
+    *,
+    record_usage: bool = True,
+) -> dict:
     """Return the full view from cursor zero, and only other members' new messages after it."""
     catching_up = request.after == 0
     unread = [message.c.room == participant["room"], message.c.id > request.after]
@@ -995,16 +1151,8 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         result["closed"] = True
     if participant.get("retired"):
         result["retired"] = True
-    read_tokens = estimator.estimate_read(page, result.get("brief"))
-    if read_tokens > 0 and participant["role"] != Role.HUMAN:
-        snapshot = token_usage.add_estimated(
-            connection,
-            participant["room"],
-            participant["id"],
-            input_tokens=read_tokens,
-            now=int(time.time()),
-        )
-        token_usage.sync_ledger(request.workspace, snapshot)
+    if record_usage:
+        record_read_usage(connection, participant, request.workspace, page, result.get("brief"))
     return result
 
 

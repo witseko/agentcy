@@ -280,3 +280,142 @@ def test_followup_task_clears_done_state(
     finished = team_status(conversation_db, lead)["members"]["Alpha"]
     assert finished["state"] == "done"
     assert "open_tasks" not in finished
+
+
+def retire(connection: Connection, token: str, name: str) -> dict:
+    """Retire a participant through the validated request."""
+    return repository.apply(
+        connection,
+        models.Retire(workspace=connection.info["workspace"], token=token, name=name),
+    )
+
+
+def open_task_ids(connection: Connection, token: str, name: str) -> list[int]:
+    """Return the open task IDs that a member currently owns."""
+    member = team_status(connection, token)["members"][name]
+    return [task["id"] for task in member.get("open_tasks", [])]
+
+
+def test_retiring_moves_open_tasks_to_available_worker(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Give a retired worker's open tasks to another worker, who is woken and can finish them."""
+    lead, alpha, bravo = (task_team[name] for name in ("Lead", "Alpha", "Bravo"))
+    first = post(conversation_db, lead, "Audit retries", "task", to="Alpha")
+    second = post(conversation_db, lead, "Audit timeouts", "task", to="Alpha")
+    finished = post(conversation_db, lead, "Audit logs", "task", to="Alpha")
+    post(conversation_db, alpha, "Logs audited", "done", reply_to=finished)
+
+    retire(conversation_db, lead, "Alpha")
+
+    assert open_task_ids(conversation_db, lead, "Bravo") == [first, second]
+    assert open_task_ids(conversation_db, lead, "Alpha") == []
+    page = repository.apply(
+        conversation_db, models.Read(workspace=conversation_db.info["workspace"], token=bravo)
+    )
+    reassigned = [item for item in page["messages"] if item.get("kind") == "reassign"]
+    assert [(item["reply_to"], item["to"]) for item in reassigned] == [
+        (first, "Bravo"),
+        (second, "Bravo"),
+    ]
+    assert "reassigned to you" in server.incoming_action_hint(page["messages"], "Bravo")
+    post(conversation_db, bravo, "Retries audited", "done", reply_to=first)
+    assert open_task_ids(conversation_db, lead, "Bravo") == [second]
+
+
+def test_retiring_balances_tasks_and_counts_invited_workers(conversation_db: Connection) -> None:
+    """Spread tasks by open load, including a worker who is invited but not joined yet."""
+    workspace = conversation_db.info["workspace"]
+    team = repository.apply(
+        conversation_db,
+        models.Create(
+            workspace=workspace,
+            initiator="Lead",
+            brief="Review retries",
+            invitees=["Alpha", "Bravo", "Charlie"],
+        ),
+    )
+    lead = team["token"]
+    for name in ("Alpha", "Bravo"):
+        repository.apply(
+            conversation_db, models.Join(workspace=workspace, code=team["invitations"][name])
+        )
+    first = post(conversation_db, lead, "Audit retries", "task", to="Alpha")
+    second = post(conversation_db, lead, "Audit timeouts", "task", to="Alpha")
+    third = post(conversation_db, lead, "Audit logs", "task", to="Alpha")
+    busy = post(conversation_db, lead, "Audit metrics", "task", to="Bravo")
+
+    retire(conversation_db, lead, "Alpha")
+
+    assert sorted(open_task_ids(conversation_db, lead, "Charlie")) == [first, third]
+    assert sorted(open_task_ids(conversation_db, lead, "Bravo")) == [second, busy]
+
+
+def test_retiring_last_worker_moves_tasks_to_lead(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Give tasks to the lead when no worker is available."""
+    lead = task_team["Lead"]
+    task = post(conversation_db, lead, "Audit retries", "task", to="Alpha")
+    retire(conversation_db, lead, "Bravo")
+
+    retire(conversation_db, lead, "Alpha")
+
+    assert open_task_ids(conversation_db, lead, "Lead") == [task]
+    post(conversation_db, lead, "Retries audited", "done", reply_to=task)
+    assert open_task_ids(conversation_db, lead, "Lead") == []
+
+
+def test_retiring_cancels_pending_handoff(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Drop a retired owner's pending handoff once the task is reassigned."""
+    lead, alpha, bravo = (task_team[name] for name in ("Lead", "Alpha", "Bravo"))
+    task = post(conversation_db, lead, "Audit retries", "task", to="Alpha")
+    post(conversation_db, alpha, "Stuck on access", "blocker", reply_to=task)
+    offer = post(conversation_db, alpha, "Please take over", "handoff", to="Bravo", reply_to=task)
+
+    retire(conversation_db, lead, "Alpha")
+
+    assert team_status(conversation_db, lead)["members"]["Bravo"]["open_tasks"] == [{"id": task}]
+    with pytest.raises(ValueError, match="no longer pending"):
+        post(conversation_db, bravo, "Taking over", "accept", reply_to=offer)
+
+
+def test_lead_cannot_be_retired_until_replaced(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Reject retiring the lead, and allow it after another participant becomes lead."""
+    lead, alpha = task_team["Lead"], task_team["Alpha"]
+    task = post(conversation_db, lead, "Write the summary", "task", to="Alpha")
+    with pytest.raises(ValueError, match="Assign a new lead first"):
+        retire(conversation_db, lead, "Lead")
+
+    repository.apply(
+        conversation_db,
+        models.SetRole(
+            workspace=conversation_db.info["workspace"], token=lead, name="Alpha", role="lead"
+        ),
+    )
+    retire(conversation_db, alpha, "Lead")
+
+    members = team_status(conversation_db, alpha)["members"]
+    assert members["Lead"]["state"] == "retired"
+    assert open_task_ids(conversation_db, alpha, "Alpha") == [task]
+
+
+def test_retiring_co_lead_leaves_remaining_co_lead_as_lead(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Keep one lead when one of two co-leads is retired."""
+    lead, alpha = task_team["Lead"], task_team["Alpha"]
+    repository.apply(
+        conversation_db,
+        models.SetRole(
+            workspace=conversation_db.info["workspace"], token=lead, name="Alpha", role="co-lead"
+        ),
+    )
+
+    retire(conversation_db, alpha, "Lead")
+
+    assert team_status(conversation_db, alpha)["members"]["Alpha"]["role"] == "lead"

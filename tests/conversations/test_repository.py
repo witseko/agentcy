@@ -171,3 +171,89 @@ def test_close_requires_leadership(conversation_db: Connection) -> None:
         apply(conversation_db, "close", token=worker["token"])
 
     assert apply(conversation_db, "close", token=team["token"])["closed"] is True
+
+
+def test_join_returns_initial_messages_and_cursor(conversation_db: Connection) -> None:
+    """Deliver existing messages and cursor directly on join to avoid a redundant read turn."""
+    team = create(conversation_db)
+    first = apply(
+        conversation_db,
+        "post",
+        token=team["token"],
+        body="Check retry backoff",
+        submission_id="m1",
+        kind="task",
+        to=WORKER,
+    )
+    worker = join_worker(conversation_db, team)
+    assert [msg["id"] for msg in worker["messages"]] == [first["message_id"]]
+    assert worker["cursor"] == first["message_id"]
+    assert worker["more"] is False
+
+
+def test_post_resolves_recipient_case_insensitively_and_lists_active_on_error(
+    conversation_db: Connection,
+) -> None:
+    """Accept case-insensitive recipient labels and list valid active names on mismatch."""
+    team = create(conversation_db)
+    worker = join_worker(conversation_db, team)
+    sent = apply(
+        conversation_db,
+        "post",
+        token=team["token"],
+        body="Check timeout path",
+        submission_id="case-ok",
+        to=WORKER.lower(),
+    )
+    page = apply(conversation_db, "read", token=worker["token"], after=0)
+    assert page["messages"][-1]["id"] == sent["message_id"]
+    assert page["messages"][-1]["to"] == WORKER
+
+    with pytest.raises(ValueError, match=f"Active members: .*{WORKER}"):
+        apply(
+            conversation_db,
+            "post",
+            token=team["token"],
+            body="Wrong target",
+            submission_id="bad-to",
+            to="Ghost",
+        )
+
+
+def test_done_without_reply_to_warns_when_author_owns_open_tasks(
+    conversation_db: Connection,
+) -> None:
+    """Surface a warning when kind='done' leaves the author's open tasks unclosed."""
+    team = create(conversation_db)
+    worker = join_worker(conversation_db, team)
+    task = apply(
+        conversation_db,
+        "post",
+        token=team["token"],
+        body="Audit retries",
+        submission_id="t1",
+        kind="task",
+        to=WORKER,
+    )["message_id"]
+
+    unlinked = apply(
+        conversation_db,
+        "post",
+        token=worker["token"],
+        body="All done",
+        submission_id="d1",
+        kind="done",
+    )
+    assert "warning" in unlinked
+    assert f"#{task}" in unlinked["warning"]
+
+    linked = apply(
+        conversation_db,
+        "post",
+        token=worker["token"],
+        body="Task done",
+        submission_id="d2",
+        kind="done",
+        reply_to=task,
+    )
+    assert "warning" not in linked

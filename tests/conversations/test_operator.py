@@ -800,3 +800,190 @@ def test_retire_in_sealed_round_discards_proposal_and_excludes_from_missing(
     assert proposals == ["Peer idea"]
     events = [msg["body"] for msg in view["messages"] if msg.get("kind") == "event"]
     assert "Proposals released for critique. All workers submitted." in events
+
+
+def list_tasks(connection: Connection, conversation: str) -> list[dict]:
+    """List all tasks with details for one conversation as the human."""
+    return run(
+        connection,
+        actions.ListTasks,
+        action="operator_tasks",
+        conversation=conversation,
+    )["tasks"]
+
+
+def test_operator_tasks_returns_states_owners_handoffs_and_timelines(
+    conversation_db: Connection,
+) -> None:
+    """operator_tasks returns full task details, pending handoffs, and chronological events."""
+    workspace = conversation_db.info["workspace"]
+    created = create(conversation_db, ["Worker", "Peer"])
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    worker = join(conversation_db, created["invitations"][1]["code"])
+    peer = join(conversation_db, created["invitations"][2]["code"])
+
+    assert list_tasks(conversation_db, conversation) == []
+
+    # Task 1: assigned to Worker, blocked, resumed, handed off to Peer, accepted, then done.
+    t1 = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=lead["token"],
+            submission_id="t1",
+            body="Fix retry backoff\nMake sure jitter is bounded.",
+            kind="task",
+            to="Worker",
+        ),
+    )["message_id"]
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="t1-block",
+            body="Need the cap value.",
+            kind="blocker",
+            reply_to=t1,
+        ),
+    )
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="t1-resume",
+            body="Found the cap in config.",
+            kind="resume",
+            reply_to=t1,
+        ),
+    )
+    handoff1 = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="t1-handoff",
+            body="Handing off tests to Peer.",
+            kind="handoff",
+            to="Peer",
+            reply_to=t1,
+        ),
+    )["message_id"]
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=peer["token"],
+            submission_id="t1-accept",
+            body="Taking over the tests.",
+            kind="accept",
+            reply_to=handoff1,
+        ),
+    )
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=peer["token"],
+            submission_id="t1-done",
+            body="All retry tests pass.",
+            kind="done",
+            reply_to=t1,
+        ),
+    )
+
+    # Task 2: open with a pending handoff and a note reply.
+    t2 = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=lead["token"],
+            submission_id="t2",
+            body="Design tasks tab\nShow list and details.",
+            kind="task",
+            to="Worker",
+        ),
+    )["message_id"]
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="t2-note",
+            body="Drafted layout.",
+            kind="note",
+            reply_to=t2,
+        ),
+    )
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="t2-handoff",
+            body="Can Peer finish review?",
+            kind="handoff",
+            to="Peer",
+            reply_to=t2,
+        ),
+    )
+
+    # Task 3: currently blocked.
+    t3 = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=lead["token"],
+            submission_id="t3",
+            body="Audit permissions",
+            kind="task",
+            to="Peer",
+        ),
+    )["message_id"]
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=peer["token"],
+            submission_id="t3-block",
+            body="Waiting on fixture.",
+            kind="blocker",
+            reply_to=t3,
+        ),
+    )
+
+    result = list_tasks(conversation_db, conversation)
+    assert [item["id"] for item in result] == [t3, t2, t1]
+
+    blocked_task, open_task, done_task = result
+    assert blocked_task["state"] == "blocked"
+    assert blocked_task["owner"] == "Peer"
+    assert blocked_task["title"] == "Audit permissions"
+    assert [ev["kind"] for ev in blocked_task["events"]] == ["task", "blocker"]
+
+    assert open_task["state"] == "open"
+    assert open_task["owner"] == "Worker"
+    assert open_task["pending_handoff_to"] == "Peer"
+    assert open_task["title"] == "Design tasks tab"
+    assert [ev.get("kind") for ev in open_task["events"]] == ["task", None, "handoff"]
+
+    assert done_task["state"] == "done"
+    assert done_task["author"] == "Lead"
+    assert done_task["owner"] == "Peer"
+    assert "pending_handoff_to" not in done_task
+    assert [ev["kind"] for ev in done_task["events"]] == [
+        "task",
+        "blocker",
+        "resume",
+        "handoff",
+        "accept",
+        "done",
+    ]
+
+
+def test_operator_tasks_rejects_unknown_conversation(conversation_db: Connection) -> None:
+    """Listing tasks for an unknown conversation fails with UNKNOWN_CONVERSATION."""
+    with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
+        list_tasks(conversation_db, token_hex(12))

@@ -298,5 +298,47 @@
       "model": "claude-sonnet-4-6",
       "token_budget": 200000
     }
+  },
+  {
+    "action": "operator_tasks",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_tasks",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567"
+    },
+    "result": {
+      "tasks": [
+        {
+          "id": 12,
+          "title": "Add task details tab to the terminal UI",
+          "body": "Add task details tab to the terminal UI\nInclude task status and timeline.",
+          "author": "Lead",
+          "owner": "Claude",
+          "state": "open",
+          "created": 1700000100,
+          "updated": 1700000120,
+          "events": [
+            {
+              "id": 12,
+              "kind": "task",
+              "author": "Lead",
+              "to": "Claude",
+              "body": "Add task details tab to the terminal UI\nInclude task status and timeline.",
+              "created": 1700000100
+            },
+            {
+              "id": 15,
+              "kind": "note",
+              "author": "Claude",
+              "body": "Working on the backend endpoint first.",
+              "created": 1700000120,
+              "reply_to": 12
+            }
+          ]
+        }
+      ]
+    }
   }
 ]
