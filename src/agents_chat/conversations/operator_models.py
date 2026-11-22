@@ -4,10 +4,11 @@ import json
 import sys
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from pydantic.json_schema import models_json_schema
 
 from agents_chat.conversations import models
+from agents_chat.tokens.settings import ModelName, TokenBudget
 
 Directory = Annotated[str, StringConstraints(max_length=4096, pattern=r"^/[^\x00]*$")]
 OperatorKey = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -21,6 +22,8 @@ LaunchState = Literal[
 ]
 RoundName = Literal["sealed", "critique"]
 SearchQuery = Annotated[str, StringConstraints(min_length=1, max_length=200)]
+UsageSource = Literal["estimated", "reported", "plugin"]
+BudgetStatus = Literal["ok", "warning", "exhausted"]
 
 
 class OperatorRequest(BaseModel):
@@ -51,10 +54,21 @@ class ListConversations(WorkspaceRequest):
 
 
 class ShowConversation(ConversationRequest):
-    """Read status, the brief and one page of the full transcript after a cursor."""
+    """Read status, the brief and one page of the full transcript."""
 
     action: Literal["operator_show"]
     after: models.Cursor = 0
+    before: models.MessageId | None = None
+    tail: bool = False
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "ShowConversation":
+        """Allow at most one pagination mode: after, before, or tail."""
+        if self.before is not None and (self.after != 0 or self.tail):
+            raise ValueError("Specify only one of after, before, or tail")
+        if self.tail and self.after != 0:
+            raise ValueError("Specify only one of after, before, or tail")
+        return self
 
 
 class CreateConversation(WorkspaceRequest):
@@ -63,9 +77,19 @@ class CreateConversation(WorkspaceRequest):
     action: Literal["operator_create"]
     brief: models.Body
     lead: models.Label
-    invitees: models.Slots
+    invitees: models.OptionalSlots = Field(default_factory=list)
+    open_invite: bool = False
     sealed: bool = False
     deadline_minutes: models.DeadlineMinutes | None = None
+
+    @model_validator(mode="after")
+    def validate_create(self) -> "CreateConversation":
+        """Require at least one invitee unless open_invite is enabled, and bound deadlines."""
+        if not self.open_invite and not self.invitees:
+            raise ValueError("Invite at least one participant or enable open_invite")
+        if self.deadline_minutes is not None and not self.sealed:
+            raise ValueError("A proposal deadline requires a sealed round")
+        return self
 
 
 class InviteParticipant(ConversationRequest):
@@ -74,6 +98,13 @@ class InviteParticipant(ConversationRequest):
     action: Literal["operator_invite"]
     name: models.Label
     role: models.InviteRole | None = None
+
+
+class SetOpenInvite(ConversationRequest):
+    """Enable, rotate, or disable a conversation's shared open invite code."""
+
+    action: Literal["operator_open_invite"]
+    enabled: bool = True
 
 
 class LaunchParticipant(ConversationRequest):
@@ -89,6 +120,14 @@ class RetireParticipant(ConversationRequest):
 
     action: Literal["operator_retire"]
     name: models.Label
+
+
+class SetParticipantRole(ConversationRequest):
+    """Change an active participant's role in an open conversation."""
+
+    action: Literal["operator_set_role"]
+    name: models.Label
+    role: models.AssignableRole
 
 
 class PostMessage(ConversationRequest, models.Submission):
@@ -125,18 +164,37 @@ class ListPlugins(OperatorRequest):
     action: Literal["operator_plugins"]
 
 
+class SetMemberBudget(ConversationRequest):
+    """Bind a model name and/or per-conversation starting token budget to a participant."""
+
+    action: Literal["operator_set_member_budget"]
+    name: models.Label
+    model: ModelName | None = None
+    token_budget: TokenBudget | None = None
+
+    @model_validator(mode="after")
+    def validate_budget(self) -> "SetMemberBudget":
+        """Require at least a model name or a starting token budget."""
+        if self.model is None and self.token_budget is None:
+            raise ValueError("Specify model, token_budget, or both")
+        return self
+
+
 OperatorAction = (
     ListConversations
     | ShowConversation
     | CreateConversation
     | InviteParticipant
+    | SetOpenInvite
     | LaunchParticipant
     | RetireParticipant
+    | SetParticipantRole
     | PostMessage
     | CloseConversation
     | ArchiveConversation
     | SearchConversations
     | ListPlugins
+    | SetMemberBudget
 )
 
 
@@ -170,8 +228,34 @@ class OpenTask(Result):
     blocked: bool | None = None
 
 
+class MemberUsage(Result):
+    """Report one member's token spend and remaining budget."""
+
+    model: str | None = None
+    conversation_tokens: int
+    input_tokens: int
+    output_tokens: int
+    model_tokens_used: int
+    source: UsageSource
+    initial_tokens: int | None = None
+    remaining_tokens: int | None = None
+    used_percent: float | None = None
+    remaining_percent: float | None = None
+    status: BudgetStatus | None = None
+
+
+class TokenBalance(Result):
+    """Summarize whether active models are spending evenly relative to their initial budgets."""
+
+    balanced: bool
+    imbalance_gap_percent: float
+    overloaded: list[str] | None = None
+    preferred: list[str] | None = None
+    recommendation: str | None = None
+
+
 class MemberStatus(Result):
-    """Report one member's role, membership state, launch state and open tasks."""
+    """Report one member's role, membership state, launch state, open tasks and usage."""
 
     role: RoleName
     state: MemberState
@@ -179,6 +263,7 @@ class MemberStatus(Result):
     idle_seconds: int | None = None
     messages: int | None = None
     open_tasks: list[OpenTask] | None = None
+    usage: MemberUsage | None = None
 
 
 class ConversationStatus(Result):
@@ -186,8 +271,10 @@ class ConversationStatus(Result):
 
     open: bool
     members: dict[str, MemberStatus]
+    open_invite: bool | None = None
     round: RoundName | None = None
     round_deadline: int | None = None
+    token_balance: TokenBalance | None = None
 
 
 class TranscriptMessage(Result):
@@ -213,6 +300,7 @@ class ConversationView(Result):
     messages: list[TranscriptMessage]
     more: bool
     cursor: int
+    total_messages: int | None = None
 
 
 class JoinInvitation(Result):
@@ -224,12 +312,28 @@ class JoinInvitation(Result):
     join_prompt: str
 
 
+class OpenInviteInvitation(Result):
+    """Return a reusable room-level join code and a ready join prompt."""
+
+    code: str
+    join_prompt: str
+
+
+class OpenInviteStatus(Result):
+    """Report whether the conversation has an active shared open invite."""
+
+    open_invite: bool
+    code: str | None = None
+    join_prompt: str | None = None
+
+
 class CreatedConversation(Result):
     """Return the new conversation with one invitation per slot, the lead first."""
 
     conversation: str
     invitations: list[JoinInvitation]
     roster: dict[str, RoleName]
+    open_invite: OpenInviteInvitation | None = None
     round: RoundName | None = None
     round_deadline: int | None = None
 
@@ -246,6 +350,14 @@ class RetiredParticipant(Result):
 
     participant: str
     retired: Literal[True]
+
+
+class ParticipantRoleChanged(Result):
+    """Confirm that the participant's role was updated and return the roster."""
+
+    participant: str
+    role: models.AssignableRole
+    roster: dict[str, RoleName]
 
 
 class PostedMessage(Result):
@@ -297,18 +409,29 @@ class PluginList(Result):
     plugins: list[PluginSummary]
 
 
+class MemberBudgetUpdated(Result):
+    """Confirm the participant's updated model and/or starting token budget."""
+
+    participant: str
+    model: str | None = None
+    token_budget: int | None = None
+
+
 CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     ListConversations: ConversationList,
     ShowConversation: ConversationView,
     CreateConversation: CreatedConversation,
     InviteParticipant: JoinInvitation,
+    SetOpenInvite: OpenInviteStatus,
     LaunchParticipant: LaunchQueued,
     RetireParticipant: RetiredParticipant,
+    SetParticipantRole: ParticipantRoleChanged,
     PostMessage: PostedMessage,
     CloseConversation: ClosedConversation,
     ArchiveConversation: ArchivedConversation,
     SearchConversations: SearchResults,
     ListPlugins: PluginList,
+    SetMemberBudget: MemberBudgetUpdated,
 }
 
 

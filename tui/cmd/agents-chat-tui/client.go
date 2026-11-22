@@ -46,8 +46,11 @@ type Operator interface {
 	Show(request ShowRequest) (ConversationView, error)
 	Create(request CreateRequest) (CreatedConversation, error)
 	Invite(request InviteRequest) (JoinInvitation, error)
+	OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
 	Launch(request LaunchRequest) (LaunchQueued, error)
 	Retire(request RetireRequest) (RetiredParticipant, error)
+	SetRole(request SetRoleRequest) (ParticipantRoleChanged, error)
+	SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
@@ -63,19 +66,23 @@ type ListRequest struct {
 	Archived  bool   `json:"archived,omitempty"`
 }
 
-// ShowRequest reads status, the brief and one transcript page after a cursor.
+// ShowRequest reads status, the brief and one transcript page: forward after a cursor,
+// the newest page when Tail is set, or an older page before a message ID.
 type ShowRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	After        int64  `json:"after"`
+	Before       *int64 `json:"before,omitempty"`
+	Tail         bool   `json:"tail,omitempty"`
 }
 
 // CreateRequest creates a conversation in which every slot is an invitation.
 type CreateRequest struct {
-	Directory string   `json:"directory"`
-	Brief     string   `json:"brief"`
-	Lead      string   `json:"lead"`
-	Invitees  []string `json:"invitees"`
+	Directory  string   `json:"directory"`
+	Brief      string   `json:"brief"`
+	Lead       string   `json:"lead"`
+	Invitees   []string `json:"invitees"`
+	OpenInvite bool     `json:"open_invite,omitempty"`
 }
 
 // InviteRequest adds a slot or reissues the unused code of an existing slot.
@@ -83,6 +90,13 @@ type InviteRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
+}
+
+// OpenInviteRequest enables, rotates, or disables a reusable room-level join code.
+type OpenInviteRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Enabled      bool   `json:"enabled"`
 }
 
 // LaunchRequest fills a slot with a fresh run from a configured plugin.
@@ -98,6 +112,14 @@ type RetireRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
+}
+
+// SetRoleRequest changes an active participant's role in an open conversation.
+type SetRoleRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
 }
 
 // PostRequest posts a note or question as the human.
@@ -128,6 +150,22 @@ type ArchiveRequest struct {
 type SearchRequest struct {
 	Directory string `json:"directory"`
 	Query     string `json:"query"`
+}
+
+// SetMemberBudgetRequest binds a model name and/or starting token budget to one participant.
+type SetMemberBudgetRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
+	Model        string `json:"model,omitempty"`
+	TokenBudget  *int64 `json:"token_budget,omitempty"`
+}
+
+// MemberBudgetUpdated confirms a participant's updated model and/or starting token budget.
+type MemberBudgetUpdated struct {
+	Participant string `json:"participant"`
+	Model       string `json:"model,omitempty"`
+	TokenBudget *int64 `json:"token_budget,omitempty"`
 }
 
 // PluginSummary names one configured plugin and its model.
@@ -162,22 +200,49 @@ type OpenTask struct {
 	Blocked *bool `json:"blocked,omitempty"`
 }
 
-// MemberStatus reports one member's role, state, launch state and open tasks.
+// MemberUsage reports one member's token spend and remaining budget.
+type MemberUsage struct {
+	Model              string   `json:"model,omitempty"`
+	ConversationTokens int64    `json:"conversation_tokens"`
+	InputTokens        int64    `json:"input_tokens"`
+	OutputTokens       int64    `json:"output_tokens"`
+	ModelTokensUsed    int64    `json:"model_tokens_used"`
+	Source             string   `json:"source"`
+	InitialTokens      *int64   `json:"initial_tokens,omitempty"`
+	RemainingTokens    *int64   `json:"remaining_tokens,omitempty"`
+	UsedPercent        *float64 `json:"used_percent,omitempty"`
+	RemainingPercent   *float64 `json:"remaining_percent,omitempty"`
+	Status             string   `json:"status,omitempty"`
+}
+
+// TokenBalance summarizes whether active models are spending evenly against their budgets.
+type TokenBalance struct {
+	Balanced            bool     `json:"balanced"`
+	ImbalanceGapPercent float64  `json:"imbalance_gap_percent"`
+	Overloaded          []string `json:"overloaded,omitempty"`
+	Preferred           []string `json:"preferred,omitempty"`
+	Recommendation      string   `json:"recommendation,omitempty"`
+}
+
+// MemberStatus reports one member's role, state, launch state, open tasks and usage.
 type MemberStatus struct {
-	Role        string     `json:"role"`
-	State       string     `json:"state"`
-	LaunchState string     `json:"launch_state,omitempty"`
-	IdleSeconds *int64     `json:"idle_seconds,omitempty"`
-	Messages    *int64     `json:"messages,omitempty"`
-	OpenTasks   []OpenTask `json:"open_tasks,omitempty"`
+	Role        string       `json:"role"`
+	State       string       `json:"state"`
+	LaunchState string       `json:"launch_state,omitempty"`
+	IdleSeconds *int64       `json:"idle_seconds,omitempty"`
+	Messages    *int64       `json:"messages,omitempty"`
+	OpenTasks   []OpenTask   `json:"open_tasks,omitempty"`
+	Usage       *MemberUsage `json:"usage,omitempty"`
 }
 
 // ConversationStatus reports whether the conversation is open and how each member stands.
 type ConversationStatus struct {
 	Open          bool                    `json:"open"`
 	Members       map[string]MemberStatus `json:"members"`
+	OpenInvite    bool                    `json:"open_invite,omitempty"`
 	Round         string                  `json:"round,omitempty"`
 	RoundDeadline *int64                  `json:"round_deadline,omitempty"`
+	TokenBalance  *TokenBalance           `json:"token_balance,omitempty"`
 }
 
 // TranscriptMessage is one published message.
@@ -193,14 +258,15 @@ type TranscriptMessage struct {
 
 // ConversationView holds the brief, status and one transcript page.
 type ConversationView struct {
-	Conversation string              `json:"conversation"`
-	Brief        string              `json:"brief"`
-	Created      *int64              `json:"created"`
-	Archived     bool                `json:"archived"`
-	Status       ConversationStatus  `json:"status"`
-	Messages     []TranscriptMessage `json:"messages"`
-	More         bool                `json:"more"`
-	Cursor       int64               `json:"cursor"`
+	Conversation  string              `json:"conversation"`
+	Brief         string              `json:"brief"`
+	Created       *int64              `json:"created"`
+	Archived      bool                `json:"archived"`
+	Status        ConversationStatus  `json:"status"`
+	Messages      []TranscriptMessage `json:"messages"`
+	More          bool                `json:"more"`
+	Cursor        int64               `json:"cursor"`
+	TotalMessages *int                `json:"total_messages,omitempty"`
 }
 
 // JoinInvitation holds a slot's join code and a ready join prompt. The code is a secret.
@@ -211,13 +277,27 @@ type JoinInvitation struct {
 	JoinPrompt  string `json:"join_prompt"`
 }
 
+// OpenInviteInvitation holds a reusable room-level join code and a ready join prompt.
+type OpenInviteInvitation struct {
+	Code       string `json:"code"`
+	JoinPrompt string `json:"join_prompt"`
+}
+
+// OpenInviteStatus reports whether a conversation has an active reusable invite code.
+type OpenInviteStatus struct {
+	OpenInvite bool   `json:"open_invite"`
+	Code       string `json:"code,omitempty"`
+	JoinPrompt string `json:"join_prompt,omitempty"`
+}
+
 // CreatedConversation holds the new conversation with one invitation per slot.
 type CreatedConversation struct {
-	Conversation  string            `json:"conversation"`
-	Invitations   []JoinInvitation  `json:"invitations"`
-	Roster        map[string]string `json:"roster"`
-	Round         string            `json:"round,omitempty"`
-	RoundDeadline *int64            `json:"round_deadline,omitempty"`
+	Conversation  string                `json:"conversation"`
+	Invitations   []JoinInvitation      `json:"invitations"`
+	Roster        map[string]string     `json:"roster"`
+	OpenInvite    *OpenInviteInvitation `json:"open_invite,omitempty"`
+	Round         string                `json:"round,omitempty"`
+	RoundDeadline *int64                `json:"round_deadline,omitempty"`
 }
 
 // LaunchQueued reports the assignment that will fill the slot.
@@ -230,6 +310,13 @@ type LaunchQueued struct {
 type RetiredParticipant struct {
 	Participant string `json:"participant"`
 	Retired     bool   `json:"retired"`
+}
+
+// ParticipantRoleChanged confirms a participant's new role and the updated roster.
+type ParticipantRoleChanged struct {
+	Participant string            `json:"participant"`
+	Role        string            `json:"role"`
+	Roster      map[string]string `json:"roster"`
 }
 
 // PostedMessage holds the ID of the posted message.
@@ -336,6 +423,13 @@ func (c *Client) Invite(request InviteRequest) (JoinInvitation, error) {
 	return result, err
 }
 
+// OpenInvite enables, rotates, or disables a reusable room-level join code.
+func (c *Client) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error) {
+	var result OpenInviteStatus
+	err := c.call("operator_open_invite", request, &result)
+	return result, err
+}
+
 // Launch queues a fresh run for a slot.
 func (c *Client) Launch(request LaunchRequest) (LaunchQueued, error) {
 	var result LaunchQueued
@@ -347,6 +441,20 @@ func (c *Client) Launch(request LaunchRequest) (LaunchQueued, error) {
 func (c *Client) Retire(request RetireRequest) (RetiredParticipant, error) {
 	var result RetiredParticipant
 	err := c.call("operator_retire", request, &result)
+	return result, err
+}
+
+// SetRole changes an active participant's role in an open conversation.
+func (c *Client) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
+	var result ParticipantRoleChanged
+	err := c.call("operator_set_role", request, &result)
+	return result, err
+}
+
+// SetMemberBudget updates a participant's model and/or starting token budget.
+func (c *Client) SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error) {
+	var result MemberBudgetUpdated
+	err := c.call("operator_set_member_budget", request, &result)
 	return result, err
 }
 

@@ -50,6 +50,17 @@ var (
 	errClipboardUnavailable = errors.New("copying is unavailable on this platform; select the text with the mouse")
 )
 
+// showMode describes which page of the transcript a Show request asked for.
+type showMode int
+
+const (
+	showAfter showMode = iota
+	showTail
+	showOlder
+	showStart
+	showJump
+)
+
 // Messages that commands send back to Update.
 type (
 	tickMsg    time.Time
@@ -64,7 +75,9 @@ type (
 	}
 	showMsg struct {
 		conversation string
+		mode         showMode
 		after        int64
+		before       int64
 		view         ConversationView
 		err          error
 	}
@@ -79,6 +92,11 @@ type (
 		invitation   JoinInvitation
 		err          error
 	}
+	openInviteMsg struct {
+		conversation string
+		status       OpenInviteStatus
+		err          error
+	}
 	launchedMsg struct {
 		name   string
 		queued LaunchQueued
@@ -87,6 +105,14 @@ type (
 	retiredMsg struct {
 		participant string
 		err         error
+	}
+	roleChangedMsg struct {
+		result ParticipantRoleChanged
+		err    error
+	}
+	budgetUpdatedMsg struct {
+		result MemberBudgetUpdated
+		err    error
 	}
 	postedMsg   struct{ err error }
 	closedMsg   struct{ err error }
@@ -135,6 +161,8 @@ type model struct {
 	// invitations holds the join codes this UI session received, by conversation and
 	// folded participant name. Codes stay in memory and appear only in the invite window.
 	invitations map[string]map[string]JoinInvitation
+	// openInvites holds reusable room-level join prompts this session received, by conversation.
+	openInvites map[string]OpenInviteInvitation
 }
 
 // newModel returns the UI on the chat list for one checkout directory.
@@ -150,6 +178,7 @@ func newModel(client Operator, directory string) model {
 		teamCols:    teamWidth,
 		search:      newSearch(),
 		invitations: map[string]map[string]JoinInvitation{},
+		openInvites: map[string]OpenInviteInvitation{},
 	}
 }
 
@@ -164,6 +193,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeInputs()
+		m.clampChatScroll()
 		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -185,7 +215,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dragging = noDivider
 		return m, nil
 	case tea.MouseWheelMsg:
-		return m.onWheel(msg.Mouse()), nil
+		return m.onWheel(msg.Mouse())
 	case tickMsg:
 		return m.onTick()
 	case pluginsMsg:
@@ -197,11 +227,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case createdMsg:
 		return m.onCreated(msg)
 	case invitedMsg:
-		return m.onInvited(msg), nil
+		return m.onInvited(msg)
+	case openInviteMsg:
+		return m.onOpenInvite(msg)
 	case launchedMsg:
-		return m.onLaunched(msg), nil
+		return m.onLaunched(msg)
 	case retiredMsg:
 		return m.onRetired(msg)
+	case roleChangedMsg:
+		return m.onRoleChanged(msg)
+	case budgetUpdatedMsg:
+		return m.onBudgetUpdated(msg)
 	case postedMsg:
 		return m.onPosted(msg)
 	case closedMsg:
@@ -252,7 +288,7 @@ func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) onTick() (tea.Model, tea.Cmd) {
 	m.ticks++
 	commands := []tea.Cmd{tick()}
-	if m.chat.id != "" && m.screen == screenChat {
+	if m.chat.id != "" && m.screen == screenChat && !m.chat.hasNewer {
 		var poll tea.Cmd
 		m, poll = m.pollChat()
 		commands = append(commands, poll)

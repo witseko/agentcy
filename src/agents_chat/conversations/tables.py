@@ -24,7 +24,9 @@ room = Table(
     Column("round_deadline", Integer),
     Column("created", Integer),
     Column("archived", Integer, nullable=False, server_default=text("0")),
+    Column("open_invite_hash", String),
 )
+Index("conversation_open_invite_hash", room.c.open_invite_hash, unique=True)
 member = Table(
     "participant",
     metadata,
@@ -37,6 +39,8 @@ member = Table(
     Column("token_hash", String, unique=True),
     Column("seen", Integer),
     Column("retired", Integer, nullable=False, server_default=text("0")),
+    Column("model", String),
+    Column("token_budget", Integer),
     UniqueConstraint("room", "label"),
 )
 message = Table(

@@ -20,16 +20,20 @@ type fakeOperator struct {
 	lists    []ListRequest
 	archives []ArchiveRequest
 	searches []SearchRequest
-	view     ConversationView
-	showErr  error
+	view        ConversationView
+	showFunc    func(ShowRequest) (ConversationView, error)
+	showErr     error
 	plugins  PluginList
-	creates  []CreateRequest
-	launches []LaunchRequest
-	retires  []RetireRequest
-	posts    []PostRequest
-	closes   []CloseRequest
-	invites  []InviteRequest
-	shows    []ShowRequest
+	creates     []CreateRequest
+	launches    []LaunchRequest
+	retires     []RetireRequest
+	roleChanges []SetRoleRequest
+	budgets     []SetMemberBudgetRequest
+	posts       []PostRequest
+	closes      []CloseRequest
+	invites     []InviteRequest
+	openInvites []OpenInviteRequest
+	shows       []ShowRequest
 }
 
 func (f *fakeOperator) Plugins() (PluginList, error) { return f.plugins, nil }
@@ -54,6 +58,9 @@ func (f *fakeOperator) Search(request SearchRequest) (SearchResults, error) {
 
 func (f *fakeOperator) Show(request ShowRequest) (ConversationView, error) {
 	f.shows = append(f.shows, request)
+	if f.showFunc != nil {
+		return f.showFunc(request)
+	}
 	return f.view, f.showErr
 }
 
@@ -63,12 +70,24 @@ func (f *fakeOperator) Create(request CreateRequest) (CreatedConversation, error
 	for _, name := range request.Invitees {
 		invitations = append(invitations, JoinInvitation{Participant: name, Role: "worker", Code: "W", JoinPrompt: "join W"})
 	}
-	return CreatedConversation{Conversation: testConversation, Invitations: invitations}, nil
+	created := CreatedConversation{Conversation: testConversation, Invitations: invitations}
+	if request.OpenInvite {
+		created.OpenInvite = &OpenInviteInvitation{Code: "OPEN-CODE", JoinPrompt: "join OPEN-CODE"}
+	}
+	return created, nil
 }
 
 func (f *fakeOperator) Invite(request InviteRequest) (JoinInvitation, error) {
 	f.invites = append(f.invites, request)
 	return JoinInvitation{Participant: request.Name, Role: "worker", Code: "NEW", JoinPrompt: "join NEW"}, nil
+}
+
+func (f *fakeOperator) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error) {
+	f.openInvites = append(f.openInvites, request)
+	if !request.Enabled {
+		return OpenInviteStatus{OpenInvite: false}, nil
+	}
+	return OpenInviteStatus{OpenInvite: true, Code: "OPEN-ROTATED", JoinPrompt: "join OPEN-ROTATED"}, nil
 }
 
 func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
@@ -79,6 +98,20 @@ func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
 func (f *fakeOperator) Retire(request RetireRequest) (RetiredParticipant, error) {
 	f.retires = append(f.retires, request)
 	return RetiredParticipant{Participant: request.Name, Retired: true}, nil
+}
+
+func (f *fakeOperator) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
+	f.roleChanges = append(f.roleChanges, request)
+	return ParticipantRoleChanged{Participant: request.Name, Role: request.Role}, nil
+}
+
+func (f *fakeOperator) SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error) {
+	f.budgets = append(f.budgets, request)
+	return MemberBudgetUpdated{
+		Participant: request.Name,
+		Model:       request.Model,
+		TokenBudget: request.TokenBudget,
+	}, nil
 }
 
 func (f *fakeOperator) Post(request PostRequest) (PostedMessage, error) {
@@ -106,6 +139,8 @@ func press(t *testing.T, m model, key string) (model, tea.Cmd) {
 		"ctrl+p":    {Code: 'p', Mod: tea.ModCtrl},
 		"ctrl+s":    {Code: 's', Mod: tea.ModCtrl},
 		"ctrl+o":    {Code: 'o', Mod: tea.ModCtrl},
+		"ctrl+d":    {Code: 'd', Mod: tea.ModCtrl},
+		"space":     {Code: ' ', Text: " "},
 	}
 	msg, named := keys[key]
 	if !named {
@@ -219,7 +254,7 @@ func TestNewChatCreatesThenLaunchesPluginSlots(t *testing.T) {
 	m, command := press(t, m, "n")
 	m = drive(t, m, command)
 	m = typeText(t, m, "Check retries")
-	for range 3 { // brief, lead name, worker name
+	for range 4 { // brief, lead name, open invite, worker name
 		m, _ = press(t, m, "tab")
 	}
 	m, _ = press(t, m, "right") // worker source: manual -> glm
@@ -519,8 +554,11 @@ func TestDraggingADividerResizesTheColumn(t *testing.T) {
 }
 
 func TestWheelScrollsTheTranscriptAndCtrlOReleasesTheMouse(t *testing.T) {
-	m := sized(chatModel(t, &fakeOperator{}), 140, 30)
-	next, _ := m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
+	fake := &fakeOperator{view: longChat()}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, command := m.openChat(testConversation)
+	m = drive(t, next.(model), command)
+	next, _ = m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
 	m = next.(model)
 	if m.chat.scroll != wheelLines {
 		t.Fatalf("scroll %d, want %d", m.chat.scroll, wheelLines)
@@ -610,7 +648,8 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 	m, _ = press(t, m, "ctrl+n") // second worker, focused on its name
 	m, _ = press(t, m, "up")
 	m, _ = press(t, m, "up")
-	m, _ = press(t, m, "up") // worker 2 -> worker 1 -> lead -> brief
+	m, _ = press(t, m, "up")
+	m, _ = press(t, m, "up") // worker 2 -> worker 1 -> open invite -> lead -> brief
 	if kind, _ := m.form.field(m.form.focus); kind != fieldBrief {
 		t.Fatalf("focus %d, want the brief", m.form.focus)
 	}
@@ -620,6 +659,7 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 		want int
 	}{
 		{"down", int(fieldLeadName)},
+		{"down", int(fieldOpenInvite)},
 		{"down", leadFields},     // worker 1 name
 		{"tab", leadFields + 1},  // worker 1 source
 		{"down", leadFields + 3}, // worker 2 source keeps the column
@@ -865,8 +905,8 @@ func TestMemberStateShowsOpenTasksAsWorking(t *testing.T) {
 		Role:  "worker",
 		State: "retired",
 	})
-	if ansi.Strip(glyph) != "✕" || detail != "retired" {
-		t.Fatalf("got (%q, %q), want retired", ansi.Strip(glyph), detail)
+	if ansi.Strip(glyph) != "✕" || detail != "archived" {
+		t.Fatalf("got (%q, %q), want archived", ansi.Strip(glyph), detail)
 	}
 }
 
@@ -914,5 +954,523 @@ func TestRetireSlashCommandSendsRequest(t *testing.T) {
 	m = drive(t, m, command)
 	if len(fake.retires) != 1 || fake.retires[0].Name != "Reviewer" {
 		t.Fatalf("retires = %+v, want Reviewer", fake.retires)
+	}
+}
+
+func TestNewChatWithOpenInviteAndZeroWorkersCopiesAndRotatesPrompt(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Open room",
+			Status: ConversationStatus{
+				Open:       true,
+				OpenInvite: true,
+				Members: map[string]MemberStatus{
+					"Lead":  {Role: "lead", State: "invited"},
+					"Human": {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	var copied string
+	m := newModel(fake, "/work")
+	m.clipboard = func(text string) error { copied = text; return nil }
+	m, command := press(t, m, "n")
+	m = drive(t, m, command)
+	m = typeText(t, m, "Open room")
+	m, _ = press(t, m, "tab")    // lead name
+	m, _ = press(t, m, "tab")    // open invite
+	m, _ = press(t, m, "space")  // turn open invite on
+	m, _ = press(t, m, "tab")    // default worker name
+	m, _ = press(t, m, "ctrl+d") // remove the only worker (allowed when open invite is on)
+	m, command = press(t, m, "ctrl+s")
+	m = drive(t, m, command)
+
+	if len(fake.creates) != 1 || !fake.creates[0].OpenInvite || len(fake.creates[0].Invitees) != 0 {
+		t.Fatalf("creates = %+v, want open_invite=true with zero invitees", fake.creates)
+	}
+	if !m.inviteWindow.open {
+		t.Fatal("invite window did not open")
+	}
+	// First card is the shared open invite. Copy it, then rotate it, then disable it.
+	m, command = press(t, m, "c")
+	m = drive(t, m, command)
+	if copied != "join OPEN-CODE" {
+		t.Fatalf("copied = %q, want join OPEN-CODE", copied)
+	}
+	m, _ = press(t, m, "up")
+	m, command = press(t, m, "r")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 1 || !fake.openInvites[0].Enabled {
+		t.Fatalf("openInvites = %+v, want one rotate request", fake.openInvites)
+	}
+	if got := m.openInvites[testConversation].Code; got != "OPEN-ROTATED" {
+		t.Fatalf("open invite code = %q, want OPEN-ROTATED", got)
+	}
+	m, command = press(t, m, "o")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 2 || fake.openInvites[1].Enabled {
+		t.Fatalf("openInvites = %+v, want disable request", fake.openInvites)
+	}
+	if _, found := m.knownOpenInvite(); found {
+		t.Fatal("cached open invite was not cleared after disabling")
+	}
+}
+
+func TestOpenInviteSlashCommandEnablesAndDisables(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m = typeText(t, m, "/open-invite")
+	var command tea.Cmd
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 1 || !fake.openInvites[0].Enabled {
+		t.Fatalf("openInvites = %+v, want enable", fake.openInvites)
+	}
+	m, _ = press(t, m, "esc") // close invite window
+	m = typeText(t, m, "/open-invite off")
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 2 || fake.openInvites[1].Enabled {
+		t.Fatalf("openInvites = %+v, want disable", fake.openInvites)
+	}
+}
+
+func TestShortChatScrollUpDoesNotHideArrivingMessages(t *testing.T) {
+	fake := &fakeOperator{}
+	m := sized(chatModel(t, fake), 140, 30)
+
+	// Scrolling up when everything already fits must keep scroll at 0 (following the tail).
+	next, _ := m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
+	m = next.(model)
+	m, _ = press(t, m, "up")
+	if m.chat.scroll != 0 {
+		t.Fatalf("scroll = %d on a short chat, want 0", m.chat.scroll)
+	}
+
+	// Subsequent arriving messages must remain visible at the bottom.
+	var incoming []TranscriptMessage
+	for id := int64(1); id <= 25; id++ {
+		incoming = append(incoming, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Fresh %d", id), Created: 1795000000,
+		})
+	}
+	fake.view.Messages = incoming
+	fake.view.Cursor = 25
+	var cmd tea.Cmd
+	m, cmd = m.pollChat()
+	m = drive(t, m, cmd)
+
+	if m.chat.scroll != 0 {
+		t.Fatalf("scroll drifted to %d after new messages arrived", m.chat.scroll)
+	}
+	visible := visibleTranscriptText(m)
+	if !strings.Contains(visible, "Fresh 25") {
+		t.Fatalf("newest message disappeared from view:\n%s", visible)
+	}
+}
+
+func TestOpenChatLoadsTailAndAutoPaginatesOlderOnScroll(t *testing.T) {
+	const total = 80
+	const pageSize = 40
+	totalCount := total
+	all := make([]TranscriptMessage, 0, total)
+	for id := int64(1); id <= total; id++ {
+		all = append(all, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Msg %d", id), Created: 1795000000,
+		})
+	}
+	baseView := func(messages []TranscriptMessage, more bool, cursor int64) ConversationView {
+		return ConversationView{
+			Conversation:  testConversation,
+			Brief:         "Long chat",
+			Status:        ConversationStatus{Open: true, Members: map[string]MemberStatus{"Lead": {Role: "lead", State: "joined"}}},
+			Messages:      messages,
+			More:          more,
+			Cursor:        cursor,
+			TotalMessages: &totalCount,
+		}
+	}
+	fake := &fakeOperator{
+		showFunc: func(req ShowRequest) (ConversationView, error) {
+			if req.Tail {
+				return baseView(all[total-pageSize:], true, total), nil
+			}
+			if req.Before != nil {
+				end := min(int(*req.Before-1), len(all))
+				start := max(end-pageSize, 0)
+				return baseView(all[start:end], start > 0, all[end-1].ID), nil
+			}
+			return baseView(nil, false, req.After), nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	if len(fake.shows) != 1 || !fake.shows[0].Tail {
+		t.Fatalf("initial shows = %+v, want one tail request", fake.shows)
+	}
+	if len(m.chat.messages) != pageSize || m.chat.messages[0].ID != 41 || !m.chat.hasOlder {
+		t.Fatalf("loaded %d messages starting at %d hasOlder=%v", len(m.chat.messages), m.chat.messages[0].ID, m.chat.hasOlder)
+	}
+	if !strings.Contains(m.View().Content, "80 messages") {
+		t.Fatal("header does not show total_messages count")
+	}
+
+	// Scroll to the top of the loaded page to trigger auto-pagination of older messages.
+	for range 20 {
+		var scrollCmd tea.Cmd
+		m, scrollCmd = m.scrollTranscript("pgup")
+		m = drive(t, m, scrollCmd)
+	}
+	if len(fake.shows) < 2 || fake.shows[1].Before == nil || *fake.shows[1].Before != 41 {
+		t.Fatalf("shows after scroll up = %+v, want before=41", fake.shows)
+	}
+	if len(m.chat.messages) != total || m.chat.messages[0].ID != 1 || m.chat.hasOlder {
+		t.Fatalf("after auto-pagination: len=%d first=%d hasOlder=%v", len(m.chat.messages), m.chat.messages[0].ID, m.chat.hasOlder)
+	}
+}
+
+func TestSearchStartAutoPaginatesNewerOnScrollDown(t *testing.T) {
+	const total = 60
+	const pageSize = 30
+	totalCount := total
+	all := make([]TranscriptMessage, 0, total)
+	for id := int64(1); id <= total; id++ {
+		all = append(all, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Entry %d", id), Created: 1795000000,
+		})
+	}
+	fake := &fakeOperator{
+		showFunc: func(req ShowRequest) (ConversationView, error) {
+			start := int(req.After)
+			end := min(start+pageSize, len(all))
+			return ConversationView{
+				Conversation:  testConversation,
+				Brief:         "Long chat",
+				Status:        ConversationStatus{Open: true, Members: map[string]MemberStatus{"Lead": {Role: "lead", State: "joined"}}},
+				Messages:      all[start:end],
+				More:          end < len(all),
+				Cursor:        int64(end),
+				TotalMessages: &totalCount,
+			}, nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChatAt(testConversation, 0)
+	m = drive(t, next.(model), cmd)
+
+	// Only the first page should be loaded, not eagerly drained.
+	if len(fake.shows) != 1 || len(m.chat.messages) != pageSize || !m.chat.hasNewer {
+		t.Fatalf("shows=%d len=%d hasNewer=%v, want 1 page with hasNewer=true", len(fake.shows), len(m.chat.messages), m.chat.hasNewer)
+	}
+
+	// Scroll down near the bottom to auto-load the next page.
+	for range 15 {
+		var scrollCmd tea.Cmd
+		m, scrollCmd = m.scrollTranscript("pgdown")
+		m = drive(t, m, scrollCmd)
+	}
+	if len(fake.shows) != 2 || fake.shows[1].After != pageSize {
+		t.Fatalf("shows after scroll down = %+v, want second call with after=%d", fake.shows, pageSize)
+	}
+	if len(m.chat.messages) != total || m.chat.hasNewer {
+		t.Fatalf("len=%d hasNewer=%v, want %d and false", len(m.chat.messages), m.chat.hasNewer, total)
+	}
+}
+
+func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Team lifecycle",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead":      {Role: "lead", State: "replied"},
+					"Reviewer":  {Role: "worker", State: "replied"},
+					"OldWorker": {Role: "worker", State: "retired"},
+					"Human":     {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	teamIndex := strings.Index(panel, "TEAM")
+	archivedIndex := strings.Index(panel, "ARCHIVED")
+	oldIndex := strings.Index(panel, "OldWorker")
+	if teamIndex < 0 || archivedIndex < 0 || oldIndex < 0 {
+		t.Fatalf("missing TEAM/ARCHIVED/OldWorker in panel:\n%s", panel)
+	}
+	if !(teamIndex < archivedIndex && archivedIndex < oldIndex) {
+		t.Fatalf("OldWorker should appear under ARCHIVED section:\n%s", panel)
+	}
+	if !strings.Contains(panel, "archived") {
+		t.Fatalf("archived detail missing:\n%s", panel)
+	}
+
+	// Clicking the archived row selects OldWorker accurately.
+	var archivedRow teamRow
+	for _, row := range m.teamRows() {
+		if row.name == "OldWorker" {
+			archivedRow = row
+		}
+	}
+	if archivedRow.name == "" {
+		t.Fatal("OldWorker missing from teamRows")
+	}
+	listW, centerW, _ := m.columnWidths()
+	teamX := listW + 1 + centerW + 2
+	m, _ = click(t, m, teamX, 1+archivedRow.top)
+	if m.selectedMember() != "OldWorker" {
+		t.Fatalf("selectedMember = %q, want OldWorker", m.selectedMember())
+	}
+
+	// Archived participants cannot be made lead or retired again.
+	m, _ = press(t, m, "m")
+	if len(fake.roleChanges) != 0 || !strings.Contains(m.status, "archived") {
+		t.Fatalf("unexpected make-lead on archived: changes=%+v status=%q", fake.roleChanges, m.status)
+	}
+	m, _ = press(t, m, "d")
+	if m.chat.retiring != "" || !strings.Contains(m.status, "already archived") {
+		t.Fatalf("unexpected retire on archived: retiring=%q status=%q", m.chat.retiring, m.status)
+	}
+}
+
+func TestMakeLeadAndRoleSlashCommandsUpdateRunningTUI(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	showsBefore := len(fake.shows)
+	listsBefore := len(fake.lists)
+
+	// Tab to team panel, select Reviewer, press m to make lead.
+	m, _ = press(t, m, "tab")
+	m, _ = press(t, m, "down")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "m")
+	m = drive(t, m, cmd)
+
+	if len(fake.roleChanges) != 1 || fake.roleChanges[0] != (SetRoleRequest{
+		Directory: "/work", Conversation: testConversation, Name: "Reviewer", Role: "lead",
+	}) {
+		t.Fatalf("roleChanges = %+v, want Reviewer -> lead", fake.roleChanges)
+	}
+	if len(fake.shows) <= showsBefore || len(fake.lists) <= listsBefore {
+		t.Fatalf("expected immediate show and list refresh after role change: shows=%d lists=%d", len(fake.shows), len(fake.lists))
+	}
+
+	// Slash commands /lead and /role work and validate role values.
+	m, _ = press(t, m, "esc")
+	m = typeText(t, m, "/role Reviewer co-lead")
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.roleChanges) != 2 || fake.roleChanges[1].Role != "co-lead" {
+		t.Fatalf("roleChanges = %+v, want co-lead", fake.roleChanges)
+	}
+
+	m = typeText(t, m, "/lead Lead")
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.roleChanges) != 3 || fake.roleChanges[2].Name != "Lead" || fake.roleChanges[2].Role != "lead" {
+		t.Fatalf("roleChanges = %+v, want Lead -> lead", fake.roleChanges)
+	}
+
+	m = typeText(t, m, "/role Lead boss")
+	m, _ = press(t, m, "enter")
+	if len(fake.roleChanges) != 3 || !strings.Contains(m.status, "Usage: /role") {
+		t.Fatalf("invalid role was not rejected: changes=%+v status=%q", fake.roleChanges, m.status)
+	}
+}
+
+func TestLivePollReflectsAddedArchivedAndLeadChangedParticipants(t *testing.T) {
+	initial := ConversationView{
+		Conversation: testConversation,
+		Brief:        "Live roster updates",
+		Status: ConversationStatus{
+			Open: true,
+			Members: map[string]MemberStatus{
+				"Lead":     {Role: "lead", State: "replied"},
+				"Reviewer": {Role: "worker", State: "replied"},
+				"Human":    {Role: "human", State: "human"},
+			},
+		},
+		Messages: []TranscriptMessage{{ID: 1, Label: "Lead", Body: "Kickoff", Created: 1795000000}},
+		Cursor:   1,
+	}
+	updated := ConversationView{
+		Conversation: testConversation,
+		Brief:        "Live roster updates",
+		Status: ConversationStatus{
+			Open: true,
+			Members: map[string]MemberStatus{
+				"Lead":     {Role: "worker", State: "replied"},
+				"Reviewer": {Role: "worker", State: "retired"},
+				"Scout":    {Role: "lead", State: "joined"},
+				"Human":    {Role: "human", State: "human"},
+			},
+		},
+		Cursor: 1,
+	}
+	call := 0
+	fake := &fakeOperator{
+		showFunc: func(ShowRequest) (ConversationView, error) {
+			call++
+			if call == 1 {
+				return initial, nil
+			}
+			return updated, nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	// Select Lead in the team panel before the lead change arrives.
+	m, _ = press(t, m, "tab")
+	if m.selectedMember() != "Lead" {
+		t.Fatalf("initial selectedMember = %q, want Lead", m.selectedMember())
+	}
+	versionBefore := m.chat.version
+	listsBefore := len(fake.lists)
+
+	// One poll tick brings the added Scout (new lead), demoted Lead, and archived Reviewer.
+	next, cmd = m.Update(tickMsg(time.Now()))
+	m = drive(t, next.(model), cmd)
+
+	if m.chat.version == versionBefore {
+		t.Fatal("transcript version did not bump when roles changed")
+	}
+	if len(fake.lists) <= listsBefore {
+		t.Fatal("sidebar list did not refresh immediately on roster change")
+	}
+	if m.selectedMember() != "Lead" {
+		t.Fatalf("selection drifted after reorder: got %q, want Lead", m.selectedMember())
+	}
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	scoutPos := strings.Index(panel, "Scout lead")
+	leadPos := strings.Index(panel, "Lead worker")
+	archivedPos := strings.Index(panel, "ARCHIVED")
+	reviewerPos := strings.Index(panel, "Reviewer worker")
+	if scoutPos < 0 || leadPos < 0 || archivedPos < 0 || reviewerPos < 0 {
+		t.Fatalf("panel missing expected live roster updates:\n%s", panel)
+	}
+	if !(scoutPos < leadPos && leadPos < archivedPos && archivedPos < reviewerPos) {
+		t.Fatalf("unexpected team order after live update:\n%s", panel)
+	}
+}
+
+func TestInviteImmediatelyRefreshesTeamAndShowsNewSlot(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	showsBefore := len(fake.shows)
+	listsBefore := len(fake.lists)
+
+	m = typeText(t, m, "/invite Scout")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+
+	if !m.inviteWindow.open {
+		t.Fatal("invite window did not open after /invite")
+	}
+	if len(fake.shows) <= showsBefore || len(fake.lists) <= listsBefore {
+		t.Fatalf("expected immediate show and list refresh after invite: shows=%d lists=%d", len(fake.shows), len(fake.lists))
+	}
+}
+
+
+func TestTeamViewRendersTokenUsageBarsAndBalanceWarning(t *testing.T) {
+	claudeUsed := 78.0
+	claudeRem := int64(22000)
+	geminiUsed := 12.0
+	geminiRem := int64(880000)
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Balance work across models",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Claude": {
+						Role:  "lead",
+						State: "replied",
+						Usage: &MemberUsage{
+							Model:              "claude-sonnet-4-6",
+							ConversationTokens: 78000,
+							ModelTokensUsed:    78000,
+							Source:             "reported",
+							UsedPercent:        &claudeUsed,
+							RemainingTokens:    &claudeRem,
+							Status:             "warning",
+						},
+					},
+					"Gemini": {
+						Role:  "worker",
+						State: "replied",
+						Usage: &MemberUsage{
+							Model:              "gemini-2.5-pro",
+							ConversationTokens: 120000,
+							ModelTokensUsed:    120000,
+							Source:             "plugin",
+							UsedPercent:        &geminiUsed,
+							RemainingTokens:    &geminiRem,
+							Status:             "ok",
+						},
+					},
+					"Human": {Role: "human", State: "human"},
+				},
+				TokenBalance: &TokenBalance{
+					Balanced:            false,
+					ImbalanceGapPercent: 66.0,
+					Overloaded:          []string{"Claude"},
+					Preferred:           []string{"Gemini"},
+					Recommendation:      "Prefer assigning new tasks or handoffs to Gemini.",
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(32, 28), "\n"))
+	if !strings.Contains(panel, "78% · 22.0k left") {
+		t.Fatalf("expected Claude usage bar in team panel:\n%s", panel)
+	}
+	if !strings.Contains(panel, "12% · 880.0k left") {
+		t.Fatalf("expected Gemini usage bar in team panel:\n%s", panel)
+	}
+	if !strings.Contains(panel, "TOKEN BALANCE") || !strings.Contains(panel, "prefer Gemini") {
+		t.Fatalf("expected TOKEN BALANCE warning in team panel:\n%s", panel)
+	}
+	rows := m.teamRows()
+	if len(rows) < 2 || rows[0].size != 3 || rows[1].size != 3 {
+		t.Fatalf("expected 3-line team rows for members with usage, got %+v", rows)
+	}
+}
+
+func TestBudgetSlashCommandSendsOperatorSetMemberBudget(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+
+	m = typeText(t, m, "/budget Reviewer 250k gemini-2.5-pro")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+
+	if len(fake.budgets) != 1 {
+		t.Fatalf("expected 1 SetMemberBudget call, got %d", len(fake.budgets))
+	}
+	req := fake.budgets[0]
+	if req.Name != "Reviewer" || req.Model != "gemini-2.5-pro" || req.TokenBudget == nil || *req.TokenBudget != 250000 {
+		t.Fatalf("unexpected SetMemberBudget request: %+v", req)
 	}
 }

@@ -166,7 +166,43 @@ def stop(process: subprocess.Popen) -> None:
     process.wait()
 
 
-def monitor(process: subprocess.Popen, path: Path, timeout: int) -> RunResult:
+def parse_usage(output_file: Path) -> tuple[int | None, int | None]:
+    """Extract optional input/output token counts from the private OpenCode output file."""
+    try:
+        text = output_file.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None, None
+    for line in reversed(text.splitlines()):
+        stripped = line.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                payload = json.loads(stripped)
+            except ValueError:
+                continue
+            usage = payload.get("usage") if isinstance(payload, dict) else None
+            if isinstance(usage, dict):
+                inp = usage.get("input_tokens", usage.get("prompt_tokens"))
+                out = usage.get("output_tokens", usage.get("completion_tokens"))
+                if (
+                    isinstance(inp, int)
+                    and not isinstance(inp, bool)
+                    and isinstance(out, int)
+                    and not isinstance(out, bool)
+                    and inp >= 0
+                    and out >= 0
+                ):
+                    return inp, out
+    match = re.search(
+        r"input[_ ]tokens[:=\s]+(\d+).*?output[_ ]tokens[:=\s]+(\d+)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+
+def monitor(process: subprocess.Popen, path: Path, timeout: int, output_file: Path) -> RunResult:
     """Keep a durable heartbeat and enforce cancellation even if the core stops."""
     deadline = time.monotonic() + timeout
     try:
@@ -177,7 +213,13 @@ def monitor(process: subprocess.Popen, path: Path, timeout: int) -> RunResult:
                 return RunResult(state="timed_out")
             save(path, RunResult(state="running"))
             time.sleep(STATE_INTERVAL)
-        return RunResult(state="finished" if exit_code == 0 else "failed", exit_code=exit_code)
+        input_tokens, output_tokens = parse_usage(output_file)
+        return RunResult(
+            state="finished" if exit_code == 0 else "failed",
+            exit_code=exit_code,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
     finally:
         stop(process)
 
@@ -194,27 +236,29 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
             result = RunResult(state="cancelled")
         elif executable and sandbox:
             runtime.mkdir(mode=0o700)
-            process = subprocess.Popen(  # noqa: S603 - fixed sandbox launcher, no shell
-                [
-                    "/usr/bin/sandbox-exec",
-                    "-p",
-                    sandbox_profile(runtime),
-                    executable,
-                    "--standalone",
-                    "run",
-                    "--auto",
-                    "--model",
-                    model,
-                    PROMPT,
-                ],
-                cwd=workspace,
-                env=prepare_environment(workspace, runtime, model),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            result = monitor(process, path, timeout)
+            output_file = runtime / "output.log"
+            with output_file.open("wb") as output_handle:
+                process = subprocess.Popen(  # noqa: S603 - fixed sandbox launcher, no shell
+                    [
+                        "/usr/bin/sandbox-exec",
+                        "-p",
+                        sandbox_profile(runtime),
+                        executable,
+                        "--standalone",
+                        "run",
+                        "--auto",
+                        "--model",
+                        model,
+                        PROMPT,
+                    ],
+                    cwd=workspace,
+                    env=prepare_environment(workspace, runtime, model),
+                    stdin=subprocess.DEVNULL,
+                    stdout=output_handle,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                result = monitor(process, path, timeout, output_file)
     except OSError:
         result = RunResult(state="failed")
     finally:

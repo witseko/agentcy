@@ -168,6 +168,18 @@
           "title": "Members",
           "type": "object"
         },
+        "open_invite": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open Invite"
+        },
         "round": {
           "anyOf": [
             {
@@ -195,6 +207,17 @@
           ],
           "default": null,
           "title": "Round Deadline"
+        },
+        "token_balance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TokenBalance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -295,6 +318,18 @@
         "cursor": {
           "title": "Cursor",
           "type": "integer"
+        },
+        "total_messages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Messages"
         }
       },
       "required": [
@@ -362,9 +397,13 @@
             ]
           },
           "maxItems": 16,
-          "minItems": 1,
           "title": "Invitees",
           "type": "array"
+        },
+        "open_invite": {
+          "default": false,
+          "title": "Open Invite",
+          "type": "boolean"
         },
         "sealed": {
           "default": false,
@@ -392,8 +431,7 @@
         "directory",
         "action",
         "brief",
-        "lead",
-        "invitees"
+        "lead"
       ],
       "title": "CreateConversation",
       "type": "object"
@@ -425,6 +463,17 @@
           },
           "title": "Roster",
           "type": "object"
+        },
+        "open_invite": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenInviteInvitation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "round": {
           "anyOf": [
@@ -481,6 +530,33 @@
           ],
           "title": "Role",
           "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
         }
       },
       "required": [
@@ -744,9 +820,48 @@
       "title": "ListPlugins",
       "type": "object"
     },
+    "MemberBudgetUpdated": {
+      "additionalProperties": false,
+      "description": "Confirm the participant's updated model and/or starting token budget.",
+      "properties": {
+        "participant": {
+          "title": "Participant",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
+        }
+      },
+      "required": [
+        "participant"
+      ],
+      "title": "MemberBudgetUpdated",
+      "type": "object"
+    },
     "MemberStatus": {
       "additionalProperties": false,
-      "description": "Report one member's role, membership state, launch state and open tasks.",
+      "description": "Report one member's role, membership state, launch state, open tasks and usage.",
       "properties": {
         "role": {
           "enum": [
@@ -831,6 +946,17 @@
           ],
           "default": null,
           "title": "Open Tasks"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemberUsage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -838,6 +964,182 @@
         "state"
       ],
       "title": "MemberStatus",
+      "type": "object"
+    },
+    "MemberUsage": {
+      "additionalProperties": false,
+      "description": "Report one member's token spend and remaining budget.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "conversation_tokens": {
+          "title": "Conversation Tokens",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "model_tokens_used": {
+          "title": "Model Tokens Used",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "estimated",
+            "reported",
+            "plugin"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "initial_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Tokens"
+        },
+        "remaining_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remaining Tokens"
+        },
+        "used_percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Used Percent"
+        },
+        "remaining_percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remaining Percent"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ok",
+                "warning",
+                "exhausted"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "conversation_tokens",
+        "input_tokens",
+        "output_tokens",
+        "model_tokens_used",
+        "source"
+      ],
+      "title": "MemberUsage",
+      "type": "object"
+    },
+    "OpenInviteInvitation": {
+      "additionalProperties": false,
+      "description": "Return a reusable room-level join code and a ready join prompt.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "join_prompt": {
+          "title": "Join Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "join_prompt"
+      ],
+      "title": "OpenInviteInvitation",
+      "type": "object"
+    },
+    "OpenInviteStatus": {
+      "additionalProperties": false,
+      "description": "Report whether the conversation has an active shared open invite.",
+      "properties": {
+        "open_invite": {
+          "title": "Open Invite",
+          "type": "boolean"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "join_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Join Prompt"
+        }
+      },
+      "required": [
+        "open_invite"
+      ],
+      "title": "OpenInviteStatus",
       "type": "object"
     },
     "OpenTask": {
@@ -865,6 +1167,45 @@
         "id"
       ],
       "title": "OpenTask",
+      "type": "object"
+    },
+    "ParticipantRoleChanged": {
+      "additionalProperties": false,
+      "description": "Confirm that the participant's role was updated and return the roster.",
+      "properties": {
+        "participant": {
+          "title": "Participant",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "roster": {
+          "additionalProperties": {
+            "enum": [
+              "worker",
+              "lead",
+              "co-lead",
+              "human"
+            ],
+            "type": "string"
+          },
+          "title": "Roster",
+          "type": "object"
+        }
+      },
+      "required": [
+        "participant",
+        "role",
+        "roster"
+      ],
+      "title": "ParticipantRoleChanged",
       "type": "object"
     },
     "PluginList": {
@@ -1210,9 +1551,191 @@
       "title": "SearchResults",
       "type": "object"
     },
+    "SetMemberBudget": {
+      "additionalProperties": false,
+      "description": "Bind a model name and/or per-conversation starting token budget to a participant.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_set_member_budget",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name"
+      ],
+      "title": "SetMemberBudget",
+      "type": "object"
+    },
+    "SetOpenInvite": {
+      "additionalProperties": false,
+      "description": "Enable, rotate, or disable a conversation's shared open invite code.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_open_invite",
+          "title": "Action",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "SetOpenInvite",
+      "type": "object"
+    },
+    "SetParticipantRole": {
+      "additionalProperties": false,
+      "description": "Change an active participant's role in an open conversation.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_set_role",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name",
+        "role"
+      ],
+      "title": "SetParticipantRole",
+      "type": "object"
+    },
     "ShowConversation": {
       "additionalProperties": false,
-      "description": "Read status, the brief and one page of the full transcript after a cursor.",
+      "description": "Read status, the brief and one page of the full transcript.",
       "properties": {
         "version": {
           "const": 1,
@@ -1247,6 +1770,25 @@
           "minimum": 0,
           "title": "After",
           "type": "integer"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "tail": {
+          "default": false,
+          "title": "Tail",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1257,6 +1799,68 @@
         "action"
       ],
       "title": "ShowConversation",
+      "type": "object"
+    },
+    "TokenBalance": {
+      "additionalProperties": false,
+      "description": "Summarize whether active models are spending evenly relative to their initial budgets.",
+      "properties": {
+        "balanced": {
+          "title": "Balanced",
+          "type": "boolean"
+        },
+        "imbalance_gap_percent": {
+          "title": "Imbalance Gap Percent",
+          "type": "number"
+        },
+        "overloaded": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overloaded"
+        },
+        "preferred": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preferred"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendation"
+        }
+      },
+      "required": [
+        "balanced",
+        "imbalance_gap_percent"
+      ],
+      "title": "TokenBalance",
       "type": "object"
     },
     "TranscriptMessage": {
@@ -1341,10 +1945,16 @@
       "$ref": "#/$defs/InviteParticipant"
     },
     {
+      "$ref": "#/$defs/SetOpenInvite"
+    },
+    {
       "$ref": "#/$defs/LaunchParticipant"
     },
     {
       "$ref": "#/$defs/RetireParticipant"
+    },
+    {
+      "$ref": "#/$defs/SetParticipantRole"
     },
     {
       "$ref": "#/$defs/PostMessage"
@@ -1360,6 +1970,9 @@
     },
     {
       "$ref": "#/$defs/ListPlugins"
+    },
+    {
+      "$ref": "#/$defs/SetMemberBudget"
     }
   ]
 }

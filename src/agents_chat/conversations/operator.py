@@ -10,6 +10,7 @@ from agents_chat.conversations.assignment_tables import PENDING_STATES
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, room
 from agents_chat.storage.database import workspace_key
+from agents_chat.tokens import usage as token_usage
 
 LIST_LIMIT = 100
 PAGE_SIZE = 50
@@ -18,8 +19,12 @@ UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
 LEAD_JOIN_PROMPT = (
     "Use agents-chat to join with CODE. You lead this conversation. Read the shared brief and "
     "catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. "
+    "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
+    "open_invite, and retire inactive or unneeded teammates with retire_participant. "
     "Track the team status in read_messages, assign follow-up work when workers finish, and post "
-    f"brief team updates so waiting teammates stay active. Messages from {HUMAN_LABEL} come from "
+    "brief team updates so waiting teammates stay active. Mind teammate token budgets in "
+    "team/token_balance and prefer assigning new tasks or handoffs to models with more remaining "
+    f"budget. Messages from {HUMAN_LABEL} come from "
     "your user. Follow the bridge's guidance during this turn."
 )
 
@@ -39,6 +44,11 @@ def ready_prompt(role: str, code: str, brief: str, participant: str) -> str:
     """Return the join prompt for a slot with its topic, name, and code filled in."""
     template = repository.JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
     return repository.join_prompt(brief, participant=participant, template=template, code=code)
+
+
+def ready_open_prompt(code: str, brief: str) -> str:
+    """Return a ready-to-paste shared open-invite prompt with the code filled in."""
+    return repository.open_join_prompt(brief, code=code)
 
 
 def title(brief_start: str) -> str:
@@ -106,6 +116,7 @@ def human_actor(connection: Connection, conversation_id: str) -> dict:
                 room.c.round_deadline,
                 room.c.created,
                 room.c.archived,
+                room.c.open_invite_hash,
                 member.c.id,
             )
             .select_from(
@@ -160,11 +171,12 @@ def create(
         brief=request.brief,
         initiator=request.lead,
         invitees=request.invitees,
+        open_invite=request.open_invite,
         sealed=request.sealed,
         deadline_minutes=request.deadline_minutes,
     )
     roles = repository.team_roles(team)
-    room_id, round_state = repository.insert_room(connection, team)
+    room_id, round_state, open_code = repository.insert_room(connection, team)
     invitations = [
         invitation(
             label,
@@ -175,45 +187,69 @@ def create(
         for label, role in roles.items()
     ]
     add_human(connection, room_id)
-    return {
+    result = {
         "conversation": room_id,
         "invitations": invitations,
         "roster": repository.roster(connection, room_id),
         **round_state,
     }
+    if open_code is not None:
+        result["open_invite"] = {
+            "code": open_code,
+            "join_prompt": ready_open_prompt(open_code, request.brief),
+        }
+    return result
 
 
-def transcript(connection: Connection, room_id: str, after: int) -> dict:
-    """Return one page of every published message, the human's own included."""
+def transcript(
+    connection: Connection,
+    room_id: str,
+    after: int = 0,
+    before: int | None = None,
+    tail: bool = False,
+) -> dict:
+    """Return one page of published messages in ascending ID order.
+
+    Forward reads use ``after``. Backward reads use ``tail=True`` (latest page)
+    or ``before=<id>`` (older page) and set ``more`` when older messages exist.
+    """
     recipient = member.alias("recipient")
-    rows = (
-        connection.execute(
-            select(
-                message.c.id,
-                member.c.label,
-                message.c.body,
-                message.c.created,
-                message.c.kind,
-                recipient.c.label.label("to"),
-                message.c.reply_to,
-            )
-            .join(member, message.c.author == member.c.id)
-            .outerjoin(recipient, message.c.recipient == recipient.c.id)
-            .where(message.c.room == room_id, message.c.id > after)
-            .order_by(message.c.id)
-            .limit(PAGE_SIZE + 1)
+    query = (
+        select(
+            message.c.id,
+            member.c.label,
+            message.c.body,
+            message.c.created,
+            message.c.kind,
+            recipient.c.label.label("to"),
+            message.c.reply_to,
         )
-        .mappings()
-        .all()
+        .join(member, message.c.author == member.c.id)
+        .outerjoin(recipient, message.c.recipient == recipient.c.id)
+        .where(message.c.room == room_id)
     )
-    page = [
-        {field: value for field, value in row.items() if value is not None}
-        for row in rows[:PAGE_SIZE]
-    ]
+    backward = tail or before is not None
+    if backward:
+        if before is not None:
+            query = query.where(message.c.id < before)
+        query = query.order_by(message.c.id.desc())
+    else:
+        query = query.where(message.c.id > after).order_by(message.c.id)
+    rows = connection.execute(query.limit(PAGE_SIZE + 1)).mappings().all()
+    page_rows = list(reversed(rows[:PAGE_SIZE])) if backward else rows[:PAGE_SIZE]
+    page = [{field: value for field, value in row.items() if value is not None} for row in page_rows]
+    total = (
+        connection.scalar(
+            select(func.count()).select_from(message).where(message.c.room == room_id)
+        )
+        or 0
+    )
+    cursor = page[-1]["id"] if page else (0 if backward else after)
     return {
         "messages": page,
         "more": len(rows) > PAGE_SIZE,
-        "cursor": page[-1]["id"] if page else after,
+        "cursor": cursor,
+        "total_messages": total,
     }
 
 
@@ -228,7 +264,13 @@ def show(connection: Connection, request: operator_models.ShowConversation) -> d
         "created": human["created"],
         "archived": bool(human["archived"]),
         "status": status,
-        **transcript(connection, request.conversation, request.after),
+        **transcript(
+            connection,
+            request.conversation,
+            after=request.after,
+            before=request.before,
+            tail=request.tail,
+        ),
     }
 
 
@@ -241,8 +283,28 @@ def invite(
     return invitation(result["participant"], result["role"], result["code"], human["brief"])
 
 
+def set_open_invite(
+    connection: Connection, workspace: str, request: operator_models.SetOpenInvite
+) -> dict:
+    """Enable, rotate, or disable a reusable room-level invite as the human."""
+    human = writing_actor(connection, request.conversation)
+    result = repository.set_open_invite(connection, human, workspace, request.enabled)
+    if not result["open_invite"]:
+        return result
+    return {
+        "open_invite": True,
+        "code": result["code"],
+        "join_prompt": ready_open_prompt(result["code"], human["brief"]),
+    }
+
+
 def launch(
-    connection: Connection, workspace: str, request: operator_models.LaunchParticipant, timeout: int
+    connection: Connection,
+    workspace: str,
+    request: operator_models.LaunchParticipant,
+    timeout: int,
+    *,
+    model: str | None = None,
 ) -> tuple[dict, str | None, str]:
     """Queue a fresh run for a worker slot. Relaunch is not supported yet."""
     human = writing_actor(connection, request.conversation)
@@ -251,7 +313,44 @@ def launch(
     previous = assignments.find_assignment(connection, request.conversation, request.name)
     if previous is not None and previous["state"] not in PENDING_STATES:
         raise ValueError("The fresh run for this slot has ended. Relaunch is not supported yet")
-    return assignments.queue(connection, human, workspace, request.name, request.plugin, timeout)
+    return assignments.queue(
+        connection, human, workspace, request.name, request.plugin, timeout, model=model
+    )
+
+
+def set_member_budget(
+    connection: Connection, workspace: str, request: operator_models.SetMemberBudget
+) -> dict:
+    """Bind a model name and/or per-conversation starting token budget to one participant."""
+    human = human_actor(connection, request.conversation)
+    if not human["open"]:
+        raise ValueError("Conversation is closed")
+    rows = connection.execute(
+        select(member.c.id, member.c.label, member.c.role, member.c.model, member.c.token_budget)
+        .where(member.c.room == request.conversation)
+    ).mappings()
+    target = next((row for row in rows if row["label"].casefold() == request.name.casefold()), None)
+    if target is None:
+        raise ValueError("Unknown participant in this conversation")
+    if target["role"] == Role.HUMAN:
+        raise ValueError(f"Cannot set a token budget for {HUMAN_LABEL}")
+    snapshot = token_usage.set_member_budget(
+        connection,
+        target["id"],
+        model=request.model,
+        token_budget=request.token_budget,
+    )
+    token_usage.sync_ledger(workspace, snapshot)
+    result: dict[str, object] = {"participant": target["label"]}
+    final_model = request.model if request.model is not None else target["model"]
+    final_budget = (
+        request.token_budget if request.token_budget is not None else target["token_budget"]
+    )
+    if final_model is not None:
+        result["model"] = final_model
+    if final_budget is not None:
+        result["token_budget"] = final_budget
+    return result
 
 
 def archive(connection: Connection, request: operator_models.ArchiveConversation) -> dict:
@@ -300,9 +399,16 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
         return create(connection, workspace, request)
     if isinstance(request, operator_models.InviteParticipant):
         return invite(connection, workspace, request)
+    if isinstance(request, operator_models.SetOpenInvite):
+        return set_open_invite(connection, workspace, request)
     if isinstance(request, operator_models.RetireParticipant):
         human = writing_actor(connection, request.conversation)
         return repository.retire(connection, human, request.name)
+    if isinstance(request, operator_models.SetParticipantRole):
+        human = writing_actor(connection, request.conversation)
+        return repository.set_role(connection, human, request.name, request.role)
+    if isinstance(request, operator_models.SetMemberBudget):
+        return set_member_budget(connection, workspace, request)
     if isinstance(request, operator_models.PostMessage):
         human = writing_actor(connection, request.conversation)
         return repository.post_in_round(connection, human, request, int(time.time()))

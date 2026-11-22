@@ -23,6 +23,7 @@ from agents_chat.conversations.progress import (
 )
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.mcp.transport import exchange
+from agents_chat.tokens.settings import ModelName, TokenBudget, TokenCount
 
 # Hosts stop a tool call after about one minute, and the first call may also start the core.
 IDLE_WAITS = 3
@@ -55,8 +56,25 @@ LEAD_CHECKIN_HELP = (
 )
 
 
+COMPACT_USAGE_FIELDS = ("model", "conversation_tokens", "used_percent", "remaining_percent", "status")
+
+
+def compact_usage(usage: dict) -> dict:
+    """Keep only the high-signal budget fields in waiting-read team snapshots."""
+    return {field: usage[field] for field in COMPACT_USAGE_FIELDS if field in usage}
+
+
+def token_balance_note(status: dict) -> str:
+    """Return the lead balancing recommendation when active models are imbalanced."""
+    balance = status.get("token_balance")
+    if not balance or balance.get("balanced"):
+        return ""
+    recommendation = balance.get("recommendation")
+    return f" {recommendation}" if recommendation else ""
+
+
 def team_snapshot(status: dict, me: str) -> dict[str, dict]:
-    """Summarize non-human teammates so a lead sees joins, open tasks, and idle time."""
+    """Summarize non-human teammates so a lead sees joins, open tasks, idle time, and budgets."""
     snapshot = {}
     for name, member in status["members"].items():
         if name == me or member["role"] == Role.HUMAN.label:
@@ -65,6 +83,8 @@ def team_snapshot(status: dict, me: str) -> dict[str, dict]:
         for field in ("open_tasks", "launch_state", "idle_seconds"):
             if field in member:
                 entry[field] = member[field]
+        if "usage" in member:
+            entry["usage"] = compact_usage(member["usage"])
         snapshot[name] = entry
     return snapshot
 
@@ -155,6 +175,17 @@ def lead_guidance(status: dict, me: str, has_messages: bool, silent_waits: int) 
         return summary + lead_pending_guidance(members, pending, silent_waits, idle_note)
     if ended:
         return summary + "Stop listening, verify the evidence, and report what remains open."
+    has_other_members = any(
+        name != me and member["role"] != Role.HUMAN.label and not is_retired(member)
+        for name, member in members.items()
+    )
+    if status.get("open_invite") and not has_other_members:
+        if silent_waits >= LEAD_IDLE_WAITS:
+            return (
+                "No teammates have joined yet via the open invite. "
+                "Stop listening and tell your user."
+            )
+        return f"Waiting for teammates to join via the open invite. To keep listening, {LISTEN}."
     return (
         "All other members are done. Stop listening. Verify the evidence against the brief "
         "and report one conclusion to your user."
@@ -195,6 +226,9 @@ def guidance(
         return sealed_guidance(status, me, has_messages)
     if caller["role"] != Role.WORKER.label:
         next_step = lead_guidance(status, me, has_messages, silent_waits)
+        balance_note = token_balance_note(status)
+        if balance_note:
+            next_step = f"{next_step}{balance_note}"
         return f"{BLOCKER_HELP} {next_step}" if blocker_received else next_step
     open_tasks = caller.get("open_tasks", [])
     if has_messages:
@@ -245,6 +279,8 @@ def finish_wait(page: dict, status: dict, silent_waits: dict[str, int], token_di
         page.pop(field, None)
     if status["open"] and not retired and status["members"][me]["role"] != Role.WORKER.label:
         page["team"] = team_snapshot(status, me)
+        if "token_balance" in status:
+            page["token_balance"] = status["token_balance"]
     task_blockers = set(page.pop("_task_blockers", []))
     blocker_received = any(
         is_current_blocker(message, status["members"], message["id"] in task_blockers)
@@ -291,7 +327,10 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         ],
         instructions=(
             "Use one conversation and one brief for the team's work. Give each invited chat its "
-            "own join code, or launch a fresh worker through a configured plugin. "
+            "own join code, share an open invite code with open_invite=True / open_invite so any "
+            "agent can join, or launch a fresh worker through a configured plugin (see list_plugins). "
+            "As lead, you can add teammates with invite_participant, launch_participant, or "
+            "open_invite, and retire inactive or unneeded teammates with retire_participant. "
             "As lead, assign complementary tasks with kind='task' and the owner's name in 'to'. "
             "Take a substantive part yourself and work on it while the others work. "
             "Read the brief and work on your part. Outside sealed rounds, send evidence and "
@@ -303,6 +342,9 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "As lead, ask a teammate who can help when a worker is blocked. "
             "Track the 'team' status returned by read_messages; assign follow-up tasks or post "
             "a brief team update when workers finish or go quiet so waiting peers stay active. "
+            "Mind teammate token budgets in 'team' and 'token_balance': prefer assigning new "
+            "tasks or handoffs to models with more remaining budget so no model exhausts its "
+            "tokens faster than peers. Report exact token usage with report_usage when known. "
             "Workers in a sealed round submit with kind='proposal' and wait for release. "
             "Keep your participant token in this chat. Never put credentials in shared messages. "
             "Use read_messages to catch up and post_message to contribute. When you have no "
@@ -323,23 +365,32 @@ def serve(workspace: str, directory: Path | None = None) -> None:
     def create_conversation(
         brief: models.Body,
         your_name: models.Label,
-        invitees: models.Slots,
+        invitees: models.OptionalSlots | None = None,
+        open_invite: bool = False,
         sealed: bool = False,
         deadline_minutes: models.DeadlineMinutes | None = None,
+        your_model: ModelName | None = None,
+        your_token_budget: TokenBudget | None = None,
     ) -> dict:
         """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
 
         Give the team one brief. Assign complementary tasks and take a part yourself.
         For an existing chat, give it the returned join_prompt with CODE replaced by its code.
+        Set open_invite=True to also create a reusable room-level join code that works for
+        everyone who joins (invitees may be omitted when open_invite=True).
         For slots you fill with launch_participant, the plugin delivers the invitations.
         Use sealed=True for independent proposals. The deadline defaults to 10 minutes.
+        Optionally pass your_model and your_token_budget to enable token budget tracking.
         """
         return exchange(
             models.Create(
                 workspace=workspace,
                 brief=brief,
                 initiator=your_name,
-                invitees=invitees,
+                initiator_model=your_model,
+                initiator_token_budget=your_token_budget,
+                invitees=list(invitees) if invitees is not None else [],
+                open_invite=open_invite,
                 sealed=sealed,
                 deadline_minutes=deadline_minutes,
             )
@@ -347,25 +398,114 @@ def serve(workspace: str, directory: Path | None = None) -> None:
 
     @server.tool()
     def invite_participant(
-        token: models.Key, name: models.Label, role: models.InviteRole | None = None
+        token: models.Key,
+        name: models.Label,
+        role: models.InviteRole | None = None,
+        model: ModelName | None = None,
+        token_budget: TokenBudget | None = None,
     ) -> dict:
         """As a lead or co-lead, add a participant or replace an unused join code.
 
         New slots default to worker. Reissues keep the slot's role unless you supply a role.
+        Optionally bind a model name or starting token_budget for budget balancing.
         Give the invited chat the join_prompt with CODE replaced by its new code.
         """
-        return exchange(models.Invite(workspace=workspace, token=token, name=name, role=role))
+        return exchange(
+            models.Invite(
+                workspace=workspace,
+                token=token,
+                name=name,
+                role=role,
+                model=model,
+                token_budget=token_budget,
+            )
+        )
 
     @server.tool()
-    def join_conversation(code: models.Key) -> dict:
-        """Redeem a one-time invitation to get the brief and a private participant token.
+    def open_invite(token: models.Key, enabled: bool = True) -> dict:
+        """As a lead or co-lead, enable, rotate, or disable a reusable room-level join code.
 
+        When enabled=True, returns a code that works for everyone who joins until the
+        conversation closes or the code is rotated or disabled (up to 17 participants).
+        Pass enabled=False to revoke the shared invite code.
+        """
+        return exchange(models.OpenInvite(workspace=workspace, token=token, enabled=enabled))
+
+    @server.tool()
+    def retire_participant(token: models.Key, name: models.Label) -> dict:
+        """As a lead or co-lead, retire a participant from an open conversation.
+
+        Unused invitations expire, further writes are blocked, held sealed proposals are
+        discarded, and any active fresh run for that slot is cancelled.
+        """
+        return exchange(models.Retire(workspace=workspace, token=token, name=name))
+
+    @server.tool()
+    def set_participant_role(
+        token: models.Key, name: models.Label, role: models.AssignableRole
+    ) -> dict:
+        """As a lead or co-lead, change an active participant's role in an open conversation.
+
+        Setting role='lead' promotes that participant to sole lead and demotes any previous
+        lead or co-leads to worker while keeping them active. Setting role='co-lead' shares
+        leadership. Cannot demote the only lead or change a retired participant's role.
+        """
+        return exchange(models.SetRole(workspace=workspace, token=token, name=name, role=role))
+
+    @server.tool()
+    def list_plugins(token: models.Key) -> dict:
+        """As a lead or co-lead, list configured fresh-run plugins and their models."""
+        return exchange(models.Plugins(workspace=workspace, token=token))
+
+    @server.tool()
+    def join_conversation(
+        code: models.Key,
+        name: models.Label | None = None,
+        model: ModelName | None = None,
+        token_budget: TokenBudget | None = None,
+    ) -> dict:
+        """Redeem a one-time slot invitation or a shared open invite to join the conversation.
+
+        When joining with a shared open invite code, you may pass your preferred 'name'
+        (if omitted or already taken, a unique worker name is assigned automatically).
+        Optionally pass your 'model' name and starting 'token_budget' so the lead can balance
+        work across models.
         Catch up with read_messages after zero and take your part of the shared brief.
         In open discussion, send questions and evidence to the roster member who can act on them.
         If the round is sealed and your role is worker, post your independent proposal using
         kind='proposal'. Then listen for the release before critiquing other proposals.
         """
-        return exchange(models.Join(workspace=workspace, code=code))
+        return exchange(
+            models.Join(
+                workspace=workspace,
+                code=code,
+                name=name,
+                model=model,
+                token_budget=token_budget,
+            )
+        )
+
+    @server.tool()
+    def report_usage(
+        token: models.Key,
+        input_tokens: TokenCount,
+        output_tokens: TokenCount,
+        model: ModelName | None = None,
+    ) -> dict:
+        """Report your exact cumulative input and output tokens for this conversation.
+
+        Supersedes bridge-side token estimates for your slot and updates team token balance.
+        Optionally supply your model name if it was not declared at join time.
+        """
+        return exchange(
+            models.ReportUsage(
+                workspace=workspace,
+                token=token,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=model,
+            )
+        )
 
     @server.tool()
     def post_message(

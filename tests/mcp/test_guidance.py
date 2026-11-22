@@ -139,7 +139,7 @@ def shim(
     return registered[0], calls
 
 
-def tool(app: server.FastMCP, name: str, **arguments: Any) -> dict:
+def tool(app: server.FastMCP, name: str, /, **arguments: Any) -> dict:
     """Call one registered tool and decode its JSON response."""
     content = asyncio.run(app.call_tool(name, arguments))
     return json.loads(content[0].text)
@@ -575,3 +575,115 @@ def test_assignment_worker_cancels_retired_participant_run() -> None:
         "deadline": 9_999_999_999,
     }
     assert AssignmentWorker.stop_reason(row) == "cancelled"
+
+
+def test_lead_waits_for_open_invite_joiners_instead_of_claiming_done() -> None:
+    """An empty open-invite room keeps the lead waiting up to the idle limit."""
+    status = {
+        "open": True,
+        "open_invite": True,
+        "participant": "Lead",
+        "members": {"Lead": {"role": "lead", "state": "replied"}},
+    }
+    waits: dict[str, int] = {}
+    first = server.finish_wait({"messages": []}, status, waits, "lead")
+    assert "Waiting for teammates to join via the open invite" in first["next"]
+    waits["lead"] = server.LEAD_IDLE_WAITS - 1
+    final = server.finish_wait({"messages": []}, status, waits, "lead")
+    assert "No teammates have joined yet via the open invite" in final["next"]
+    assert "Stop listening" in final["next"]
+
+
+def test_mcp_lead_can_open_invite_and_retire_participants(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """MCP tools let a lead enable open invites, accept named joiners, and retire them."""
+    app, _ = shim
+    created = tool(
+        app,
+        "create_conversation",
+        brief="Team management",
+        your_name="Lead",
+        open_invite=True,
+    )
+    lead = created["token"]
+    open_code = created["open_invite"]["code"]
+    joined = tool(app, "join_conversation", code=open_code, name="Scout")
+    assert joined["participant"] == "Scout"
+    retired = tool(app, "retire_participant", token=lead, name="Scout")
+    assert retired == {"participant": "Scout", "retired": True}
+    disabled = tool(app, "open_invite", token=lead, enabled=False)
+    assert disabled == {"open_invite": False}
+
+
+def test_mcp_lead_can_set_participant_role(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """MCP set_participant_role transfers lead and keeps the previous lead active as worker."""
+    app, _ = shim
+    created = tool(
+        app,
+        "create_conversation",
+        brief="Lead transfer",
+        your_name="Lead",
+        invitees=["Scout"],
+    )
+    lead = created["token"]
+    scout = tool(app, "join_conversation", code=created["invitations"]["Scout"])["token"]
+    changed = tool(app, "set_participant_role", token=lead, name="Scout", role="lead")
+    assert changed == {
+        "participant": "Scout",
+        "role": "lead",
+        "roster": {"Lead": "worker", "Scout": "lead"},
+    }
+    status = tool(app, "conversation_status", token=scout)
+    assert status["members"]["Scout"]["role"] == "lead"
+    assert status["members"]["Lead"]["role"] == "worker"
+    assert status["members"]["Lead"]["state"] == "joined"
+
+
+def test_lead_guidance_surfaces_token_balance_and_compact_team_usage(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Expose compact teammate usage in team snapshot and rebalancing advice in lead next."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Compare cache invalidation strategies",
+        your_name="Claude",
+        your_model="claude-sonnet-4-6",
+        your_token_budget=100_000,
+        invitees=[{"name": "Gemini", "model": "gemini-2.5-pro", "token_budget": 1_000_000}],
+    )
+    lead = team["token"]
+    gemini = tool(app, "join_conversation", code=team["invitations"]["Gemini"])["token"]
+    tool(
+        app,
+        "report_usage",
+        token=lead,
+        input_tokens=50_000,
+        output_tokens=20_000,
+    )
+    tool(
+        app,
+        "report_usage",
+        token=gemini,
+        input_tokens=40_000,
+        output_tokens=10_000,
+    )
+    tool(
+        app,
+        "post_message",
+        token=gemini,
+        submission_id="g1",
+        body="Initial cache scan complete.",
+    )
+
+    page = tool(app, "read_messages", token=lead, after=0, wait_seconds=1)
+    assert page["team"]["Gemini"]["usage"]["model"] == "gemini-2.5-pro"
+    assert page["team"]["Gemini"]["usage"]["used_percent"] == 5.0
+    assert page["token_balance"]["balanced"] is False
+    assert page["token_balance"]["preferred"] == ["Gemini"]
+    assert "Token balance:" in page["next"]
+    assert "Prefer assigning new tasks or handoffs to Gemini." in page["next"]

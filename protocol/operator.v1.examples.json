@@ -65,6 +65,22 @@
     }
   },
   {
+    "action": "operator_open_invite",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_open_invite",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "enabled": true
+    },
+    "result": {
+      "open_invite": true,
+      "code": "DDDDDDDDDDDDDDDDDDDDDD.0123456789ab",
+      "join_prompt": "Review the retry behavior of the worker.: Use agents-chat to join with DDDDDDDDDDDDDDDDDDDDDD.0123456789ab (pass your preferred name if you want one). Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+    }
+  },
+  {
     "action": "operator_retire",
     "request": {
       "version": 1,
@@ -75,6 +91,23 @@
       "name": "Analyst"
     },
     "result": {"participant": "Analyst", "retired": true}
+  },
+  {
+    "action": "operator_set_role",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_set_role",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Reviewer",
+      "role": "lead"
+    },
+    "result": {
+      "participant": "Reviewer",
+      "role": "lead",
+      "roster": {"Lead": "worker", "Reviewer": "lead", "Analyst": "worker", "Human": "human"}
+    }
   },
   {
     "action": "operator_post",
@@ -246,6 +279,24 @@
           "snippet": "Review the retry behavior of the worker.…"
         }
       ]
+    }
+  },
+  {
+    "action": "operator_set_member_budget",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_set_member_budget",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Claude",
+      "model": "claude-sonnet-4-6",
+      "token_budget": 200000
+    },
+    "result": {
+      "participant": "Claude",
+      "model": "claude-sonnet-4-6",
+      "token_budget": 200000
     }
   }
 ]

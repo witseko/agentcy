@@ -172,6 +172,12 @@ func (m model) clickInvite(x int, row int, height int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.inviteWindow.selected = slot
+	if slots[slot] == openInviteCard {
+		if _, found := m.knownOpenInvite(); !found {
+			return m.inform("Open invite is active from another session. Press r to rotate and get a prompt."), nil
+		}
+		return m.copyOpenPrompt()
+	}
 	if _, found := m.knownInvitation(slots[slot]); !found {
 		return m.inform("No prompt for " + cleanLine(slots[slot]) + " in this session. Press r for a new code."), nil
 	}
@@ -198,7 +204,13 @@ func (m model) clickForm(x int, row int, height int) (tea.Model, tea.Cmd) {
 	case field == m.form.fieldCount()-1:
 		return m.submitForm()
 	}
-	if kind, workerRow := m.form.field(field); kind == fieldWorkerName && x-formLeft(m.width) >= sourceColumn {
+	kind, workerRow := m.form.field(field)
+	if kind == fieldOpenInvite {
+		command := m.form.setFocus(field)
+		m.form.toggleOpenInvite(m.width, m.height)
+		return m, command
+	}
+	if kind == fieldWorkerName && x-formLeft(m.width) >= sourceColumn {
 		command := m.form.setFocus(field + 1)
 		m.form.changeSource(workerRow, "right", len(m.plugins))
 		return m, command
@@ -217,6 +229,7 @@ func (m model) onDrag(mouse tea.Mouse) model {
 		return m
 	}
 	m.resizeInputs()
+	m.clampChatScroll()
 	return m
 }
 
@@ -227,7 +240,7 @@ func (m model) clampSide(width int, other int) int {
 }
 
 // onWheel scrolls the chat list, the transcript or the team selection under the pointer.
-func (m model) onWheel(mouse tea.Mouse) model {
+func (m model) onWheel(mouse tea.Mouse) (model, tea.Cmd) {
 	step := 0
 	switch mouse.Button {
 	case tea.MouseWheelUp:
@@ -235,10 +248,10 @@ func (m model) onWheel(mouse tea.Mouse) model {
 	case tea.MouseWheelDown:
 		step = 1
 	default:
-		return m
+		return m, nil
 	}
 	if m.screen == screenNew || m.inviteWindow.open {
-		return m
+		return m, nil
 	}
 	switch m.regionAt(mouse.X) {
 	case regionList:
@@ -246,12 +259,12 @@ func (m model) onWheel(mouse tea.Mouse) model {
 	case regionCenter:
 		switch m.screen {
 		case screenChat:
-			m.chat.scroll = max(m.chat.scroll-step*wheelLines, 0)
+			return m.scrollTranscriptBy(-step * wheelLines)
 		case screenSearch:
 			m.search.selected = min(max(m.search.selected+step, 0), max(len(m.search.hits)-1, 0))
 		}
 	case regionTeam:
 		m.chat.selected = min(max(m.chat.selected+step, 0), max(len(m.slotNames())-1, 0))
 	}
-	return m
+	return m, nil
 }
