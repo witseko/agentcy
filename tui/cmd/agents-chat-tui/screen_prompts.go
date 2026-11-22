@@ -55,6 +55,9 @@ func (m model) knownOpenInvite() (OpenInviteInvitation, bool) {
 // promptSlots returns the open-invite card (when enabled) followed by manual slots that have
 // not joined: invited members without a fresh-run launch, in team order.
 func (m model) promptSlots() []string {
+	if m.chat.loaded && len(m.chat.view.Status.Members) > 0 && !m.chat.view.Status.Open {
+		return nil
+	}
 	var names []string
 	if m.hasOpenInvite() {
 		names = append(names, openInviteCard)

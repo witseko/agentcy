@@ -45,7 +45,7 @@ type tasksMsg struct {
 
 // openTaskCount returns the number of unfinished tasks reported in the current conversation status.
 func (m model) openTaskCount() int {
-	if m.chat.tasks.loaded {
+	if m.chat.tab == tabTasks && m.chat.tasks.loaded {
 		count := 0
 		for _, task := range m.chat.tasks.items {
 			if task.State != "done" {
@@ -292,7 +292,7 @@ func (m *model) scrollTaskDetail(delta int) {
 	}
 	_, center, _ := m.columnWidths()
 	bodyHeight := max(m.height-2, 1)
-	contentHeight := max(bodyHeight-len(m.chatHeader(center)), 1)
+	contentHeight := max(bodyHeight-m.chatHeaderHeight(center), 1)
 	_, detailHeight := tasksLayout(contentHeight)
 	total := len(m.taskDetailLines(task, center))
 	maxScroll := max(total-detailHeight, 0)
@@ -458,7 +458,7 @@ func (m model) taskEventLines(event TaskEvent, width int) []string {
 // taskRowAt maps a body row in the center column to a task ID when on the Tasks tab.
 func (m model) taskRowAt(row int, bodyHeight int) (int64, bool) {
 	_, center, _ := m.columnWidths()
-	headerLen := len(m.chatHeader(center))
+	headerLen := m.chatHeaderHeight(center)
 	contentRow := row - headerLen
 	contentHeight := max(bodyHeight-headerLen, 1)
 	listHeight, _ := tasksLayout(contentHeight)
@@ -482,7 +482,7 @@ func (m model) taskRowAt(row int, bodyHeight int) (int64, bool) {
 // isTaskDetailRow reports whether a body row in the center column is over the task detail pane.
 func (m model) isTaskDetailRow(row int, bodyHeight int) bool {
 	_, center, _ := m.columnWidths()
-	headerLen := len(m.chatHeader(center))
+	headerLen := m.chatHeaderHeight(center)
 	contentRow := row - headerLen
 	contentHeight := max(bodyHeight-headerLen, 1)
 	listHeight, _ := tasksLayout(contentHeight)

@@ -23,6 +23,10 @@ const (
 	autoPageThreshold = 12
 	// sendButtonWidth is the width of the Send button and the gap before it.
 	sendButtonWidth = 10
+	// composerLines is the fixed row count of the bottom composer area.
+	composerLines = 3
+	// staleMemberIdleSeconds dims the active dot when a member has not contacted the bridge for 10 minutes.
+	staleMemberIdleSeconds = 600
 	// messageIndent lines a message body up under its author, after the time column.
 	messageIndent = "       "
 )
@@ -39,8 +43,14 @@ const (
 // roleOrder sorts members in the team panel: leads first, the human last.
 var roleOrder = map[string]int{"lead": 0, "co-lead": 1, "worker": 2, "human": 3}
 
+// cachedMessageLines holds the wrapped lines of one message for a given width and author role.
+type cachedMessageLines struct {
+	role  string
+	lines []string
+}
+
 // transcriptLinesCache stores the wrapped transcript lines for one width and state version,
-// so redraws on mouse motion, typing, and scrolling do not re-wrap every message.
+// caching individual messages so page loads and new posts do not re-wrap the whole conversation.
 type transcriptLinesCache struct {
 	valid        bool
 	width        int
@@ -49,6 +59,7 @@ type transcriptLinesCache struct {
 	hasOlder     bool
 	loadingOlder bool
 	lines        []string
+	perMessage   map[int64]cachedMessageLines
 }
 
 // chatState holds the open conversation and the transcript read so far.
@@ -269,7 +280,7 @@ func (m model) loadOlderMessages() (model, tea.Cmd) {
 	}
 }
 
-// onShow routes one transcript page response by its pagination mode.
+// onShow routes one transcript page response by its pagination mode and drains any queued refresh.
 func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	if msg.conversation != m.chat.id {
 		return m, nil
@@ -279,29 +290,92 @@ func (m model) onShow(msg showMsg) (tea.Model, tea.Cmd) {
 	}
 	m.chat.polling = false
 	if msg.err != nil {
-		return m.fail(msg.err), nil
+		return m.flushPendingShow(m.fail(msg.err), nil)
 	}
-	if msg.mode == showAfter {
-		return m.onShowAfter(msg)
+	var next tea.Model
+	var cmd tea.Cmd
+	switch msg.mode {
+	case showAfter:
+		next, cmd = m.onShowAfter(msg)
+	case showStatus:
+		next, cmd = m.onShowStatus(msg)
+	default:
+		next, cmd = m.onShowWindow(msg)
 	}
-	if msg.mode == showStatus {
-		return m.onShowStatus(msg)
+	return next.(model).flushPendingShow(next.(model), cmd)
+}
+
+// flushPendingShow runs a queued tail jump or refresh once the in-flight Show finishes.
+func (m model) flushPendingShow(next model, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	if next.chat.polling {
+		return next, cmd
 	}
-	return m.onShowWindow(msg)
+	if next.chat.tailPending {
+		next.chat.tailPending = false
+		next.chat.refreshPending = false
+		var tailCmd tea.Cmd
+		next, tailCmd = next.loadTail()
+		return next, tea.Batch(cmd, tailCmd)
+	}
+	if next.chat.refreshPending {
+		next.chat.refreshPending = false
+		var refreshCmd tea.Cmd
+		next, refreshCmd = next.refreshChat()
+		return next, tea.Batch(cmd, refreshCmd)
+	}
+	return next, cmd
+}
+
+// applyChatLifecycle drops modal prompts and cached codes that are no longer valid after
+// an external close or retirement.
+func (m *model) applyChatLifecycle() {
+	if !m.chat.loaded || len(m.chat.view.Status.Members) == 0 {
+		return
+	}
+	if !m.chat.view.Status.Open {
+		delete(m.openInvites, m.chat.id)
+		delete(m.invitations, m.chat.id)
+		m.inviteWindow.open = false
+		m.chat.closing = false
+		m.chat.retiring = ""
+		return
+	}
+	if m.chat.retiring != "" {
+		if member, ok := m.chat.view.Status.Members[m.chat.retiring]; !ok || member.State == "retired" {
+			m.chat.retiring = ""
+		}
+	}
 }
 
 // onShowStatus refreshes status metadata without replacing the loaded transcript window.
 func (m model) onShowStatus(msg showMsg) (tea.Model, tea.Cmd) {
 	selectedName := m.selectedMember()
-	rolesChanged := memberRolesChanged(m.chat.view.Status.Members, msg.view.Status.Members)
+	prevMembers := m.chat.view.Status.Members
+	prevOpen := m.chat.view.Status.Open
+	prevArchived := m.chat.view.Archived
+	rolesChanged := memberRolesChanged(prevMembers, msg.view.Status.Members)
+	listChanged := m.chat.loaded && (rosterChanged(prevMembers, msg.view.Status.Members) ||
+		prevOpen != msg.view.Status.Open ||
+		prevArchived != msg.view.Archived)
+	m.chat.view.Brief = msg.view.Brief
+	m.chat.view.Created = msg.view.Created
 	m.chat.view.Status = msg.view.Status
 	m.chat.view.Archived = msg.view.Archived
 	m.chat.view.TotalMessages = msg.view.TotalMessages
-	m.restoreSelection(selectedName)
+	if msg.view.Cursor <= m.chat.cursor {
+		m.chat.hasNewer = false
+	}
 	if rolesChanged {
 		m.chat.version++
 	}
-	return m.succeed(), nil
+	m.applyChatLifecycle()
+	m.restoreSelection(selectedName)
+	m.syncOpenChatInList()
+	m = m.succeed()
+	if listChanged {
+		return m, m.loadList()
+	}
+	return m, nil
 }
 
 // onShowWindow replaces the loaded window after an initial tail, start, or search-jump load.
@@ -311,6 +385,8 @@ func (m model) onShowWindow(msg showMsg) (tea.Model, tea.Cmd) {
 	m.chat.view = msg.view
 	m.chat.loaded = true
 	m.chat.version++
+	m.applyChatLifecycle()
+	m.syncOpenChatInList()
 	m = m.succeed()
 	switch msg.mode {
 	case showStart:
@@ -359,7 +435,9 @@ func (m model) onShowOlder(msg showMsg) (tea.Model, tea.Cmd) {
 	m.chat.view.Status = msg.view.Status
 	m.chat.view.TotalMessages = msg.view.TotalMessages
 	m.chat.hasOlder = msg.view.More
+	m.applyChatLifecycle()
 	m.restoreSelection(selectedName)
+	m.syncOpenChatInList()
 	older := filterBefore(msg.view.Messages, m.chat.messages[0].ID)
 	if len(older) > 0 {
 		combined := make([]TranscriptMessage, 0, len(older)+len(m.chat.messages))
@@ -385,8 +463,12 @@ func (m model) onShowAfter(msg showMsg) (tea.Model, tea.Cmd) {
 	wasLoaded := m.chat.loaded
 	selectedName := m.selectedMember()
 	prevMembers := m.chat.view.Status.Members
+	prevOpen := m.chat.view.Status.Open
+	prevArchived := m.chat.view.Archived
 	rolesChanged := memberRolesChanged(prevMembers, msg.view.Status.Members)
-	teamChanged := wasLoaded && rosterChanged(prevMembers, msg.view.Status.Members)
+	listChanged := wasLoaded && (rosterChanged(prevMembers, msg.view.Status.Members) ||
+		prevOpen != msg.view.Status.Open ||
+		prevArchived != msg.view.Archived)
 	added := msg.view.Messages
 	if len(m.chat.messages) > 0 {
 		added = filterAfter(added, m.chat.messages[len(m.chat.messages)-1].ID)
@@ -400,14 +482,16 @@ func (m model) onShowAfter(msg showMsg) (tea.Model, tea.Cmd) {
 	m.chat.cursor = msg.view.Cursor
 	m.chat.view = msg.view
 	m.chat.loaded = true
+	m.applyChatLifecycle()
 	m.restoreSelection(selectedName)
+	m.syncOpenChatInList()
 	if wasScrolledUp && len(added) > 0 {
 		m.chat.scroll += len(messageLines(added, msg.view.Status.Members, center, 0))
 	}
 	m.clampChatScroll()
 	m = m.succeed()
 	var commands []tea.Cmd
-	if teamChanged {
+	if listChanged {
 		commands = append(commands, m.loadList())
 	}
 	if m.chat.hasNewer {
@@ -494,19 +578,32 @@ func (m *model) restoreSelection(name string) {
 func (m model) scrollToTarget() model {
 	m.chat.jumping = false
 	_, center, _ := m.columnWidths()
-	members := m.chat.view.Status.Members
+	for _, message := range m.chat.messages {
+		if message.ID == m.chat.jumpTarget {
+			m.chat.highlight = message.ID
+			break
+		}
+	}
 	lines := m.transcriptLines(center)
 	total := len(lines)
 	top := 0
-	bannerLines := 0
+	cursor := 0
 	if m.chat.hasOlder {
-		bannerLines = 1
+		cursor = 1
 	}
-	for index, message := range m.chat.messages {
+	cache := m.chat.linesCache
+	for _, message := range m.chat.messages {
 		if message.ID == m.chat.jumpTarget {
-			top = bannerLines + len(messageLines(m.chat.messages[:index], members, center, 0))
-			m.chat.highlight = message.ID
+			top = cursor
+			break
 		}
+		if cache != nil {
+			if cached, ok := cache.perMessage[message.ID]; ok {
+				cursor += len(cached.lines)
+				continue
+			}
+		}
+		cursor += len(singleMessageLines(message, m.chat.view.Status.Members, center, m.chat.highlight))
 	}
 	height := m.transcriptHeight(center)
 	m.chat.scroll = max(min(total-top-height, total-height), 0)
@@ -517,7 +614,7 @@ func (m model) scrollToTarget() model {
 // message line.
 func (m model) transcriptHeight(width int) int {
 	bodyHeight := max(m.height-2, 1)
-	return max(bodyHeight-len(m.chatHeader(width))-len(m.composer(width)), 1)
+	return max(bodyHeight-m.chatHeaderHeight(width)-composerLines, 1)
 }
 
 // chatKey handles a key in the conversation view. Keys that work everywhere come first,
@@ -743,7 +840,7 @@ func (m model) onClosed(msg closedMsg) (tea.Model, tea.Cmd) {
 	}
 	delete(m.openInvites, m.chat.id)
 	m = m.inform("Chat closed.")
-	m, poll := m.pollChat()
+	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
@@ -801,7 +898,7 @@ func (m model) onRetired(msg retiredMsg) (tea.Model, tea.Cmd) {
 	}
 	delete(m.invitations[m.chat.id], foldName(msg.participant))
 	m = m.inform("Retired " + cleanLine(msg.participant) + ".")
-	m, poll := m.pollChat()
+	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
@@ -842,7 +939,7 @@ func (m model) onRoleChanged(msg roleChangedMsg) (tea.Model, tea.Cmd) {
 		return m.fail(msg.err), nil
 	}
 	m = m.inform(fmt.Sprintf("%s is now %s.", cleanLine(msg.result.Participant), cleanLine(msg.result.Role)))
-	m, poll := m.pollChat()
+	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
@@ -878,9 +975,9 @@ func (m model) onPosted(msg postedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.chat.scroll = 0
 	if m.chat.hasNewer {
-		return m.loadTail()
+		return m.loadTailRefresh()
 	}
-	return m.pollChat()
+	return m.refreshChat()
 }
 
 // parsePost reads an optional leading ? (a question) and an optional @Name addressee that
@@ -1055,7 +1152,7 @@ func (m model) onBudgetUpdated(msg budgetUpdatedMsg) (tea.Model, tea.Cmd) {
 		detail += " (" + cleanLine(msg.result.Model) + ")"
 	}
 	m = m.inform("Updated " + detail + ".")
-	return m.pollChat()
+	return m.refreshChat()
 }
 
 // setOpenInvite enables, rotates, or disables the shared room-level invite code.
@@ -1082,7 +1179,7 @@ func (m model) onOpenInvite(msg openInviteMsg) (tea.Model, tea.Cmd) {
 			m.chat.view.Status.OpenInvite = false
 			m = m.inform("Open invite disabled.")
 		}
-		return m.pollChat()
+		return m.refreshChat()
 	}
 	m.openInvites[msg.conversation] = OpenInviteInvitation{
 		Code:       msg.status.Code,
@@ -1094,8 +1191,8 @@ func (m model) onOpenInvite(msg openInviteMsg) (tea.Model, tea.Cmd) {
 	m.chat.view.Status.OpenInvite = true
 	delete(m.inviteWindow.copied, openInviteCard)
 	m = m.openInvite("")
-	m.status = "Open invite ready. Anyone can join with this prompt while the chat is open."
-	return m.pollChat()
+	m = m.inform("Open invite ready. Anyone can join with this prompt while the chat is open.")
+	return m.refreshChat()
 }
 
 // invite adds or reissues a slot and then shows its join prompt.
@@ -1127,7 +1224,7 @@ func (m model) onLaunched(msg launchedMsg) (tea.Model, tea.Cmd) {
 	}
 	delete(m.invitations[m.chat.id], foldName(msg.name))
 	m = m.inform(fmt.Sprintf("Launch for %s is %s.", cleanLine(msg.name), cleanLine(msg.queued.State)))
-	m, poll := m.pollChat()
+	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
@@ -1179,8 +1276,8 @@ func (m model) onInvited(msg invitedMsg) (tea.Model, tea.Cmd) {
 	}
 	m = m.openInvite(msg.invitation.Participant)
 	delete(m.inviteWindow.copied, foldName(msg.invitation.Participant))
-	m.status = "New code for " + cleanLine(msg.invitation.Participant) + ". It works once and expires in one hour."
-	m, poll := m.pollChat()
+	m = m.inform("New code for " + cleanLine(msg.invitation.Participant) + ". It works once and expires in one hour.")
+	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
@@ -1286,6 +1383,22 @@ func (m model) chatView(width int, height int) []string {
 		lines = append(lines, "")
 	}
 	return append(lines, footer...)
+}
+
+// chatHeaderHeight returns the number of rows chatHeader occupies without rendering ANSI buttons or rules.
+func (m model) chatHeaderHeight(width int) int {
+	view := m.chat.view
+	header := m.headerLayout(width)
+	shown := header.title
+	rest := view.Brief
+	if first, after, found := strings.Cut(view.Brief, "\n"); found && shown == cleanLine(first) {
+		rest = after
+	}
+	extra := 0
+	if shown != strings.TrimSpace(clean(view.Brief)) && strings.TrimSpace(rest) != "" {
+		extra = min(len(wrapLines(rest, width-2, " ")), maxBriefLines)
+	}
+	return 3 + extra
 }
 
 // chatHeader draws the title, a state badge and the start of the brief.
@@ -1448,6 +1561,8 @@ func (m model) inputPreview() string {
 }
 
 // transcriptLines returns the cached wrapped lines for the loaded messages and any top banner.
+// Per-message lines are retained across pagination and incoming posts so only newly loaded
+// messages are wrapped.
 func (m model) transcriptLines(width int) []string {
 	cache := m.chat.linesCache
 	if cache != nil && cache.valid &&
@@ -1458,13 +1573,32 @@ func (m model) transcriptLines(width int) []string {
 		cache.loadingOlder == m.chat.loadingOlder {
 		return cache.lines
 	}
-	lines := messageLines(m.chat.messages, m.chat.view.Status.Members, width, m.chat.highlight)
+	var perMessage map[int64]cachedMessageLines
+	if cache != nil && cache.width == width && cache.highlight == m.chat.highlight && cache.perMessage != nil {
+		perMessage = cache.perMessage
+	} else {
+		perMessage = make(map[int64]cachedMessageLines, len(m.chat.messages))
+	}
+	members := m.chat.view.Status.Members
+	var lines []string
 	if m.chat.hasOlder {
 		label := "  ↑ Scroll up for older messages"
 		if m.chat.loadingOlder {
 			label = "  ↑ Loading older messages…"
 		}
-		lines = append([]string{dimStyle.Render(label)}, lines...)
+		lines = append(lines, dimStyle.Render(label))
+	}
+	for _, message := range m.chat.messages {
+		role := members[message.Label].Role
+		cached, ok := perMessage[message.ID]
+		if !ok || cached.role != role {
+			cached = cachedMessageLines{
+				role:  role,
+				lines: singleMessageLines(message, members, width, m.chat.highlight),
+			}
+			perMessage[message.ID] = cached
+		}
+		lines = append(lines, cached.lines...)
 	}
 	if cache != nil {
 		*cache = transcriptLinesCache{
@@ -1475,6 +1609,7 @@ func (m model) transcriptLines(width int) []string {
 			hasOlder:     m.chat.hasOlder,
 			loadingOlder: m.chat.loadingOlder,
 			lines:        lines,
+			perMessage:   perMessage,
 		}
 	}
 	return lines
@@ -1492,49 +1627,55 @@ func (m model) visibleTranscript(width int, height int) []string {
 	return lines[start:end]
 }
 
+// singleMessageLines renders one message as a header line, wrapped body lines, and a trailing blank line.
+func singleMessageLines(message TranscriptMessage, members map[string]MemberStatus, width int, highlight int64) []string {
+	role := members[message.Label].Role
+	author := cleanLine(message.Label)
+	if role == "human" {
+		author = "You"
+	}
+	header := " " + dimStyle.Render(time.Unix(message.Created, 0).Format("15:04")) + "  " +
+		roleStyle(role).Render(author)
+	switch {
+	case message.ReplyTo != nil:
+		header += dimStyle.Render(fmt.Sprintf(" ↳ re #%d", *message.ReplyTo))
+	case message.To != "":
+		header += dimStyle.Render(" → " + cleanLine(message.To))
+	case role == "human":
+		header += dimStyle.Render(" to everyone")
+	}
+	if label := kindLabel(message); label != "" {
+		header += "  " + label
+	}
+	body := wrapLines(message.Body, width-1, messageIndent)
+	lines := make([]string, 0, len(body)+2)
+	switch {
+	case message.ID == highlight:
+		lines = append(lines, fill(accentStyle.Render("▎")+header[1:], width, colorSelect))
+		for _, line := range body {
+			lines = append(lines, fill(textStyle.Render(line), width, colorSelect))
+		}
+	case role == "human":
+		lines = append(lines, fill(header, width, colorBand))
+		for _, line := range body {
+			lines = append(lines, fill(textStyle.Render(line), width, colorBand))
+		}
+	default:
+		lines = append(lines, header)
+		for _, line := range body {
+			lines = append(lines, textStyle.Render(line))
+		}
+	}
+	return append(lines, "")
+}
+
 // messageLines draws each message as a header line and its wrapped body, with a blank line
 // between messages. The human's messages sit on a band, and the highlighted message on the
 // selection color with a marker. Highlighting never changes the number of lines.
 func messageLines(messages []TranscriptMessage, members map[string]MemberStatus, width int, highlight int64) []string {
 	var lines []string
 	for _, message := range messages {
-		role := members[message.Label].Role
-		author := cleanLine(message.Label)
-		if role == "human" {
-			author = "You"
-		}
-		header := " " + dimStyle.Render(time.Unix(message.Created, 0).Format("15:04")) + "  " +
-			roleStyle(role).Render(author)
-		switch {
-		case message.ReplyTo != nil:
-			header += dimStyle.Render(fmt.Sprintf(" ↳ re #%d", *message.ReplyTo))
-		case message.To != "":
-			header += dimStyle.Render(" → " + cleanLine(message.To))
-		case role == "human":
-			header += dimStyle.Render(" to everyone")
-		}
-		if label := kindLabel(message); label != "" {
-			header += "  " + label
-		}
-		body := wrapLines(message.Body, width-1, messageIndent)
-		switch {
-		case message.ID == highlight:
-			lines = append(lines, fill(accentStyle.Render("▎")+header[1:], width, colorSelect))
-			for _, line := range body {
-				lines = append(lines, fill(textStyle.Render(line), width, colorSelect))
-			}
-		case role == "human":
-			lines = append(lines, fill(header, width, colorBand))
-			for _, line := range body {
-				lines = append(lines, fill(textStyle.Render(line), width, colorBand))
-			}
-		default:
-			lines = append(lines, header)
-			for _, line := range body {
-				lines = append(lines, textStyle.Render(line))
-			}
-		}
-		lines = append(lines, "")
+		lines = append(lines, singleMessageLines(message, members, width, highlight)...)
 	}
 	return lines
 }
@@ -1574,6 +1715,99 @@ func usageBar(usedPercent float64) string {
 	return strings.Repeat("▓", filled) + strings.Repeat("░", 8-filled)
 }
 
+// providerForModel returns a recognizable provider prefix for a model identifier, or "".
+func providerForModel(model string) string {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	switch {
+	case strings.HasPrefix(lower, "claude"),
+		strings.HasPrefix(lower, "opus"),
+		strings.HasPrefix(lower, "sonnet"),
+		strings.HasPrefix(lower, "haiku"),
+		strings.HasPrefix(lower, "fable"):
+		return "anthropic"
+	case strings.HasPrefix(lower, "gemini"),
+		strings.HasPrefix(lower, "neon"),
+		strings.HasPrefix(lower, "argon"):
+		return "google"
+	case strings.HasPrefix(lower, "glm"):
+		return "zai"
+	case strings.HasPrefix(lower, "grok"):
+		return "xai"
+	case strings.HasPrefix(lower, "gpt"),
+		strings.HasPrefix(lower, "codex"),
+		strings.HasPrefix(lower, "o1"),
+		strings.HasPrefix(lower, "o3"),
+		strings.HasPrefix(lower, "o4"):
+		return "openai"
+	case strings.HasPrefix(lower, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(lower, "qwen"):
+		return "alibaba"
+	case strings.HasPrefix(lower, "mistral"),
+		strings.HasPrefix(lower, "codestral"):
+		return "mistral"
+	}
+	return ""
+}
+
+// formatProviderModel formats a declared model string with its provider prefix (e.g. "anthropic/claude-sonnet-4-6").
+func formatProviderModel(raw string) string {
+	cleaned := strings.TrimSpace(cleanLine(raw))
+	if cleaned == "" {
+		return ""
+	}
+	if strings.Contains(cleaned, "/") {
+		return cleaned
+	}
+	if provider := providerForModel(cleaned); provider != "" {
+		return provider + "/" + cleaned
+	}
+	return cleaned
+}
+
+// modelVariantTokens lists recognized model variant words that refine a family name in a slot label.
+var modelVariantTokens = map[string]bool{
+	"opus": true, "sonnet": true, "haiku": true, "fable": true,
+	"flash": true, "pro": true, "ultra": true, "nano": true,
+	"neon": true, "argon": true, "mini": true, "codex": true,
+}
+
+// inferProviderModelFromName infers a "provider/model" label when a participant's name identifies a known model family.
+func inferProviderModelFromName(name string) string {
+	words := strings.FieldsFunc(strings.ToLower(cleanLine(name)), func(r rune) bool {
+		return r == ' ' || r == '-' || r == '_' || r == '/'
+	})
+	for index, word := range words {
+		provider := providerForModel(word)
+		if provider == "" {
+			continue
+		}
+		family := word
+		switch word {
+		case "opus", "sonnet", "haiku", "fable":
+			family = "claude-" + word
+		case "neon", "argon":
+			family = "gemini-" + word
+		}
+		if index+1 < len(words) && modelVariantTokens[words[index+1]] && !strings.HasSuffix(family, words[index+1]) {
+			family += "-" + words[index+1]
+		}
+		return provider + "/" + family
+	}
+	return ""
+}
+
+// memberProviderModel returns the declared or inferred "provider/model" context for a non-human member.
+func memberProviderModel(name string, member MemberStatus) string {
+	if member.Role == "human" {
+		return ""
+	}
+	if member.Usage != nil && member.Usage.Model != "" {
+		return formatProviderModel(member.Usage.Model)
+	}
+	return inferProviderModelFromName(name)
+}
+
 // memberUsageLine formats one compact budget or token-spend line for the team panel.
 func memberUsageLine(usage *MemberUsage) string {
 	if usage == nil {
@@ -1596,7 +1830,8 @@ func memberUsageLine(usage *MemberUsage) string {
 
 // memberBlock renders one member's lines with selection or hover highlight.
 func (m model) memberBlock(name string, member MemberStatus, selected string, width int) []string {
-	glyph, detail := memberState(member)
+	chatOpen := !m.chat.loaded || m.chat.view.Status.Open
+	glyph, detail := memberStateForChat(member, chatOpen)
 	label := cleanLine(name)
 	if member.Role == "human" {
 		label = "You"
@@ -1605,14 +1840,18 @@ func (m model) memberBlock(name string, member MemberStatus, selected string, wi
 	if member.State == "retired" {
 		styledName = dimStyle.Render(label)
 	}
+	roleText := member.Role
+	if providerModel := memberProviderModel(name, member); providerModel != "" {
+		roleText += " · " + providerModel
+	}
 	block := []string{
-		glyph + " " + styledName + " " + dimStyle.Render(member.Role),
+		glyph + " " + styledName + " " + dimStyle.Render(roleText),
 		"  " + dimStyle.Render(detail),
 	}
 	if usageLine := memberUsageLine(member.Usage); usageLine != "" {
 		block = append(block, "  "+usageLine)
 	}
-	if member.State == "invited" && member.LaunchState == "" {
+	if chatOpen && member.State == "invited" && member.LaunchState == "" {
 		copyButton, _ := m.buttons(button{id: "copy:" + name, label: "Copy join prompt"})
 		block = append(block, "  "+copyButton)
 	}
@@ -1640,6 +1879,8 @@ func (m model) memberTasks(label string, member MemberStatus, width int) []strin
 		state := dimStyle.Render("open")
 		if member.State == "retired" {
 			state = dimStyle.Render("archived")
+		} else if isLaunchEnded(member.LaunchState) {
+			state = dimStyle.Render("run " + strings.ReplaceAll(member.LaunchState, "_", " "))
 		} else if task.Blocked != nil && *task.Blocked {
 			state = warnStyle.Render("blocked")
 		} else if member.State == "invited" {
@@ -1712,6 +1953,7 @@ type teamRow struct {
 // teamRows returns where teamView draws each member, so a click can find the member.
 func (m model) teamRows() []teamRow {
 	members := m.chat.view.Status.Members
+	chatOpen := !m.chat.loaded || m.chat.view.Status.Open
 	active, archived := partitionMembers(members)
 	var rows []teamRow
 	top := 2
@@ -1723,7 +1965,7 @@ func (m model) teamRows() []teamRow {
 				size++
 			}
 			row := teamRow{name: name, top: top, size: size, copyRow: -1}
-			if member.State == "invited" && member.LaunchState == "" {
+			if chatOpen && member.State == "invited" && member.LaunchState == "" {
 				row.copyRow = top + size
 				row.size++
 			}
@@ -1779,8 +2021,21 @@ func (m model) teamTaskRows(height int) []teamTaskRow {
 	return rows
 }
 
-// memberState returns a glyph that reads without color and a one-line detail.
+// isLaunchEnded reports whether a fresh-run assignment is no longer active.
+func isLaunchEnded(launchState string) bool {
+	return launchState != "" &&
+		launchState != "queued" &&
+		launchState != "starting" &&
+		launchState != "running"
+}
+
+// memberState returns a glyph that reads without color and a one-line detail for an open chat.
 func memberState(member MemberStatus) (string, string) {
+	return memberStateForChat(member, true)
+}
+
+// memberStateForChat returns a glyph and one-line detail reflecting current launch and conversation state.
+func memberStateForChat(member MemberStatus, chatOpen bool) (string, string) {
 	blockedTask := int64(0)
 	for _, task := range member.OpenTasks {
 		if task.Blocked != nil && *task.Blocked {
@@ -1792,12 +2047,29 @@ func memberState(member MemberStatus) (string, string) {
 		return roleStyle("human").Render("◆"), "you, through this window"
 	case member.State == "retired":
 		return dimStyle.Render("✕"), "archived"
+	case isLaunchEnded(member.LaunchState):
+		if member.LaunchState == "finished" {
+			if member.State == "done" {
+				return dimStyle.Render("○"), "done"
+			}
+			if member.State == "invited" {
+				return dimStyle.Render("✕"), "launch finished"
+			}
+			return dimStyle.Render("○"), "run finished"
+		}
+		return dimStyle.Render("✕"), "launch " + strings.ReplaceAll(member.LaunchState, "_", " ")
+	case !chatOpen:
+		if member.State == "invited" {
+			return dimStyle.Render("◌"), "never joined"
+		}
+		if member.State == "done" {
+			return dimStyle.Render("○"), "done"
+		}
+		return dimStyle.Render("○"), member.State
 	case blockedTask != 0:
 		return warnStyle.Render("▲"), fmt.Sprintf("blocked on task #%d", blockedTask)
 	case member.State == "blocked":
 		return warnStyle.Render("▲"), "blocked"
-	case member.LaunchState == "failed" || member.LaunchState == "timed_out" || member.LaunchState == "cancelled":
-		return dimStyle.Render("✕"), "launch " + strings.ReplaceAll(member.LaunchState, "_", " ")
 	case member.State == "invited" && member.LaunchState != "":
 		return accentStyle.Render("◐"), "plugin " + member.LaunchState
 	case member.State == "invited":
@@ -1813,6 +2085,9 @@ func memberState(member MemberStatus) (string, string) {
 	}
 	if member.IdleSeconds != nil {
 		detail += " · active " + idle(*member.IdleSeconds) + " ago"
+		if *member.IdleSeconds >= staleMemberIdleSeconds {
+			return dimStyle.Render("●"), detail
+		}
 	}
 	return okStyle.Render("●"), detail
 }

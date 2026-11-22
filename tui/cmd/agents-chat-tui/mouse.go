@@ -14,7 +14,7 @@ const (
 )
 
 // wheelLines is how far one wheel step scrolls the transcript.
-const wheelLines = 3
+const wheelLines = 2
 
 // toggleMouse turns mouse capture off, so the terminal selects and copies text, or back on.
 func (m model) toggleMouse() model {

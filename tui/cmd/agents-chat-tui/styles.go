@@ -151,6 +151,13 @@ func pad(line string, width int) string {
 	if width <= 0 {
 		return ""
 	}
+	current := ansi.StringWidth(line)
+	if current == width {
+		return line
+	}
+	if current < width {
+		return line + strings.Repeat(" ", width-current)
+	}
 	line = ansi.Truncate(line, width, "")
 	if gap := width - ansi.StringWidth(line); gap > 0 {
 		line += strings.Repeat(" ", gap)

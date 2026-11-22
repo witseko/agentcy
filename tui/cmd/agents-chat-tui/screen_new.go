@@ -174,11 +174,13 @@ func (m model) formKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key := msg.String(); {
 	case key == "esc":
 		m.screen = screenHome
+		var refresh tea.Cmd
 		if m.chat.id != "" {
 			m.screen = screenChat
+			m, refresh = m.refreshChat()
 		}
 		m.resizeInputs()
-		return m, m.loadList()
+		return m, tea.Batch(refresh, m.loadList())
 	case key == "ctrl+s":
 		return m.submitForm()
 	case key == "tab":
@@ -440,11 +442,11 @@ func (m model) onCreated(msg createdMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case len(msg.launchFailure) > 0:
-		m.status = "Created. Launch failed for " + cleanLine(strings.Join(msg.launchFailure, "; "))
+		m = m.inform("Created. Launch failed for " + cleanLine(strings.Join(msg.launchFailure, "; ")))
 	case promptCount > 0:
-		m.status = fmt.Sprintf("Created. %d join prompt(s) to paste.", promptCount)
+		m = m.inform(fmt.Sprintf("Created. %d join prompt(s) to paste.", promptCount))
 	default:
-		m.status = "Created. Plugins are starting."
+		m = m.inform("Created. Plugins are starting.")
 	}
 	return m, command
 }

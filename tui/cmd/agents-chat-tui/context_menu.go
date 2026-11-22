@@ -908,9 +908,8 @@ func (m model) transcriptMessageAt(row int, bodyHeight int) (TranscriptMessage, 
 		return TranscriptMessage{}, false
 	}
 	_, center, _ := m.columnWidths()
-	headerLen := len(m.chatHeader(center))
-	footerLen := len(m.composer(center))
-	transcriptHeight := max(bodyHeight-headerLen-footerLen, 1)
+	headerLen := m.chatHeaderHeight(center)
+	transcriptHeight := max(bodyHeight-headerLen-composerLines, 1)
 	visibleRow := row - headerLen
 	if visibleRow < 0 || visibleRow >= transcriptHeight {
 		return TranscriptMessage{}, false
@@ -932,8 +931,17 @@ func (m model) messageAtTranscriptLine(lineIndex int, width int) (TranscriptMess
 	if m.chat.hasOlder {
 		cursor = 1
 	}
+	cache := m.chat.linesCache
 	for _, message := range m.chat.messages {
-		msgLines := 1 + len(wrapLines(message.Body, width-1, messageIndent))
+		var msgLines int
+		if cache != nil && cache.width == width {
+			if cached, ok := cache.perMessage[message.ID]; ok && len(cached.lines) > 0 {
+				msgLines = len(cached.lines) - 1
+			}
+		}
+		if msgLines == 0 {
+			msgLines = 1 + len(wrapLines(message.Body, width-1, messageIndent))
+		}
 		if lineIndex >= cursor && lineIndex < cursor+msgLines {
 			return message, true
 		}
