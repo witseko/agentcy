@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from agents_chat.conversations.assignment_tables import assignment
 from agents_chat.conversations.tables import member
 from agents_chat.tokens import ledger
 from agents_chat.tokens.tables import participant_usage
@@ -175,6 +176,7 @@ def room_usage(connection: Connection, room_id: str) -> dict[int, dict]:
             member.c.id.label("slot"),
             member.c.model,
             member.c.token_budget,
+            assignment.c.plugin,
             participant_usage.c.estimated_input,
             participant_usage.c.estimated_output,
             participant_usage.c.reported_input,
@@ -182,6 +184,7 @@ def room_usage(connection: Connection, room_id: str) -> dict[int, dict]:
             participant_usage.c.source,
         )
         .outerjoin(participant_usage, participant_usage.c.slot == member.c.id)
+        .outerjoin(assignment, assignment.c.slot == member.c.id)
         .where(member.c.room == room_id)
     ).mappings()
     result: dict[int, dict] = {}
@@ -192,7 +195,7 @@ def room_usage(connection: Connection, room_id: str) -> dict[int, dict]:
         else:
             inp, out, source = 0, 0, "estimated"
         result[row["slot"]] = {
-            "model": row["model"],
+            "model": row["model"] or row["plugin"],
             "token_budget": row["token_budget"],
             "input_tokens": inp,
             "output_tokens": out,

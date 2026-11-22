@@ -57,10 +57,13 @@ func (m model) closeSearch() (tea.Model, tea.Cmd) {
 	m.search.input.Blur()
 	if m.search.returnTo == screenChat && m.chat.id != "" {
 		m.screen = screenChat
-		return m.setChatFocus(m.chat.focus)
+		var refresh tea.Cmd
+		m, refresh = m.refreshChat()
+		next, focusCmd := m.setChatFocus(m.chat.focus)
+		return next, tea.Batch(focusCmd, refresh, m.loadList())
 	}
 	m.screen = screenHome
-	return m, nil
+	return m, m.loadList()
 }
 
 // searchKey handles a key on the search screen. Typing edits the query, the arrows choose a

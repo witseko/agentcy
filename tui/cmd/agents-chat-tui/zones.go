@@ -61,7 +61,7 @@ func (m model) zones() []zone {
 	if list > 0 {
 		centerStart = list + 1
 	}
-	headerLen := len(m.chatHeader(center))
+	headerLen := m.chatHeaderHeight(center)
 	if _, spans := m.headerButtons(); m.headerLayout(center).actions {
 		zones = append(zones, place(spans, centerStart+center-1-buttonsWidth(spans), 1)...)
 	}
@@ -188,11 +188,18 @@ func (m model) hoverAt(x int, y int) string {
 	if m.contextMenu.open {
 		return m.contextMenuHoverAt(x, y)
 	}
+	row := y - 1
+	bodyHeight := max(m.height-2, 1)
+	if m.screen == screenChat && !m.inviteWindow.open && m.chat.tab == tabChat &&
+		row >= 0 && row < bodyHeight && m.regionAt(x) == regionCenter {
+		_, center, _ := m.columnWidths()
+		if row >= m.chatHeaderHeight(center) && row < bodyHeight-composerLines {
+			return ""
+		}
+	}
 	if id := m.zoneAt(x, y); id != "" {
 		return id
 	}
-	row := y - 1
-	bodyHeight := max(m.height-2, 1)
 	if row < 0 || row >= bodyHeight || m.screen == screenNew {
 		return ""
 	}

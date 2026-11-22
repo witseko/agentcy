@@ -1773,3 +1773,98 @@ func TestRightClickTranscriptMessageCopiesAndOpensTask(t *testing.T) {
 		t.Fatalf("expected Tasks tab with task #42 selected, got tab=%v selected=%d", m.chat.tab, m.chat.tasks.selectedID)
 	}
 }
+
+func TestTransientStatusExpiresAndRestoresLiveTopBar(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m = m.inform("Copied the prompt for claude designer. Paste it into its chat.")
+	if m.status == "" || m.statusTicks != statusDurationTicks {
+		t.Fatalf("expected transient status with %d ticks, got status=%q ticks=%d", statusDurationTicks, m.status, m.statusTicks)
+	}
+
+	for range statusDurationTicks {
+		next, cmd := m.Update(tickMsg(time.Now()))
+		m = drive(t, next.(model), cmd)
+	}
+	if m.status != "" || m.statusTicks != 0 {
+		t.Fatalf("expected transient status to clear after %d ticks, got status=%q ticks=%d", statusDurationTicks, m.status, m.statusTicks)
+	}
+	if !strings.Contains(ansi.Strip(m.topBar()), "core running") {
+		t.Fatalf("expected topBar to show live core running status, got %q", ansi.Strip(m.topBar()))
+	}
+}
+
+func TestQueuedRefreshDrainsWhenPollInFlightAndSyncsSidebar(t *testing.T) {
+	fake := &fakeOperator{
+		list: ConversationList{
+			Conversations: []ConversationSummary{
+				{Conversation: testConversation, Title: "Review the retry rule.", Open: true, Members: 3, Joined: 3},
+			},
+		},
+	}
+	m := chatModel(t, fake)
+	m = drive(t, m, m.loadList())
+
+	// Simulate a background poll already in flight when a retirement completes.
+	m.chat.polling = true
+	fake.view.Status.Members["Reviewer"] = MemberStatus{Role: "worker", State: "retired"}
+	next, cmd := m.Update(retiredMsg{participant: "Reviewer"})
+	m = next.(model)
+	if !m.chat.refreshPending {
+		t.Fatal("expected refreshPending to be queued while a poll is in flight")
+	}
+
+	// Finish the older in-flight poll; flushPendingShow must immediately trigger the queued refresh.
+	staleView := fake.view
+	staleView.Status.Members = map[string]MemberStatus{
+		"Lead":     {Role: "lead", State: "joined"},
+		"Reviewer": {Role: "worker", State: "joined"},
+		"Human":    {Role: "human", State: "human"},
+	}
+	next, cmd = m.Update(showMsg{conversation: testConversation, mode: showAfter, after: m.chat.cursor, view: staleView})
+	m = drive(t, next.(model), cmd)
+
+	if m.chat.view.Status.Members["Reviewer"].State != "retired" {
+		t.Fatalf("expected queued refresh to load retired state, got %+v", m.chat.view.Status.Members["Reviewer"])
+	}
+	if len(m.list.items) != 1 || m.list.items[0].Members != 1 || m.list.items[0].Joined != 1 {
+		t.Fatalf("expected sidebar summary to exclude retired member immediately, got %+v", m.list.items)
+	}
+}
+
+func TestProviderModelContextAndEndedLaunchStatesInTeamPanel(t *testing.T) {
+	staleIdle := int64(3600)
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Provider and launch state reality check",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead Grok":   {Role: "lead", State: "replied", IdleSeconds: &staleIdle},
+					"Claude Opus": {Role: "worker", State: "replied", Usage: &MemberUsage{Model: "claude-opus-4-6", ConversationTokens: 12000, Source: "reported"}},
+					"Gemini Neon": {Role: "worker", State: "replied", LaunchState: "finished", OpenTasks: []OpenTask{{ID: 7}}},
+					"GLM Flash":   {Role: "worker", State: "retired"},
+					"Human":       {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(36, 28), "\n"))
+	for _, want := range []string{
+		"lead · xai/grok",
+		"worker · anthropic/claude-opus-4-6",
+		"worker · google/gemini-neon",
+		"run finished",
+		"worker · zai/glm-flash",
+		"#7 Gemini Neon run finished",
+	} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("team panel missing %q:\n%s", want, panel)
+		}
+	}
+}
