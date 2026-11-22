@@ -110,7 +110,12 @@ func (m model) inviteZones(bodyHeight int) []zone {
 			continue
 		}
 		seen[slot] = true
-		if m.inviteWindow.copied[foldName(m.promptSlots()[slot])] {
+		slotName := m.promptSlots()[slot]
+		copyKey := foldName(slotName)
+		if slotName == openInviteCard {
+			copyKey = openInviteCard
+		}
+		if m.inviteWindow.copied[copyKey] {
 			continue
 		}
 		_, spans := m.buttons(button{id: fmt.Sprintf("card:%d", slot), label: "Copy"})
@@ -242,6 +247,15 @@ func (m model) clickZone(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.inviteWindow.selected = slot
+		if slots[slot] == openInviteCard {
+			if _, found := m.knownOpenInvite(); !found {
+				return m.inform("Open invite is active from another session. Press r to rotate and get a prompt."), nil
+			}
+			return m.copyOpenPrompt()
+		}
+		if _, found := m.knownInvitation(slots[slot]); !found {
+			return m.inform("No prompt for " + cleanLine(slots[slot]) + " in this session. Press r for a new code."), nil
+		}
 		return m.copyPrompt(slots[slot])
 	case "done":
 		m.inviteWindow.open = false

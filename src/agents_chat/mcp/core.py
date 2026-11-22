@@ -31,6 +31,7 @@ REQUEST = TypeAdapter(
 )
 NOTIFYING_OPERATOR_ACTIONS = (
     operator_models.InviteParticipant,
+    operator_models.SetOpenInvite,
     operator_models.RetireParticipant,
     operator_models.SetParticipantRole,
     operator_models.PostMessage,
@@ -107,11 +108,17 @@ class Core(socketserver.ThreadingUnixStreamServer):
             return wait_for_read(request, self.notifications)
         if isinstance(request, models.Launch):
             return self.launch(request)
+        if isinstance(request, models.Plugins):
+            with transaction(request.workspace) as connection:
+                assignments.launch_authority(connection, request.token)
+            return {"plugins": plugin_names()}
         room_id = None
         with transaction(request.workspace) as connection:
             if isinstance(request, models.Member) and not isinstance(request, models.Status):
                 room_id = repository.authenticate(connection, request.token)["room"]
             result = repository.apply(connection, request)
+            if isinstance(request, models.Join):
+                room_id = result["conversation"]
         if room_id is not None:
             self.notifications.notify(request.workspace, room_id)
         return result

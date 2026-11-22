@@ -670,6 +670,7 @@ func (m model) onClosed(msg closedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.fail(msg.err), nil
 	}
+	delete(m.openInvites, m.chat.id)
 	m = m.inform("Chat closed.")
 	m, poll := m.pollChat()
 	return m, tea.Batch(poll, m.loadList())
@@ -862,7 +863,7 @@ func addressee(text string, members map[string]MemberStatus) (string, string, er
 	return best, text[len(best):], nil
 }
 
-// runCommand handles /invite, /launch, /retire, /lead, and /role.
+// runCommand handles /invite, /launch, /retire, /lead, /role, and /open-invite.
 func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	command, argument, _ := strings.Cut(text, " ")
 	argument = strings.TrimSpace(argument)
@@ -895,8 +896,54 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		}
 		m.chat.input.Reset()
 		return m.inform(fmt.Sprintf("Setting %s as %s.", cleanLine(name), role)), m.setRole(name, role)
+	case command == "/open-invite" && (argument == "" || strings.EqualFold(argument, "on")):
+		m.chat.input.Reset()
+		return m.inform("Enabling open invite."), m.setOpenInvite(true)
+	case command == "/open-invite" && strings.EqualFold(argument, "off"):
+		m.chat.input.Reset()
+		return m.inform("Disabling open invite."), m.setOpenInvite(false)
 	}
-	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role"), nil
+	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /open-invite [off]"), nil
+}
+
+// setOpenInvite enables, rotates, or disables the shared room-level invite code.
+func (m model) setOpenInvite(enabled bool) tea.Cmd {
+	request := OpenInviteRequest{
+		Directory: m.directory, Conversation: m.chat.id, Enabled: enabled,
+	}
+	client := m.client
+	return func() tea.Msg {
+		status, err := client.OpenInvite(request)
+		return openInviteMsg{conversation: request.Conversation, status: status, err: err}
+	}
+}
+
+// onOpenInvite updates the cached shared invite prompt and refreshes the conversation.
+func (m model) onOpenInvite(msg openInviteMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	if !msg.status.OpenInvite {
+		delete(m.openInvites, msg.conversation)
+		if msg.conversation == m.chat.id {
+			delete(m.inviteWindow.copied, openInviteCard)
+			m.chat.view.Status.OpenInvite = false
+			m = m.inform("Open invite disabled.")
+		}
+		return m.pollChat()
+	}
+	m.openInvites[msg.conversation] = OpenInviteInvitation{
+		Code:       msg.status.Code,
+		JoinPrompt: msg.status.JoinPrompt,
+	}
+	if msg.conversation != m.chat.id {
+		return m, nil
+	}
+	m.chat.view.Status.OpenInvite = true
+	delete(m.inviteWindow.copied, openInviteCard)
+	m = m.openInvite("")
+	m.status = "Open invite ready. Anyone can join with this prompt while the chat is open."
+	return m.pollChat()
 }
 
 // invite adds or reissues a slot and then shows its join prompt.

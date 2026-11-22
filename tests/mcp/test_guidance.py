@@ -577,6 +577,45 @@ def test_assignment_worker_cancels_retired_participant_run() -> None:
     assert AssignmentWorker.stop_reason(row) == "cancelled"
 
 
+def test_lead_waits_for_open_invite_joiners_instead_of_claiming_done() -> None:
+    """An empty open-invite room keeps the lead waiting up to the idle limit."""
+    status = {
+        "open": True,
+        "open_invite": True,
+        "participant": "Lead",
+        "members": {"Lead": {"role": "lead", "state": "replied"}},
+    }
+    waits: dict[str, int] = {}
+    first = server.finish_wait({"messages": []}, status, waits, "lead")
+    assert "Waiting for teammates to join via the open invite" in first["next"]
+    waits["lead"] = server.LEAD_IDLE_WAITS - 1
+    final = server.finish_wait({"messages": []}, status, waits, "lead")
+    assert "No teammates have joined yet via the open invite" in final["next"]
+    assert "Stop listening" in final["next"]
+
+
+def test_mcp_lead_can_open_invite_and_retire_participants(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """MCP tools let a lead enable open invites, accept named joiners, and retire them."""
+    app, _ = shim
+    created = tool(
+        app,
+        "create_conversation",
+        brief="Team management",
+        your_name="Lead",
+        open_invite=True,
+    )
+    lead = created["token"]
+    open_code = created["open_invite"]["code"]
+    joined = tool(app, "join_conversation", code=open_code, name="Scout")
+    assert joined["participant"] == "Scout"
+    retired = tool(app, "retire_participant", token=lead, name="Scout")
+    assert retired == {"participant": "Scout", "retired": True}
+    disabled = tool(app, "open_invite", token=lead, enabled=False)
+    assert disabled == {"open_invite": False}
+
+
 def test_mcp_lead_can_set_participant_role(
     shim: tuple[server.FastMCP, Counter[str]],
 ) -> None:

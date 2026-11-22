@@ -4,7 +4,7 @@ import json
 import sys
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from pydantic.json_schema import models_json_schema
 
 from agents_chat.conversations import models
@@ -74,9 +74,19 @@ class CreateConversation(WorkspaceRequest):
     action: Literal["operator_create"]
     brief: models.Body
     lead: models.Label
-    invitees: models.Slots
+    invitees: models.OptionalSlots = Field(default_factory=list)
+    open_invite: bool = False
     sealed: bool = False
     deadline_minutes: models.DeadlineMinutes | None = None
+
+    @model_validator(mode="after")
+    def validate_create(self) -> "CreateConversation":
+        """Require at least one invitee unless open_invite is enabled, and bound deadlines."""
+        if not self.open_invite and not self.invitees:
+            raise ValueError("Invite at least one participant or enable open_invite")
+        if self.deadline_minutes is not None and not self.sealed:
+            raise ValueError("A proposal deadline requires a sealed round")
+        return self
 
 
 class InviteParticipant(ConversationRequest):
@@ -85,6 +95,13 @@ class InviteParticipant(ConversationRequest):
     action: Literal["operator_invite"]
     name: models.Label
     role: models.InviteRole | None = None
+
+
+class SetOpenInvite(ConversationRequest):
+    """Enable, rotate, or disable a conversation's shared open invite code."""
+
+    action: Literal["operator_open_invite"]
+    enabled: bool = True
 
 
 class LaunchParticipant(ConversationRequest):
@@ -149,6 +166,7 @@ OperatorAction = (
     | ShowConversation
     | CreateConversation
     | InviteParticipant
+    | SetOpenInvite
     | LaunchParticipant
     | RetireParticipant
     | SetParticipantRole
@@ -206,6 +224,7 @@ class ConversationStatus(Result):
 
     open: bool
     members: dict[str, MemberStatus]
+    open_invite: bool | None = None
     round: RoundName | None = None
     round_deadline: int | None = None
 
@@ -245,12 +264,28 @@ class JoinInvitation(Result):
     join_prompt: str
 
 
+class OpenInviteInvitation(Result):
+    """Return a reusable room-level join code and a ready join prompt."""
+
+    code: str
+    join_prompt: str
+
+
+class OpenInviteStatus(Result):
+    """Report whether the conversation has an active shared open invite."""
+
+    open_invite: bool
+    code: str | None = None
+    join_prompt: str | None = None
+
+
 class CreatedConversation(Result):
     """Return the new conversation with one invitation per slot, the lead first."""
 
     conversation: str
     invitations: list[JoinInvitation]
     roster: dict[str, RoleName]
+    open_invite: OpenInviteInvitation | None = None
     round: RoundName | None = None
     round_deadline: int | None = None
 
@@ -331,6 +366,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     ShowConversation: ConversationView,
     CreateConversation: CreatedConversation,
     InviteParticipant: JoinInvitation,
+    SetOpenInvite: OpenInviteStatus,
     LaunchParticipant: LaunchQueued,
     RetireParticipant: RetiredParticipant,
     SetParticipantRole: ParticipantRoleChanged,

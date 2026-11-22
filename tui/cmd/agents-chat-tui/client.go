@@ -46,6 +46,7 @@ type Operator interface {
 	Show(request ShowRequest) (ConversationView, error)
 	Create(request CreateRequest) (CreatedConversation, error)
 	Invite(request InviteRequest) (JoinInvitation, error)
+	OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
 	Launch(request LaunchRequest) (LaunchQueued, error)
 	Retire(request RetireRequest) (RetiredParticipant, error)
 	SetRole(request SetRoleRequest) (ParticipantRoleChanged, error)
@@ -76,10 +77,11 @@ type ShowRequest struct {
 
 // CreateRequest creates a conversation in which every slot is an invitation.
 type CreateRequest struct {
-	Directory string   `json:"directory"`
-	Brief     string   `json:"brief"`
-	Lead      string   `json:"lead"`
-	Invitees  []string `json:"invitees"`
+	Directory  string   `json:"directory"`
+	Brief      string   `json:"brief"`
+	Lead       string   `json:"lead"`
+	Invitees   []string `json:"invitees"`
+	OpenInvite bool     `json:"open_invite,omitempty"`
 }
 
 // InviteRequest adds a slot or reissues the unused code of an existing slot.
@@ -87,6 +89,13 @@ type InviteRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
+}
+
+// OpenInviteRequest enables, rotates, or disables a reusable room-level join code.
+type OpenInviteRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Enabled      bool   `json:"enabled"`
 }
 
 // LaunchRequest fills a slot with a fresh run from a configured plugin.
@@ -188,6 +197,7 @@ type MemberStatus struct {
 type ConversationStatus struct {
 	Open          bool                    `json:"open"`
 	Members       map[string]MemberStatus `json:"members"`
+	OpenInvite    bool                    `json:"open_invite,omitempty"`
 	Round         string                  `json:"round,omitempty"`
 	RoundDeadline *int64                  `json:"round_deadline,omitempty"`
 }
@@ -224,13 +234,27 @@ type JoinInvitation struct {
 	JoinPrompt  string `json:"join_prompt"`
 }
 
+// OpenInviteInvitation holds a reusable room-level join code and a ready join prompt.
+type OpenInviteInvitation struct {
+	Code       string `json:"code"`
+	JoinPrompt string `json:"join_prompt"`
+}
+
+// OpenInviteStatus reports whether a conversation has an active reusable invite code.
+type OpenInviteStatus struct {
+	OpenInvite bool   `json:"open_invite"`
+	Code       string `json:"code,omitempty"`
+	JoinPrompt string `json:"join_prompt,omitempty"`
+}
+
 // CreatedConversation holds the new conversation with one invitation per slot.
 type CreatedConversation struct {
-	Conversation  string            `json:"conversation"`
-	Invitations   []JoinInvitation  `json:"invitations"`
-	Roster        map[string]string `json:"roster"`
-	Round         string            `json:"round,omitempty"`
-	RoundDeadline *int64            `json:"round_deadline,omitempty"`
+	Conversation  string                `json:"conversation"`
+	Invitations   []JoinInvitation      `json:"invitations"`
+	Roster        map[string]string     `json:"roster"`
+	OpenInvite    *OpenInviteInvitation `json:"open_invite,omitempty"`
+	Round         string                `json:"round,omitempty"`
+	RoundDeadline *int64                `json:"round_deadline,omitempty"`
 }
 
 // LaunchQueued reports the assignment that will fill the slot.
@@ -353,6 +377,13 @@ func (c *Client) Create(request CreateRequest) (CreatedConversation, error) {
 func (c *Client) Invite(request InviteRequest) (JoinInvitation, error) {
 	var result JoinInvitation
 	err := c.call("operator_invite", request, &result)
+	return result, err
+}
+
+// OpenInvite enables, rotates, or disables a reusable room-level join code.
+func (c *Client) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error) {
+	var result OpenInviteStatus
+	err := c.call("operator_open_invite", request, &result)
 	return result, err
 }
 

@@ -412,3 +412,70 @@ def test_search_without_a_store_creates_none(bridge: Bridge) -> None:
     """Searching a checkout that has no conversations returns nothing and creates no store."""
     assert operate(bridge, "operator_search", query="retry") == {"hits": []}
     assert list(bridge.home.glob("*.sqlite3")) == []
+
+
+def test_lead_list_plugins_and_open_invite_join_wakes_waiting_lead(bridge: Bridge) -> None:
+    """Leads can list configured plugins through Core, and open-invite joins wake waiting leads."""
+    created = send(
+        bridge,
+        {
+            "action": "create",
+            "workspace": bridge.workspace,
+            "brief": "Open room over socket",
+            "initiator": "Lead",
+            "invitees": [],
+            "open_invite": True,
+        },
+    )["result"]
+    lead = created["token"]
+    open_code = created["open_invite"]["code"]
+
+    # Lead lists configured plugins (names and models only).
+    plugins_resp = send(
+        bridge, {"action": "plugins", "workspace": bridge.workspace, "token": lead}
+    )
+    assert plugins_resp == {"result": {"plugins": [{"name": "fixture", "model": "test/model"}]}}
+
+    # Waiting lead wakes up immediately when a teammate joins via the open invite.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        waiting = pool.submit(
+            send,
+            bridge,
+            {
+                "action": "read",
+                "workspace": bridge.workspace,
+                "token": lead,
+                "after": 0,
+                "wait_seconds": 5,
+            },
+        )
+        # Join via open invite from another thread/request.
+        joined = send(
+            bridge,
+            {
+                "action": "join",
+                "workspace": bridge.workspace,
+                "code": open_code,
+                "name": "Scout",
+            },
+        )["result"]
+        page = waiting.result(timeout=5)["result"]
+
+    assert joined["participant"] == "Scout"
+    assert any("Scout joined via the open invite." in msg["body"] for msg in page["messages"])
+
+    # Worker cannot list plugins or retire the lead.
+    worker_plugins = send(
+        bridge, {"action": "plugins", "workspace": bridge.workspace, "token": joined["token"]}
+    )
+    assert "Only a lead" in worker_plugins["error"]
+    worker_retire = send(
+        bridge,
+        {
+            "action": "retire",
+            "workspace": bridge.workspace,
+            "token": joined["token"],
+            "name": "Lead",
+        },
+    )
+    assert "Only a lead" in worker_retire["error"]

@@ -168,6 +168,18 @@
           "title": "Members",
           "type": "object"
         },
+        "open_invite": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open Invite"
+        },
         "round": {
           "anyOf": [
             {
@@ -374,9 +386,13 @@
             ]
           },
           "maxItems": 16,
-          "minItems": 1,
           "title": "Invitees",
           "type": "array"
+        },
+        "open_invite": {
+          "default": false,
+          "title": "Open Invite",
+          "type": "boolean"
         },
         "sealed": {
           "default": false,
@@ -404,8 +420,7 @@
         "directory",
         "action",
         "brief",
-        "lead",
-        "invitees"
+        "lead"
       ],
       "title": "CreateConversation",
       "type": "object"
@@ -437,6 +452,17 @@
           },
           "title": "Roster",
           "type": "object"
+        },
+        "open_invite": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenInviteInvitation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "round": {
           "anyOf": [
@@ -852,6 +878,65 @@
       "title": "MemberStatus",
       "type": "object"
     },
+    "OpenInviteInvitation": {
+      "additionalProperties": false,
+      "description": "Return a reusable room-level join code and a ready join prompt.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "join_prompt": {
+          "title": "Join Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "join_prompt"
+      ],
+      "title": "OpenInviteInvitation",
+      "type": "object"
+    },
+    "OpenInviteStatus": {
+      "additionalProperties": false,
+      "description": "Report whether the conversation has an active shared open invite.",
+      "properties": {
+        "open_invite": {
+          "title": "Open Invite",
+          "type": "boolean"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "join_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Join Prompt"
+        }
+      },
+      "required": [
+        "open_invite"
+      ],
+      "title": "OpenInviteStatus",
+      "type": "object"
+    },
     "OpenTask": {
       "additionalProperties": false,
       "description": "Identify one unfinished task of a member.",
@@ -1261,6 +1346,53 @@
       "title": "SearchResults",
       "type": "object"
     },
+    "SetOpenInvite": {
+      "additionalProperties": false,
+      "description": "Enable, rotate, or disable a conversation's shared open invite code.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_open_invite",
+          "title": "Action",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "SetOpenInvite",
+      "type": "object"
+    },
     "SetParticipantRole": {
       "additionalProperties": false,
       "description": "Change an active participant's role in an open conversation.",
@@ -1468,6 +1600,9 @@
     },
     {
       "$ref": "#/$defs/InviteParticipant"
+    },
+    {
+      "$ref": "#/$defs/SetOpenInvite"
     },
     {
       "$ref": "#/$defs/LaunchParticipant"
