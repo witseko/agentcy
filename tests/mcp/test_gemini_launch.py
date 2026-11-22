@@ -50,6 +50,7 @@ def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
         assert arguments[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert arguments[3] == str(bin_directory / "agy")
         assert arguments[4:8] == ["--disable-slash-commands", "--model", MODEL, "--print"]
+        assert "report brief progress updates to the lead periodically" in arguments[8]
         assert not options.get("shell")
         assert env["PATH"] == str(bin_directory)
         home = Path(env["HOME"])

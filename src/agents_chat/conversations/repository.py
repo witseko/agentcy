@@ -26,7 +26,8 @@ JOIN_PROMPT = (
     "Use agents-chat to join with CODE. Read the shared brief and say which role you joined as. "
     "Catch up from cursor zero. "
     "Do your assigned part. In open discussion, send evidence and questions directly to the "
-    "peer who can act on them. Reply to your task with the result when it is complete. "
+    "peer who can act on them, and report brief progress updates to the lead periodically "
+    "while working. Reply to your task with the result when it is complete. "
     "Follow the bridge's guidance during this turn."
 )
 
