@@ -39,6 +39,11 @@ OPEN_JOIN_PROMPT = (
     "Follow the bridge's guidance during this turn."
 )
 MAX_LABEL_LENGTH = 64
+ASSIGNABLE_ROLES = {
+    Role.WORKER.label: Role.WORKER,
+    Role.LEAD.label: Role.LEAD,
+    Role.CO_LEAD.label: Role.CO_LEAD,
+}
 
 
 def session_title(brief: str) -> str:
@@ -403,6 +408,110 @@ def retire(connection: Connection, actor: RowMapping, name: str) -> dict:
         rounds.discard_author(connection, actor["room"], target["id"])
     record_event(connection, actor, f"Retired {target['label']}.")
     return {"participant": target["label"], "retired": True}
+
+
+def _apply_lead_role(
+    connection: Connection, target: RowMapping, rows: list[RowMapping]
+) -> str | None:
+    """Promote target to sole lead and demote any other active leads or co-leads to worker."""
+    previous = [
+        row
+        for row in rows
+        if row["id"] != target["id"]
+        and not row["retired"]
+        and row["role"] in (Role.LEAD, Role.CO_LEAD)
+    ]
+    if target["role"] == Role.LEAD and not previous:
+        return None
+    if previous:
+        connection.execute(
+            update(member)
+            .where(member.c.id.in_([row["id"] for row in previous]))
+            .values(role=Role.WORKER)
+        )
+    connection.execute(update(member).where(member.c.id == target["id"]).values(role=Role.LEAD))
+    if previous:
+        demoted = ", ".join(row["label"] for row in previous)
+        return f"Changed lead to {target['label']} (demoted {demoted} to worker)."
+    return f"Set {target['label']} as lead."
+
+
+def _apply_co_lead_role(connection: Connection, room_id: str, target: RowMapping) -> str | None:
+    """Promote target to co-lead and share leadership with any active sole lead."""
+    if target["role"] == Role.CO_LEAD:
+        return None
+    connection.execute(
+        update(member)
+        .where(member.c.room == room_id, member.c.role == Role.LEAD, member.c.retired == 0)
+        .values(role=Role.CO_LEAD)
+    )
+    connection.execute(update(member).where(member.c.id == target["id"]).values(role=Role.CO_LEAD))
+    return f"Set {target['label']} as co-lead."
+
+
+def _apply_worker_role(
+    connection: Connection, target: RowMapping, rows: list[RowMapping]
+) -> str | None:
+    """Demote target to worker while preserving at least one active lead or co-lead."""
+    if target["role"] == Role.WORKER:
+        return None
+    remaining_leaders = [
+        row
+        for row in rows
+        if row["id"] != target["id"]
+        and not row["retired"]
+        and row["role"] in (Role.LEAD, Role.CO_LEAD)
+    ]
+    if not remaining_leaders:
+        raise ValueError("Cannot demote the only lead. Promote another participant first")
+    connection.execute(update(member).where(member.c.id == target["id"]).values(role=Role.WORKER))
+    if len(remaining_leaders) == 1 and remaining_leaders[0]["role"] == Role.CO_LEAD:
+        connection.execute(
+            update(member).where(member.c.id == remaining_leaders[0]["id"]).values(role=Role.LEAD)
+        )
+    return f"Changed {target['label']} to worker."
+
+
+def set_role(
+    connection: Connection, actor: RowMapping, name: str, requested_role: models.AssignableRole
+) -> dict:
+    """Change an active participant's role within an open conversation."""
+    if actor.get("retired"):
+        raise ValueError(RETIRED_ERROR)
+    if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
+        raise ValueError("Only a lead, co-lead or the human can change participant roles")
+    if not actor["open"]:
+        raise ValueError("Conversation is closed")
+    rows = (
+        connection.execute(
+            select(member.c.id, member.c.label, member.c.role, member.c.retired)
+            .where(member.c.room == actor["room"])
+            .order_by(member.c.id)
+        )
+        .mappings()
+        .all()
+    )
+    target = next((row for row in rows if row["label"].casefold() == name.casefold()), None)
+    if target is None:
+        raise ValueError("Unknown participant in this conversation")
+    if target["role"] == Role.HUMAN:
+        raise ValueError(f"Cannot change the role of {HUMAN_LABEL}")
+    if target["retired"]:
+        raise ValueError(f"Participant is retired: {target['label']}")
+    new_role = ASSIGNABLE_ROLES[requested_role]
+    if new_role == Role.LEAD:
+        event = _apply_lead_role(connection, target, rows)
+    elif new_role == Role.CO_LEAD:
+        event = _apply_co_lead_role(connection, actor["room"], target)
+    else:
+        event = _apply_worker_role(connection, target, rows)
+    if event is not None:
+        record_event(connection, actor, event)
+    return {
+        "participant": target["label"],
+        "role": new_role.label,
+        "roster": roster(connection, actor["room"]),
+    }
 
 
 def set_open_invite(
@@ -871,6 +980,8 @@ def apply(connection: Connection, request: models.Request) -> dict:
         return invite(connection, participant, request.workspace, request.name, request.role)
     if isinstance(request, models.Retire):
         return retire(connection, participant, request.name)
+    if isinstance(request, models.SetRole):
+        return set_role(connection, participant, request.name, request.role)
     if isinstance(request, models.OpenInvite):
         return set_open_invite(connection, participant, request.workspace, request.enabled)
     if isinstance(request, models.Post):

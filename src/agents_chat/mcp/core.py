@@ -33,6 +33,7 @@ NOTIFYING_OPERATOR_ACTIONS = (
     operator_models.InviteParticipant,
     operator_models.SetOpenInvite,
     operator_models.RetireParticipant,
+    operator_models.SetParticipantRole,
     operator_models.PostMessage,
     operator_models.CloseConversation,
 )

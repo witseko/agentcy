@@ -119,6 +119,14 @@ class RetireParticipant(ConversationRequest):
     name: models.Label
 
 
+class SetParticipantRole(ConversationRequest):
+    """Change an active participant's role in an open conversation."""
+
+    action: Literal["operator_set_role"]
+    name: models.Label
+    role: models.AssignableRole
+
+
 class PostMessage(ConversationRequest, models.Submission):
     """Post a note or question as the human, with the same retry protection as members."""
 
@@ -161,6 +169,7 @@ OperatorAction = (
     | SetOpenInvite
     | LaunchParticipant
     | RetireParticipant
+    | SetParticipantRole
     | PostMessage
     | CloseConversation
     | ArchiveConversation
@@ -295,6 +304,14 @@ class RetiredParticipant(Result):
     retired: Literal[True]
 
 
+class ParticipantRoleChanged(Result):
+    """Confirm that the participant's role was updated and return the roster."""
+
+    participant: str
+    role: models.AssignableRole
+    roster: dict[str, RoleName]
+
+
 class PostedMessage(Result):
     """Return the message ID. A retry with the same submission ID returns the same ID."""
 
@@ -352,6 +369,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     SetOpenInvite: OpenInviteStatus,
     LaunchParticipant: LaunchQueued,
     RetireParticipant: RetiredParticipant,
+    SetParticipantRole: ParticipantRoleChanged,
     PostMessage: PostedMessage,
     CloseConversation: ClosedConversation,
     ArchiveConversation: ArchivedConversation,

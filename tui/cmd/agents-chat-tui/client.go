@@ -49,6 +49,7 @@ type Operator interface {
 	OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
 	Launch(request LaunchRequest) (LaunchQueued, error)
 	Retire(request RetireRequest) (RetiredParticipant, error)
+	SetRole(request SetRoleRequest) (ParticipantRoleChanged, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
@@ -110,6 +111,14 @@ type RetireRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
+}
+
+// SetRoleRequest changes an active participant's role in an open conversation.
+type SetRoleRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
 }
 
 // PostRequest posts a note or question as the human.
@@ -260,6 +269,13 @@ type RetiredParticipant struct {
 	Retired     bool   `json:"retired"`
 }
 
+// ParticipantRoleChanged confirms a participant's new role and the updated roster.
+type ParticipantRoleChanged struct {
+	Participant string            `json:"participant"`
+	Role        string            `json:"role"`
+	Roster      map[string]string `json:"roster"`
+}
+
 // PostedMessage holds the ID of the posted message.
 type PostedMessage struct {
 	MessageID int64 `json:"message_id"`
@@ -382,6 +398,13 @@ func (c *Client) Launch(request LaunchRequest) (LaunchQueued, error) {
 func (c *Client) Retire(request RetireRequest) (RetiredParticipant, error) {
 	var result RetiredParticipant
 	err := c.call("operator_retire", request, &result)
+	return result, err
+}
+
+// SetRole changes an active participant's role in an open conversation.
+func (c *Client) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
+	var result ParticipantRoleChanged
+	err := c.call("operator_set_role", request, &result)
 	return result, err
 }
 

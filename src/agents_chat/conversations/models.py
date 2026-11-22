@@ -25,6 +25,7 @@ PostKind = Literal[
     "proposal",
 ]
 InviteRole = Literal["worker", "co-lead"]
+AssignableRole = Literal["worker", "lead", "co-lead"]
 DeadlineMinutes = Annotated[int, Field(strict=True, ge=1, le=60)]
 MAX_PARTICIPANTS = 17
 
@@ -132,6 +133,14 @@ class Invite(Member):
     role: InviteRole | None = None
 
 
+class SetRole(Member):
+    """Change a participant's role in an open conversation as a lead or co-lead."""
+
+    action: Literal["set_role"] = "set_role"
+    name: Label
+    role: AssignableRole
+
+
 class Release(Member):
     """Release a sealed proposal round as a lead or co-lead."""
 
@@ -176,6 +185,7 @@ MemberRequest = (
     | Status
     | Invite
     | Retire
+    | SetRole
     | Plugins
     | OpenInvite
     | Release

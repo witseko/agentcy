@@ -964,6 +964,45 @@
       "title": "OpenTask",
       "type": "object"
     },
+    "ParticipantRoleChanged": {
+      "additionalProperties": false,
+      "description": "Confirm that the participant's role was updated and return the roster.",
+      "properties": {
+        "participant": {
+          "title": "Participant",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "roster": {
+          "additionalProperties": {
+            "enum": [
+              "worker",
+              "lead",
+              "co-lead",
+              "human"
+            ],
+            "type": "string"
+          },
+          "title": "Roster",
+          "type": "object"
+        }
+      },
+      "required": [
+        "participant",
+        "role",
+        "roster"
+      ],
+      "title": "ParticipantRoleChanged",
+      "type": "object"
+    },
     "PluginList": {
       "additionalProperties": false,
       "description": "List the configured plugins without commands, environment names or caps.",
@@ -1354,6 +1393,65 @@
       "title": "SetOpenInvite",
       "type": "object"
     },
+    "SetParticipantRole": {
+      "additionalProperties": false,
+      "description": "Change an active participant's role in an open conversation.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_set_role",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name",
+        "role"
+      ],
+      "title": "SetParticipantRole",
+      "type": "object"
+    },
     "ShowConversation": {
       "additionalProperties": false,
       "description": "Read status, the brief and one page of the full transcript.",
@@ -1511,6 +1609,9 @@
     },
     {
       "$ref": "#/$defs/RetireParticipant"
+    },
+    {
+      "$ref": "#/$defs/SetParticipantRole"
     },
     {
       "$ref": "#/$defs/PostMessage"

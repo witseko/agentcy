@@ -359,6 +359,9 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
     if isinstance(request, operator_models.RetireParticipant):
         human = writing_actor(connection, request.conversation)
         return repository.retire(connection, human, request.name)
+    if isinstance(request, operator_models.SetParticipantRole):
+        human = writing_actor(connection, request.conversation)
+        return repository.set_role(connection, human, request.name, request.role)
     if isinstance(request, operator_models.PostMessage):
         human = writing_actor(connection, request.conversation)
         return repository.post_in_round(connection, human, request, int(time.time()))
