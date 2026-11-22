@@ -30,6 +30,15 @@ JOIN_PROMPT = (
     "while working. Reply to your task with the result when it is complete. "
     "Follow the bridge's guidance during this turn."
 )
+OPEN_JOIN_PROMPT = (
+    "Use agents-chat to join with CODE (pass your preferred name if you want one). "
+    "Read the shared brief and say which role you joined as. Catch up from cursor zero. "
+    "Do your assigned part. In open discussion, send evidence and questions directly to the "
+    "peer who can act on them, and report brief progress updates to the lead periodically "
+    "while working. Reply to your task with the result when it is complete. "
+    "Follow the bridge's guidance during this turn."
+)
+MAX_LABEL_LENGTH = 64
 
 
 def session_title(brief: str) -> str:
@@ -66,12 +75,23 @@ def join_workspace_tag(workspace: str, nonce: str) -> str:
     return digest(f"{workspace}:{nonce}")[:12]
 
 
-def new_join_code(workspace: str) -> tuple[str, dict[str, str | int]]:
-    """Return a workspace-tagged code and its stored digest and expiry."""
+def open_join_prompt(brief: str, *, code: str | None = None) -> str:
+    """Format a shared open-invite join prompt for any agent joining the room."""
+    return join_prompt(brief, template=OPEN_JOIN_PROMPT, code=code)
+
+
+def new_open_invite_code(workspace: str) -> tuple[str, str]:
+    """Return a workspace-tagged reusable invite code and its SHA-256 digest."""
     nonce = secrets.token_urlsafe(16)
     code = f"{nonce}.{join_workspace_tag(workspace, nonce)}"
+    return code, digest(code)
+
+
+def new_join_code(workspace: str) -> tuple[str, dict[str, str | int]]:
+    """Return a workspace-tagged code and its stored digest and expiry."""
+    code, code_hash = new_open_invite_code(workspace)
     return code, {
-        "invite_hash": digest(code),
+        "invite_hash": code_hash,
         "expires": int(time.time()) + INVITE_LIFETIME_SECONDS,
     }
 
@@ -108,24 +128,31 @@ def roster(connection: Connection, room_id: str) -> dict[str, str]:
     return {name: Role(role).label for name, role in rows}
 
 
-def insert_room(connection: Connection, request: models.Create) -> tuple[str, dict]:
-    """Store an open conversation and return its ID and sealed-round fields."""
+def insert_room(
+    connection: Connection, request: models.Create
+) -> tuple[str, dict, str | None]:
+    """Store an open conversation and return its ID, sealed-round fields, and open-invite code."""
     room_id = secrets.token_hex(12)
     now = int(time.time())
     round_state = {}
     if request.sealed:
         minutes = request.deadline_minutes or rounds.DEFAULT_DEADLINE_MINUTES
         round_state = {"round": rounds.SEALED, "round_deadline": now + minutes * 60}
+    open_code = None
+    open_hash = None
+    if request.open_invite:
+        open_code, open_hash = new_open_invite_code(request.workspace)
     connection.execute(
         insert(room).values(
             id=room_id,
             brief=request.brief,
             open=1,
             created=now,
+            open_invite_hash=open_hash,
             **round_state,
         )
     )
-    return room_id, round_state
+    return room_id, round_state, open_code
 
 
 def insert_invitation(
@@ -142,7 +169,7 @@ def insert_invitation(
 def create(connection: Connection, request: models.Create) -> dict:
     """Return the creator credential and a different invitation for each slot."""
     roles = team_roles(request)
-    room_id, round_state = insert_room(connection, request)
+    room_id, round_state, open_code = insert_room(connection, request)
     token = secrets.token_urlsafe(32)
     connection.execute(
         insert(member).values(
@@ -157,7 +184,7 @@ def create(connection: Connection, request: models.Create) -> dict:
         for label, role in roles.items()
         if label != request.initiator
     }
-    return {
+    result = {
         "conversation": room_id,
         "token": token,
         "invitations": invitations,
@@ -166,23 +193,102 @@ def create(connection: Connection, request: models.Create) -> dict:
         "roster": roster(connection, room_id),
         **round_state,
     }
+    if open_code is not None:
+        result["open_invite"] = {
+            "code": open_code,
+            "join_prompt": open_join_prompt(request.brief),
+        }
+    return result
 
 
-def join(connection: Connection, request: models.Join) -> dict:
-    """Consume an invitation and issue the participant's durable token."""
-    tagged = JOIN_CODE_PATTERN.fullmatch(request.code)
-    if tagged and tagged[2] != join_workspace_tag(request.workspace, tagged[1]):
-        raise ValueError(f"Join code does not match this workspace. {JOIN_WORKSPACE_HELP}")
-    slot = (
+def resolve_open_name(existing_labels: list[str], requested: str | None) -> str:
+    """Pick a unique worker label, honoring an optional requested name with disambiguation."""
+    taken = {label.casefold() for label in existing_labels}
+    if requested is not None:
+        check_name(requested)
+        if requested.casefold() not in taken:
+            return requested
+        suffix = 2
+        while True:
+            tag = f" {suffix}"
+            base = requested[: MAX_LABEL_LENGTH - len(tag)].rstrip()
+            candidate = f"{base}{tag}"
+            if candidate.casefold() not in taken:
+                return candidate
+            suffix += 1
+    number = 1
+    while True:
+        candidate = f"Worker {number}"
+        if candidate.casefold() not in taken:
+            return candidate
+        number += 1
+
+
+def join_open(connection: Connection, request: models.Join, code_digest: str) -> dict | None:
+    """Join an open conversation via its reusable room-level invite code."""
+    open_room = (
         connection.execute(
-            select(member, room.c.brief, room.c.round, room.c.round_deadline)
-            .join(room)
-            .where(member.c.invite_hash == digest(request.code), room.c.open == 1)
+            select(room.c.id, room.c.brief, room.c.round, room.c.round_deadline).where(
+                room.c.open_invite_hash == code_digest, room.c.open == 1
+            )
         )
         .mappings()
         .one_or_none()
     )
-    if slot is None or slot["retired"] or slot["expires"] <= time.time():
+    if open_room is None:
+        return None
+    room_id = open_room["id"]
+    labels = list(
+        connection.scalars(
+            select(member.c.label).where(member.c.room == room_id, member.c.role != Role.HUMAN)
+        )
+    )
+    if len(labels) >= models.MAX_PARTICIPANTS:
+        raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
+    label = resolve_open_name(labels, request.name)
+    token = secrets.token_urlsafe(32)
+    member_id = connection.execute(
+        insert(member).values(
+            room=room_id, label=label, role=Role.WORKER, token_hash=digest(token)
+        )
+    ).inserted_primary_key[0]
+    record_event(
+        connection, {"room": room_id, "id": member_id}, f"{label} joined via the open invite."
+    )
+    return {
+        "conversation": room_id,
+        "participant": label,
+        "role": Role.WORKER.label,
+        "roster": roster(connection, room_id),
+        "brief": open_room["brief"],
+        "token": token,
+        **rounds.fields(open_room),
+    }
+
+
+def join(connection: Connection, request: models.Join) -> dict:
+    """Consume a single-use slot invite or join via a room's shared open invite."""
+    tagged = JOIN_CODE_PATTERN.fullmatch(request.code)
+    if tagged and tagged[2] != join_workspace_tag(request.workspace, tagged[1]):
+        raise ValueError(f"Join code does not match this workspace. {JOIN_WORKSPACE_HELP}")
+    code_digest = digest(request.code)
+    slot = (
+        connection.execute(
+            select(member, room.c.brief, room.c.round, room.c.round_deadline)
+            .join(room)
+            .where(member.c.invite_hash == code_digest, room.c.open == 1)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if slot is None:
+        opened = join_open(connection, request, code_digest)
+        if opened is not None:
+            return opened
+        if not tagged:
+            raise ValueError(f"Invalid or expired invitation. {JOIN_WORKSPACE_HELP}")
+        raise ValueError("Invalid or expired invitation")
+    if slot["retired"] or slot["expires"] <= time.time():
         if not tagged:
             raise ValueError(f"Invalid or expired invitation. {JOIN_WORKSPACE_HELP}")
         raise ValueError("Invalid or expired invitation")
@@ -299,6 +405,36 @@ def retire(connection: Connection, actor: RowMapping, name: str) -> dict:
     return {"participant": target["label"], "retired": True}
 
 
+def set_open_invite(
+    connection: Connection, actor: RowMapping, workspace: str, enabled: bool
+) -> dict:
+    """Enable, rotate, or disable a reusable room-level invite code."""
+    if actor.get("retired"):
+        raise ValueError(RETIRED_ERROR)
+    if actor["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
+        raise ValueError("Only a lead, co-lead or the human can manage open invites")
+    if not actor["open"]:
+        raise ValueError("Conversation is closed")
+    room_id = actor["room"]
+    had_code = actor.get("open_invite_hash") is not None
+    if not enabled:
+        if had_code:
+            connection.execute(
+                update(room).where(room.c.id == room_id).values(open_invite_hash=None)
+            )
+            record_event(connection, actor, "Disabled open invite.")
+        return {"open_invite": False}
+    code, code_hash = new_open_invite_code(workspace)
+    connection.execute(update(room).where(room.c.id == room_id).values(open_invite_hash=code_hash))
+    event = "Rotated the open invite code." if had_code else "Enabled open invite."
+    record_event(connection, actor, event)
+    return {
+        "open_invite": True,
+        "code": code,
+        "join_prompt": open_join_prompt(actor["brief"]),
+    }
+
+
 def active_assignment(connection: Connection, slot_id: int) -> bool:
     """Protect the credential of a launch that has not consumed its invitation yet."""
     return (
@@ -321,6 +457,7 @@ def authenticate(connection: Connection, token: str) -> RowMapping:
                 room.c.open,
                 room.c.round,
                 room.c.round_deadline,
+                room.c.open_invite_hash,
             )
             .join(room)
             .where(member.c.token_hash == digest(token))
@@ -450,6 +587,8 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         "participant": participant["label"],
         **rounds.fields(participant),
     }
+    if participant.get("open_invite_hash") is not None:
+        result["open_invite"] = True
     if participant["round"] == rounds.SEALED and participant["role"] == Role.WORKER:
         result["proposal_submitted"] = rounds.submitted(connection, participant)
     return result
@@ -647,7 +786,9 @@ def close(connection: Connection, participant: RowMapping, summary: str | None) 
                 created=int(time.time()),
             )
         )
-    connection.execute(update(room).where(room.c.id == participant["room"]).values(open=0))
+    connection.execute(
+        update(room).where(room.c.id == participant["room"]).values(open=0, open_invite_hash=None)
+    )
     return {"closed": True}
 
 
@@ -728,6 +869,10 @@ def apply(connection: Connection, request: models.Request) -> dict:
         return status(connection, participant, now)
     if isinstance(request, models.Invite):
         return invite(connection, participant, request.workspace, request.name, request.role)
+    if isinstance(request, models.Retire):
+        return retire(connection, participant, request.name)
+    if isinstance(request, models.OpenInvite):
+        return set_open_invite(connection, participant, request.workspace, request.enabled)
     if isinstance(request, models.Post):
         return post_in_round(connection, participant, request, now)
     if isinstance(request, models.Read):

@@ -23,13 +23,14 @@ type fakeOperator struct {
 	view     ConversationView
 	showErr  error
 	plugins  PluginList
-	creates  []CreateRequest
-	launches []LaunchRequest
-	retires  []RetireRequest
-	posts    []PostRequest
-	closes   []CloseRequest
-	invites  []InviteRequest
-	shows    []ShowRequest
+	creates     []CreateRequest
+	launches    []LaunchRequest
+	retires     []RetireRequest
+	posts       []PostRequest
+	closes      []CloseRequest
+	invites     []InviteRequest
+	openInvites []OpenInviteRequest
+	shows       []ShowRequest
 }
 
 func (f *fakeOperator) Plugins() (PluginList, error) { return f.plugins, nil }
@@ -63,12 +64,24 @@ func (f *fakeOperator) Create(request CreateRequest) (CreatedConversation, error
 	for _, name := range request.Invitees {
 		invitations = append(invitations, JoinInvitation{Participant: name, Role: "worker", Code: "W", JoinPrompt: "join W"})
 	}
-	return CreatedConversation{Conversation: testConversation, Invitations: invitations}, nil
+	created := CreatedConversation{Conversation: testConversation, Invitations: invitations}
+	if request.OpenInvite {
+		created.OpenInvite = &OpenInviteInvitation{Code: "OPEN-CODE", JoinPrompt: "join OPEN-CODE"}
+	}
+	return created, nil
 }
 
 func (f *fakeOperator) Invite(request InviteRequest) (JoinInvitation, error) {
 	f.invites = append(f.invites, request)
 	return JoinInvitation{Participant: request.Name, Role: "worker", Code: "NEW", JoinPrompt: "join NEW"}, nil
+}
+
+func (f *fakeOperator) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error) {
+	f.openInvites = append(f.openInvites, request)
+	if !request.Enabled {
+		return OpenInviteStatus{OpenInvite: false}, nil
+	}
+	return OpenInviteStatus{OpenInvite: true, Code: "OPEN-ROTATED", JoinPrompt: "join OPEN-ROTATED"}, nil
 }
 
 func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
@@ -106,6 +119,8 @@ func press(t *testing.T, m model, key string) (model, tea.Cmd) {
 		"ctrl+p":    {Code: 'p', Mod: tea.ModCtrl},
 		"ctrl+s":    {Code: 's', Mod: tea.ModCtrl},
 		"ctrl+o":    {Code: 'o', Mod: tea.ModCtrl},
+		"ctrl+d":    {Code: 'd', Mod: tea.ModCtrl},
+		"space":     {Code: ' ', Text: " "},
 	}
 	msg, named := keys[key]
 	if !named {
@@ -219,7 +234,7 @@ func TestNewChatCreatesThenLaunchesPluginSlots(t *testing.T) {
 	m, command := press(t, m, "n")
 	m = drive(t, m, command)
 	m = typeText(t, m, "Check retries")
-	for range 3 { // brief, lead name, worker name
+	for range 4 { // brief, lead name, open invite, worker name
 		m, _ = press(t, m, "tab")
 	}
 	m, _ = press(t, m, "right") // worker source: manual -> glm
@@ -610,7 +625,8 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 	m, _ = press(t, m, "ctrl+n") // second worker, focused on its name
 	m, _ = press(t, m, "up")
 	m, _ = press(t, m, "up")
-	m, _ = press(t, m, "up") // worker 2 -> worker 1 -> lead -> brief
+	m, _ = press(t, m, "up")
+	m, _ = press(t, m, "up") // worker 2 -> worker 1 -> open invite -> lead -> brief
 	if kind, _ := m.form.field(m.form.focus); kind != fieldBrief {
 		t.Fatalf("focus %d, want the brief", m.form.focus)
 	}
@@ -620,6 +636,7 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 		want int
 	}{
 		{"down", int(fieldLeadName)},
+		{"down", int(fieldOpenInvite)},
 		{"down", leadFields},     // worker 1 name
 		{"tab", leadFields + 1},  // worker 1 source
 		{"down", leadFields + 3}, // worker 2 source keeps the column
@@ -914,5 +931,84 @@ func TestRetireSlashCommandSendsRequest(t *testing.T) {
 	m = drive(t, m, command)
 	if len(fake.retires) != 1 || fake.retires[0].Name != "Reviewer" {
 		t.Fatalf("retires = %+v, want Reviewer", fake.retires)
+	}
+}
+
+func TestNewChatWithOpenInviteAndZeroWorkersCopiesAndRotatesPrompt(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Open room",
+			Status: ConversationStatus{
+				Open:       true,
+				OpenInvite: true,
+				Members: map[string]MemberStatus{
+					"Lead":  {Role: "lead", State: "invited"},
+					"Human": {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	var copied string
+	m := newModel(fake, "/work")
+	m.clipboard = func(text string) error { copied = text; return nil }
+	m, command := press(t, m, "n")
+	m = drive(t, m, command)
+	m = typeText(t, m, "Open room")
+	m, _ = press(t, m, "tab")    // lead name
+	m, _ = press(t, m, "tab")    // open invite
+	m, _ = press(t, m, "space")  // turn open invite on
+	m, _ = press(t, m, "tab")    // default worker name
+	m, _ = press(t, m, "ctrl+d") // remove the only worker (allowed when open invite is on)
+	m, command = press(t, m, "ctrl+s")
+	m = drive(t, m, command)
+
+	if len(fake.creates) != 1 || !fake.creates[0].OpenInvite || len(fake.creates[0].Invitees) != 0 {
+		t.Fatalf("creates = %+v, want open_invite=true with zero invitees", fake.creates)
+	}
+	if !m.inviteWindow.open {
+		t.Fatal("invite window did not open")
+	}
+	// First card is the shared open invite. Copy it, then rotate it, then disable it.
+	m, command = press(t, m, "c")
+	m = drive(t, m, command)
+	if copied != "join OPEN-CODE" {
+		t.Fatalf("copied = %q, want join OPEN-CODE", copied)
+	}
+	m, _ = press(t, m, "up")
+	m, command = press(t, m, "r")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 1 || !fake.openInvites[0].Enabled {
+		t.Fatalf("openInvites = %+v, want one rotate request", fake.openInvites)
+	}
+	if got := m.openInvites[testConversation].Code; got != "OPEN-ROTATED" {
+		t.Fatalf("open invite code = %q, want OPEN-ROTATED", got)
+	}
+	m, command = press(t, m, "o")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 2 || fake.openInvites[1].Enabled {
+		t.Fatalf("openInvites = %+v, want disable request", fake.openInvites)
+	}
+	if _, found := m.knownOpenInvite(); found {
+		t.Fatal("cached open invite was not cleared after disabling")
+	}
+}
+
+func TestOpenInviteSlashCommandEnablesAndDisables(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m = typeText(t, m, "/open-invite")
+	var command tea.Cmd
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 1 || !fake.openInvites[0].Enabled {
+		t.Fatalf("openInvites = %+v, want enable", fake.openInvites)
+	}
+	m, _ = press(t, m, "esc") // close invite window
+	m = typeText(t, m, "/open-invite off")
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.openInvites) != 2 || fake.openInvites[1].Enabled {
+		t.Fatalf("openInvites = %+v, want disable", fake.openInvites)
 	}
 }

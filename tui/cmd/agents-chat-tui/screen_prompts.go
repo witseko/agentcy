@@ -8,7 +8,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-const inviteBoxWidth = 76
+const (
+	inviteBoxWidth = 76
+	openInviteCard = "\x00open-invite"
+)
 
 // inviteState holds the invite window that lists the join prompts still to paste.
 type inviteState struct {
@@ -34,10 +37,28 @@ func (m model) openInvite(name string) model {
 	return m
 }
 
-// promptSlots returns the manual slots that have not joined: invited members without a
-// fresh-run launch, in team order.
+// hasOpenInvite reports whether the open conversation currently has an active shared invite.
+func (m model) hasOpenInvite() bool {
+	if m.chat.loaded {
+		return m.chat.view.Status.OpenInvite
+	}
+	_, found := m.knownOpenInvite()
+	return found
+}
+
+// knownOpenInvite returns the shared open-invite prompt this session received for the open chat.
+func (m model) knownOpenInvite() (OpenInviteInvitation, bool) {
+	invitation, found := m.openInvites[m.chat.id]
+	return invitation, found
+}
+
+// promptSlots returns the open-invite card (when enabled) followed by manual slots that have
+// not joined: invited members without a fresh-run launch, in team order.
 func (m model) promptSlots() []string {
 	var names []string
+	if m.hasOpenInvite() {
+		names = append(names, openInviteCard)
+	}
 	for _, name := range m.slotNames() {
 		member := m.chat.view.Status.Members[name]
 		if member.State == "invited" && member.LaunchState == "" {
@@ -69,6 +90,15 @@ func (m model) inviteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		name := slots[min(m.inviteWindow.selected, len(slots)-1)]
+		if name == openInviteCard {
+			if _, found := m.knownOpenInvite(); !found {
+				return m.inform("Open invite is active from another session. Press r to rotate and get a prompt."), nil
+			}
+			next, command := m.copyOpenPrompt()
+			updated := next.(model)
+			updated.inviteWindow.selected = min(updated.inviteWindow.selected+1, len(slots)-1)
+			return updated, command
+		}
 		if _, found := m.knownInvitation(name); !found {
 			return m.inform("No prompt for " + cleanLine(name) + " in this session. Press r for a new code."), nil
 		}
@@ -81,9 +111,33 @@ func (m model) inviteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		name := slots[min(m.inviteWindow.selected, len(slots)-1)]
+		if name == openInviteCard {
+			return m.inform("Rotating the open invite code."), m.setOpenInvite(true)
+		}
 		return m.inform("Getting a new code for " + cleanLine(name) + "."), m.invite(name)
+	case "o":
+		if m.chat.loaded && !m.chat.view.Status.Open {
+			return m.inform("This chat is closed."), nil
+		}
+		enable := !m.hasOpenInvite()
+		if enable {
+			return m.inform("Enabling open invite."), m.setOpenInvite(true)
+		}
+		return m.inform("Disabling open invite."), m.setOpenInvite(false)
 	}
 	return m, nil
+}
+
+// copyOpenPrompt copies the shared open-invite prompt to the clipboard.
+func (m model) copyOpenPrompt() (tea.Model, tea.Cmd) {
+	invitation, _ := m.knownOpenInvite()
+	if m.inviteWindow.copied == nil {
+		m.inviteWindow.copied = map[string]bool{}
+	}
+	m.inviteWindow.copied[openInviteCard] = true
+	copyText := m.clipboard
+	prompt := clean(invitation.JoinPrompt)
+	return m, func() tea.Msg { return copiedMsg{name: openInviteCard, err: copyText(prompt)} }
 }
 
 // copyPrompt copies a slot's join prompt to the clipboard and marks it as copied.
@@ -100,9 +154,16 @@ func (m model) copyPrompt(name string) (tea.Model, tea.Cmd) {
 
 // onCopied reports the clipboard result.
 func (m model) onCopied(msg copiedMsg) model {
+	key := foldName(msg.name)
+	if msg.name == openInviteCard {
+		key = openInviteCard
+	}
 	if msg.err != nil {
-		delete(m.inviteWindow.copied, foldName(msg.name))
+		delete(m.inviteWindow.copied, key)
 		return m.inform("Not copied: " + msg.err.Error())
+	}
+	if msg.name == openInviteCard {
+		return m.inform("Copied the shared open-invite prompt. Paste it into any chat to join.")
 	}
 	return m.inform("Copied the prompt for " + cleanLine(msg.name) + ". Paste it into its chat.")
 }
@@ -142,22 +203,35 @@ func (m model) inviteLayout(bodyHeight int) (box []string, row int, col int, slo
 		lineSlot = append(lineSlot, -1, -1)
 	}
 	for index, name := range slots {
-		member := m.chat.view.Status.Members[name]
 		selected := index == min(m.inviteWindow.selected, len(slots)-1)
 		action, _ := m.buttons(button{id: fmt.Sprintf("card:%d", index), label: "Copy"})
+		copyKey := foldName(name)
+		if name == openInviteCard {
+			copyKey = openInviteCard
+		}
 		mark := "  "
-		if m.inviteWindow.copied[foldName(name)] {
+		if m.inviteWindow.copied[copyKey] {
 			mark, action = okStyle.Render("✓ "), okStyle.Render("copied")
 		}
-		if selected && !m.inviteWindow.copied[foldName(name)] {
+		if selected && !m.inviteWindow.copied[copyKey] {
 			mark = accentStyle.Render("› ")
 		}
-		title := mark + roleStyle(member.Role).Render(cleanLine(name)) + " " + dimStyle.Render(member.Role)
-		gap := max(inner-ansi.StringWidth(title)-ansi.StringWidth(action), 1)
-		prompt := dimStyle.Render("No prompt in this session. Press r for a new code.")
-		if invitation, found := m.knownInvitation(name); found {
-			prompt = textStyle.Render(cleanLine(invitation.JoinPrompt))
+		var title, prompt string
+		if name == openInviteCard {
+			title = mark + accentStyle.Render("Open invite") + " " + dimStyle.Render("anyone (reusable)")
+			prompt = dimStyle.Render("Active from another session. Press r to rotate and get a prompt.")
+			if invitation, found := m.knownOpenInvite(); found {
+				prompt = textStyle.Render(cleanLine(invitation.JoinPrompt))
+			}
+		} else {
+			member := m.chat.view.Status.Members[name]
+			title = mark + roleStyle(member.Role).Render(cleanLine(name)) + " " + dimStyle.Render(member.Role)
+			prompt = dimStyle.Render("No prompt in this session. Press r for a new code.")
+			if invitation, found := m.knownInvitation(name); found {
+				prompt = textStyle.Render(cleanLine(invitation.JoinPrompt))
+			}
 		}
+		gap := max(inner-ansi.StringWidth(title)-ansi.StringWidth(action), 1)
 		card := []string{title + strings.Repeat(" ", gap) + action, "  " + pad(prompt, inner-2)}
 		for _, line := range card {
 			switch {
@@ -174,7 +248,7 @@ func (m model) inviteLayout(bodyHeight int) (box []string, row int, col int, slo
 		lineSlot = append(lineSlot, -1)
 	}
 	done, _ := m.buttons(button{id: "done", label: "Done", primary: true})
-	lines = append(lines, done+"   "+keyHints("c", "copy next", "r", "new code"))
+	lines = append(lines, done+"   "+keyHints("c", "copy next", "r", "new code", "o", "open invite"))
 	lineSlot = append(lineSlot, -1)
 
 	box = []string{accentStyle.Render("┌" + strings.Repeat("─", width-2) + "┐")}

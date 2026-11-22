@@ -18,6 +18,8 @@ UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
 LEAD_JOIN_PROMPT = (
     "Use agents-chat to join with CODE. You lead this conversation. Read the shared brief and "
     "catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. "
+    "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
+    "open_invite, and retire inactive or unneeded teammates with retire_participant. "
     "Track the team status in read_messages, assign follow-up work when workers finish, and post "
     f"brief team updates so waiting teammates stay active. Messages from {HUMAN_LABEL} come from "
     "your user. Follow the bridge's guidance during this turn."
@@ -39,6 +41,11 @@ def ready_prompt(role: str, code: str, brief: str, participant: str) -> str:
     """Return the join prompt for a slot with its topic, name, and code filled in."""
     template = repository.JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
     return repository.join_prompt(brief, participant=participant, template=template, code=code)
+
+
+def ready_open_prompt(code: str, brief: str) -> str:
+    """Return a ready-to-paste shared open-invite prompt with the code filled in."""
+    return repository.open_join_prompt(brief, code=code)
 
 
 def title(brief_start: str) -> str:
@@ -106,6 +113,7 @@ def human_actor(connection: Connection, conversation_id: str) -> dict:
                 room.c.round_deadline,
                 room.c.created,
                 room.c.archived,
+                room.c.open_invite_hash,
                 member.c.id,
             )
             .select_from(
@@ -160,11 +168,12 @@ def create(
         brief=request.brief,
         initiator=request.lead,
         invitees=request.invitees,
+        open_invite=request.open_invite,
         sealed=request.sealed,
         deadline_minutes=request.deadline_minutes,
     )
     roles = repository.team_roles(team)
-    room_id, round_state = repository.insert_room(connection, team)
+    room_id, round_state, open_code = repository.insert_room(connection, team)
     invitations = [
         invitation(
             label,
@@ -175,12 +184,18 @@ def create(
         for label, role in roles.items()
     ]
     add_human(connection, room_id)
-    return {
+    result = {
         "conversation": room_id,
         "invitations": invitations,
         "roster": repository.roster(connection, room_id),
         **round_state,
     }
+    if open_code is not None:
+        result["open_invite"] = {
+            "code": open_code,
+            "join_prompt": ready_open_prompt(open_code, request.brief),
+        }
+    return result
 
 
 def transcript(connection: Connection, room_id: str, after: int) -> dict:
@@ -239,6 +254,21 @@ def invite(
     human = writing_actor(connection, request.conversation)
     result = repository.invite(connection, human, workspace, request.name, request.role)
     return invitation(result["participant"], result["role"], result["code"], human["brief"])
+
+
+def set_open_invite(
+    connection: Connection, workspace: str, request: operator_models.SetOpenInvite
+) -> dict:
+    """Enable, rotate, or disable a reusable room-level invite as the human."""
+    human = writing_actor(connection, request.conversation)
+    result = repository.set_open_invite(connection, human, workspace, request.enabled)
+    if not result["open_invite"]:
+        return result
+    return {
+        "open_invite": True,
+        "code": result["code"],
+        "join_prompt": ready_open_prompt(result["code"], human["brief"]),
+    }
 
 
 def launch(
@@ -300,6 +330,8 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
         return create(connection, workspace, request)
     if isinstance(request, operator_models.InviteParticipant):
         return invite(connection, workspace, request)
+    if isinstance(request, operator_models.SetOpenInvite):
+        return set_open_invite(connection, workspace, request)
     if isinstance(request, operator_models.RetireParticipant):
         human = writing_actor(connection, request.conversation)
         return repository.retire(connection, human, request.name)

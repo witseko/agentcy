@@ -39,6 +39,7 @@ class Invitation(BaseModel):
 
 # A plain name retains the original worker invitation format.
 Slots = Annotated[list[Label | Invitation], Field(min_length=1, max_length=MAX_PARTICIPANTS - 1)]
+OptionalSlots = Annotated[list[Label | Invitation], Field(max_length=MAX_PARTICIPANTS - 1)]
 
 
 class Request(BaseModel):
@@ -56,23 +57,27 @@ class Create(Request):
     action: Literal["create"] = "create"
     brief: Body
     initiator: Label
-    invitees: Slots
+    invitees: OptionalSlots = Field(default_factory=list)
+    open_invite: bool = False
     sealed: bool = False
     deadline_minutes: DeadlineMinutes | None = None
 
     @model_validator(mode="after")
-    def validate_deadline(self) -> "Create":
-        """Limit deadlines to sealed proposal rounds."""
+    def validate_create(self) -> "Create":
+        """Require at least one slot unless open_invite is enabled, and bound deadlines."""
+        if not self.open_invite and not self.invitees:
+            raise ValueError("Invite at least one participant or enable open_invite")
         if self.deadline_minutes is not None and not self.sealed:
             raise ValueError("A proposal deadline requires a sealed round")
         return self
 
 
 class Join(Request):
-    """Redeem a single-use invitation."""
+    """Redeem a single-use or shared open invitation."""
 
     action: Literal["join"] = "join"
     code: Key
+    name: Label | None = None
 
 
 class Member(Request):
@@ -142,5 +147,38 @@ class Launch(Member):
     directory: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
 
 
-MemberRequest = Create | Join | Post | Read | Close | Status | Invite | Release | Launch
+class Retire(Member):
+    """Retire a participant from an open conversation as a lead or co-lead."""
+
+    action: Literal["retire"] = "retire"
+    name: Label
+
+
+class Plugins(Member):
+    """List locally configured fresh-run plugins for a lead or co-lead."""
+
+    action: Literal["plugins"] = "plugins"
+
+
+class OpenInvite(Member):
+    """Enable, rotate, or disable a conversation's shared open invite code."""
+
+    action: Literal["open_invite"] = "open_invite"
+    enabled: bool = True
+
+
+MemberRequest = (
+    Create
+    | Join
+    | Post
+    | Read
+    | Close
+    | Status
+    | Invite
+    | Retire
+    | Plugins
+    | OpenInvite
+    | Release
+    | Launch
+)
 REQUEST = TypeAdapter(Annotated[MemberRequest, Field(discriminator="action")])
