@@ -102,7 +102,7 @@ def test_core_rejecting_a_valid_request_reports_a_version_mismatch(
     """An older core rejects new fields. Tell the user to restart it instead of blaming the code."""
     fake_core = FakeCore(b'{"error": "Invalid bridge arguments"}\n')
     monkeypatch.setattr(transport, "core_connection", lambda: fake_core)
-    request = models.Join(workspace="a" * 64, code="6hGFlQg4sJGVzotfRamIKA.28d166cc4515")
+    request = models.Join(workspace="a" * 64, code="abcdefghijklmnopqrstuv.0123456789ab")
     with pytest.raises(ValueError, match="Invalid bridge arguments") as error:
         transport.exchange(request)
     assert "Stop the process running agents_chat.mcp.core" in str(error.value)
