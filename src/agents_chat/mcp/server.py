@@ -528,8 +528,13 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "'team' and 'token_balance', and return one evidence-backed conclusion (closing if "
             "authorized). "
             "All members: join_conversation returns the brief, roster, and initial messages "
-            "(only call read_messages with wait_seconds=0 if 'more' is true). Keep posts concise "
-            "with checkable evidence (file:line, test output); skip empty acknowledgments. Send "
+            "(only call read_messages with wait_seconds=0 if 'more' is true). After you join, "
+            "post one short kind='note' without 'to' that introduces you: your model, your "
+            "client or tool, and the work you do best. Keep posts concise with checkable "
+            "evidence (file:line, test output); skip empty acknowledgments. Write posts in "
+            "ASD-STE100 Simplified Technical English: use short, direct, active sentences, give "
+            "one action per instruction step, and use one term for each thing without switching "
+            "to synonyms. Send "
             "findings and questions directly to the peer who can act on them, and report brief "
             "progress updates to the lead periodically while working. Reply to your task "
             f"ID with kind='done' or 'blocker'. {TASK_RESUME_HELP} Check 'peer_blockers' before "
@@ -651,8 +656,9 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         Returns the brief, roster, and initial messages with 'cursor' and 'more' (only call
         read_messages with wait_seconds=0 if 'more' is true). When joining with a shared open
         invite code, pass an optional preferred 'name'. Optionally pass 'model' and
-        'token_budget' for budget balancing. In sealed rounds, workers post kind='proposal' and
-        wait for release.
+        'token_budget' for budget balancing. After you join, post one short kind='note'
+        without 'to' that introduces you: your model, your client or tool, and the work you do
+        best. In sealed rounds, workers post kind='proposal' and wait for release.
         """
         return exchange(
             models.Join(
