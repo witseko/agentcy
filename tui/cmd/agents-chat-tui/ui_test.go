@@ -14,16 +14,16 @@ const testConversation = "0123456789abcdef01234567"
 
 // fakeOperator records requests and returns canned results.
 type fakeOperator struct {
-	list     ConversationList
-	archive  ConversationList
-	results  SearchResults
-	lists    []ListRequest
-	archives []ArchiveRequest
-	searches []SearchRequest
+	list        ConversationList
+	archive     ConversationList
+	results     SearchResults
+	lists       []ListRequest
+	archives    []ArchiveRequest
+	searches    []SearchRequest
 	view        ConversationView
 	showFunc    func(ShowRequest) (ConversationView, error)
 	showErr     error
-	plugins  PluginList
+	plugins     PluginList
 	creates     []CreateRequest
 	launches    []LaunchRequest
 	retires     []RetireRequest
@@ -1385,7 +1385,6 @@ func TestInviteImmediatelyRefreshesTeamAndShowsNewSlot(t *testing.T) {
 		t.Fatalf("expected immediate show and list refresh after invite: shows=%d lists=%d", len(fake.shows), len(fake.lists))
 	}
 }
-
 
 func TestTeamViewRendersTokenUsageBarsAndBalanceWarning(t *testing.T) {
 	claudeUsed := 78.0
