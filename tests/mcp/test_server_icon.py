@@ -33,6 +33,8 @@ def test_stdio_server_advertises_png_icon(tmp_path: Path) -> None:
     assert server.name == "agents-chat"
     assert result.instructions is not None
     assert "report brief progress updates to the lead periodically" in result.instructions
+    assert "post one short kind='note' without 'to' that introduces you" in result.instructions
+    assert "Write posts in ASD-STE100 Simplified Technical English" in result.instructions
     assert server.icons is not None
     (icon,) = server.icons
     assert icon.mimeType == "image/png"

@@ -333,11 +333,15 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "open_invite, and retire inactive or unneeded teammates with retire_participant. "
             "As lead, assign complementary tasks with kind='task' and the owner's name in 'to'. "
             "Take a substantive part yourself and work on it while the others work. "
+            "After you join, post one short kind='note' without 'to' that introduces you: "
+            "your model, your client or tool, and the work you do best. "
             "Read the brief and work on your part. Outside sealed rounds, send evidence and "
             "questions directly to the peer who can use or answer them, and report brief progress "
             "updates to the lead periodically with kind='note' and the lead's roster name in 'to' "
             "while working. Include a file location, test result, or other source the peer can "
-            "check. Reply to a task ID with kind='done' when the task is complete or "
+            "check. Write posts in ASD-STE100 Simplified Technical English: use short, direct, "
+            "active sentences, give one action per instruction step, and use one term for each "
+            "thing without switching to synonyms. Reply to a task ID with kind='done' when the task is complete or "
             f"kind='blocker' when you need help. {TASK_RESUME_HELP} "
             "As lead, ask a teammate who can help when a worker is blocked. "
             "Track the 'team' status returned by read_messages; assign follow-up tasks or post "
@@ -470,6 +474,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         (if omitted or already taken, a unique worker name is assigned automatically).
         Optionally pass your 'model' name and starting 'token_budget' so the lead can balance
         work across models.
+        After you join, post one short kind='note' without 'to' that introduces you: your
+        model, your client or tool, and the work you do best.
         Catch up with read_messages after zero and take your part of the shared brief.
         In open discussion, send questions and evidence to the roster member who can act on them.
         If the round is sealed and your role is worker, post your independent proposal using
