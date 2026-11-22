@@ -207,20 +207,20 @@ func TestMalformedResponseIsAnError(t *testing.T) {
 
 // exampleTypes maps each operator action to its Go request and result types.
 var exampleTypes = map[string][2]reflect.Type{
-	"operator_plugins": {reflect.TypeFor[PluginsRequest](), reflect.TypeFor[PluginList]()},
-	"operator_list":    {reflect.TypeFor[ListRequest](), reflect.TypeFor[ConversationList]()},
-	"operator_show":    {reflect.TypeFor[ShowRequest](), reflect.TypeFor[ConversationView]()},
-	"operator_create":  {reflect.TypeFor[CreateRequest](), reflect.TypeFor[CreatedConversation]()},
-	"operator_invite":  {reflect.TypeFor[InviteRequest](), reflect.TypeFor[JoinInvitation]()},
-	"operator_open_invite": {reflect.TypeFor[OpenInviteRequest](), reflect.TypeFor[OpenInviteStatus]()},
-	"operator_launch":      {reflect.TypeFor[LaunchRequest](), reflect.TypeFor[LaunchQueued]()},
-	"operator_retire":   {reflect.TypeFor[RetireRequest](), reflect.TypeFor[RetiredParticipant]()},
+	"operator_plugins":           {reflect.TypeFor[PluginsRequest](), reflect.TypeFor[PluginList]()},
+	"operator_list":              {reflect.TypeFor[ListRequest](), reflect.TypeFor[ConversationList]()},
+	"operator_show":              {reflect.TypeFor[ShowRequest](), reflect.TypeFor[ConversationView]()},
+	"operator_create":            {reflect.TypeFor[CreateRequest](), reflect.TypeFor[CreatedConversation]()},
+	"operator_invite":            {reflect.TypeFor[InviteRequest](), reflect.TypeFor[JoinInvitation]()},
+	"operator_open_invite":       {reflect.TypeFor[OpenInviteRequest](), reflect.TypeFor[OpenInviteStatus]()},
+	"operator_launch":            {reflect.TypeFor[LaunchRequest](), reflect.TypeFor[LaunchQueued]()},
+	"operator_retire":            {reflect.TypeFor[RetireRequest](), reflect.TypeFor[RetiredParticipant]()},
 	"operator_set_role":          {reflect.TypeFor[SetRoleRequest](), reflect.TypeFor[ParticipantRoleChanged]()},
 	"operator_set_member_budget": {reflect.TypeFor[SetMemberBudgetRequest](), reflect.TypeFor[MemberBudgetUpdated]()},
-	"operator_post":    {reflect.TypeFor[PostRequest](), reflect.TypeFor[PostedMessage]()},
-	"operator_close":   {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
-	"operator_archive": {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},
-	"operator_search":  {reflect.TypeFor[SearchRequest](), reflect.TypeFor[SearchResults]()},
+	"operator_post":              {reflect.TypeFor[PostRequest](), reflect.TypeFor[PostedMessage]()},
+	"operator_close":             {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
+	"operator_archive":           {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},
+	"operator_search":            {reflect.TypeFor[SearchRequest](), reflect.TypeFor[SearchResults]()},
 }
 
 // example is one exchange from protocol/operator.v1.examples.json.
