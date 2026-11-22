@@ -139,7 +139,7 @@ def shim(
     return registered[0], calls
 
 
-def tool(app: server.FastMCP, name: str, **arguments: Any) -> dict:
+def tool(app: server.FastMCP, name: str, /, **arguments: Any) -> dict:
     """Call one registered tool and decode its JSON response."""
     content = asyncio.run(app.call_tool(name, arguments))
     return json.loads(content[0].text)
@@ -575,3 +575,29 @@ def test_assignment_worker_cancels_retired_participant_run() -> None:
         "deadline": 9_999_999_999,
     }
     assert AssignmentWorker.stop_reason(row) == "cancelled"
+
+
+def test_mcp_lead_can_set_participant_role(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """MCP set_participant_role transfers lead and keeps the previous lead active as worker."""
+    app, _ = shim
+    created = tool(
+        app,
+        "create_conversation",
+        brief="Lead transfer",
+        your_name="Lead",
+        invitees=["Scout"],
+    )
+    lead = created["token"]
+    scout = tool(app, "join_conversation", code=created["invitations"]["Scout"])["token"]
+    changed = tool(app, "set_participant_role", token=lead, name="Scout", role="lead")
+    assert changed == {
+        "participant": "Scout",
+        "role": "lead",
+        "roster": {"Lead": "worker", "Scout": "lead"},
+    }
+    status = tool(app, "conversation_status", token=scout)
+    assert status["members"]["Scout"]["role"] == "lead"
+    assert status["members"]["Lead"]["role"] == "worker"
+    assert status["members"]["Lead"]["state"] == "joined"

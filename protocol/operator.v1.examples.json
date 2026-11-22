@@ -77,6 +77,23 @@
     "result": {"participant": "Analyst", "retired": true}
   },
   {
+    "action": "operator_set_role",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_set_role",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Reviewer",
+      "role": "lead"
+    },
+    "result": {
+      "participant": "Reviewer",
+      "role": "lead",
+      "roster": {"Lead": "worker", "Reviewer": "lead", "Analyst": "worker", "Human": "human"}
+    }
+  },
+  {
     "action": "operator_post",
     "request": {
       "version": 1,

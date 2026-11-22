@@ -357,6 +357,18 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         return exchange(models.Invite(workspace=workspace, token=token, name=name, role=role))
 
     @server.tool()
+    def set_participant_role(
+        token: models.Key, name: models.Label, role: models.AssignableRole
+    ) -> dict:
+        """As a lead or co-lead, change an active participant's role in an open conversation.
+
+        Setting role='lead' promotes that participant to sole lead and demotes any previous
+        lead or co-leads to worker while keeping them active. Setting role='co-lead' shares
+        leadership. Cannot demote the only lead or change a retired participant's role.
+        """
+        return exchange(models.SetRole(workspace=workspace, token=token, name=name, role=role))
+
+    @server.tool()
     def join_conversation(code: models.Key) -> dict:
         """Redeem a one-time invitation to get the brief and a private participant token.
 

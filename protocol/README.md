@@ -50,6 +50,7 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
 | `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
 | `operator_retire` | Retire a participant from an open conversation. Expires unused codes, stops writes, and cancels any active fresh run. |
+| `operator_set_role` | Change an active participant's role (`lead`, `co-lead`, or `worker`). Setting `lead` demotes any previous lead or co-lead to `worker` while keeping them active. |
 | `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. |
 | `operator_close` | Close the conversation. An optional summary becomes the human's message. |
 | `operator_archive` | Archive a closed conversation with `archived: true`, or return it to the active list with `archived: false`. Members keep read access. |

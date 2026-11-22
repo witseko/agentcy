@@ -25,9 +25,10 @@ type fakeOperator struct {
 	showErr  error
 	plugins  PluginList
 	creates  []CreateRequest
-	launches []LaunchRequest
-	retires  []RetireRequest
-	posts    []PostRequest
+	launches    []LaunchRequest
+	retires     []RetireRequest
+	roleChanges []SetRoleRequest
+	posts       []PostRequest
 	closes   []CloseRequest
 	invites  []InviteRequest
 	shows    []ShowRequest
@@ -83,6 +84,11 @@ func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
 func (f *fakeOperator) Retire(request RetireRequest) (RetiredParticipant, error) {
 	f.retires = append(f.retires, request)
 	return RetiredParticipant{Participant: request.Name, Retired: true}, nil
+}
+
+func (f *fakeOperator) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
+	f.roleChanges = append(f.roleChanges, request)
+	return ParticipantRoleChanged{Participant: request.Name, Role: request.Role}, nil
 }
 
 func (f *fakeOperator) Post(request PostRequest) (PostedMessage, error) {
@@ -872,8 +878,8 @@ func TestMemberStateShowsOpenTasksAsWorking(t *testing.T) {
 		Role:  "worker",
 		State: "retired",
 	})
-	if ansi.Strip(glyph) != "✕" || detail != "retired" {
-		t.Fatalf("got (%q, %q), want retired", ansi.Strip(glyph), detail)
+	if ansi.Strip(glyph) != "✕" || detail != "archived" {
+		t.Fatalf("got (%q, %q), want archived", ansi.Strip(glyph), detail)
 	}
 }
 
@@ -1067,5 +1073,203 @@ func TestSearchStartAutoPaginatesNewerOnScrollDown(t *testing.T) {
 	}
 	if len(m.chat.messages) != total || m.chat.hasNewer {
 		t.Fatalf("len=%d hasNewer=%v, want %d and false", len(m.chat.messages), m.chat.hasNewer, total)
+	}
+}
+
+func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Team lifecycle",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead":      {Role: "lead", State: "replied"},
+					"Reviewer":  {Role: "worker", State: "replied"},
+					"OldWorker": {Role: "worker", State: "retired"},
+					"Human":     {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	teamIndex := strings.Index(panel, "TEAM")
+	archivedIndex := strings.Index(panel, "ARCHIVED")
+	oldIndex := strings.Index(panel, "OldWorker")
+	if teamIndex < 0 || archivedIndex < 0 || oldIndex < 0 {
+		t.Fatalf("missing TEAM/ARCHIVED/OldWorker in panel:\n%s", panel)
+	}
+	if !(teamIndex < archivedIndex && archivedIndex < oldIndex) {
+		t.Fatalf("OldWorker should appear under ARCHIVED section:\n%s", panel)
+	}
+	if !strings.Contains(panel, "archived") {
+		t.Fatalf("archived detail missing:\n%s", panel)
+	}
+
+	var archivedRow teamRow
+	for _, row := range m.teamRows() {
+		if row.name == "OldWorker" {
+			archivedRow = row
+		}
+	}
+	if archivedRow.name == "" {
+		t.Fatal("OldWorker missing from teamRows")
+	}
+	listW, centerW, _ := m.columnWidths()
+	teamX := listW + 1 + centerW + 2
+	m, _ = click(t, m, teamX, 1+archivedRow.top)
+	if m.selectedMember() != "OldWorker" {
+		t.Fatalf("selectedMember = %q, want OldWorker", m.selectedMember())
+	}
+
+	m, _ = press(t, m, "m")
+	if len(fake.roleChanges) != 0 || !strings.Contains(m.status, "archived") {
+		t.Fatalf("unexpected make-lead on archived: changes=%+v status=%q", fake.roleChanges, m.status)
+	}
+	m, _ = press(t, m, "d")
+	if m.chat.retiring != "" || !strings.Contains(m.status, "already archived") {
+		t.Fatalf("unexpected retire on archived: retiring=%q status=%q", m.chat.retiring, m.status)
+	}
+}
+
+func TestMakeLeadAndRoleSlashCommandsUpdateRunningTUI(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	showsBefore := len(fake.shows)
+	listsBefore := len(fake.lists)
+
+	m, _ = press(t, m, "tab")
+	m, _ = press(t, m, "down")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "m")
+	m = drive(t, m, cmd)
+
+	if len(fake.roleChanges) != 1 || fake.roleChanges[0] != (SetRoleRequest{
+		Directory: "/work", Conversation: testConversation, Name: "Reviewer", Role: "lead",
+	}) {
+		t.Fatalf("roleChanges = %+v, want Reviewer -> lead", fake.roleChanges)
+	}
+	if len(fake.shows) <= showsBefore || len(fake.lists) <= listsBefore {
+		t.Fatalf("expected immediate show and list refresh after role change: shows=%d lists=%d", len(fake.shows), len(fake.lists))
+	}
+
+	m, _ = press(t, m, "esc")
+	m = typeText(t, m, "/role Reviewer co-lead")
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.roleChanges) != 2 || fake.roleChanges[1].Role != "co-lead" {
+		t.Fatalf("roleChanges = %+v, want co-lead", fake.roleChanges)
+	}
+
+	m = typeText(t, m, "/lead Lead")
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.roleChanges) != 3 || fake.roleChanges[2].Name != "Lead" || fake.roleChanges[2].Role != "lead" {
+		t.Fatalf("roleChanges = %+v, want Lead -> lead", fake.roleChanges)
+	}
+
+	m = typeText(t, m, "/role Lead boss")
+	m, _ = press(t, m, "enter")
+	if len(fake.roleChanges) != 3 || !strings.Contains(m.status, "Usage: /role") {
+		t.Fatalf("invalid role was not rejected: changes=%+v status=%q", fake.roleChanges, m.status)
+	}
+}
+
+func TestLivePollReflectsAddedArchivedAndLeadChangedParticipants(t *testing.T) {
+	initial := ConversationView{
+		Conversation: testConversation,
+		Brief:        "Live roster updates",
+		Status: ConversationStatus{
+			Open: true,
+			Members: map[string]MemberStatus{
+				"Lead":     {Role: "lead", State: "replied"},
+				"Reviewer": {Role: "worker", State: "replied"},
+				"Human":    {Role: "human", State: "human"},
+			},
+		},
+		Messages: []TranscriptMessage{{ID: 1, Label: "Lead", Body: "Kickoff", Created: 1795000000}},
+		Cursor:   1,
+	}
+	updated := ConversationView{
+		Conversation: testConversation,
+		Brief:        "Live roster updates",
+		Status: ConversationStatus{
+			Open: true,
+			Members: map[string]MemberStatus{
+				"Lead":     {Role: "worker", State: "replied"},
+				"Reviewer": {Role: "worker", State: "retired"},
+				"Scout":    {Role: "lead", State: "joined"},
+				"Human":    {Role: "human", State: "human"},
+			},
+		},
+		Cursor: 1,
+	}
+	call := 0
+	fake := &fakeOperator{
+		showFunc: func(ShowRequest) (ConversationView, error) {
+			call++
+			if call == 1 {
+				return initial, nil
+			}
+			return updated, nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	m, _ = press(t, m, "tab")
+	if m.selectedMember() != "Lead" {
+		t.Fatalf("initial selectedMember = %q, want Lead", m.selectedMember())
+	}
+	versionBefore := m.chat.version
+	listsBefore := len(fake.lists)
+
+	next, cmd = m.Update(tickMsg(time.Now()))
+	m = drive(t, next.(model), cmd)
+
+	if m.chat.version == versionBefore {
+		t.Fatal("transcript version did not bump when roles changed")
+	}
+	if len(fake.lists) <= listsBefore {
+		t.Fatal("sidebar list did not refresh immediately on roster change")
+	}
+	if m.selectedMember() != "Lead" {
+		t.Fatalf("selection drifted after reorder: got %q, want Lead", m.selectedMember())
+	}
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	scoutPos := strings.Index(panel, "Scout lead")
+	leadPos := strings.Index(panel, "Lead worker")
+	archivedPos := strings.Index(panel, "ARCHIVED")
+	reviewerPos := strings.Index(panel, "Reviewer worker")
+	if scoutPos < 0 || leadPos < 0 || archivedPos < 0 || reviewerPos < 0 {
+		t.Fatalf("panel missing expected live roster updates:\n%s", panel)
+	}
+	if !(scoutPos < leadPos && leadPos < archivedPos && archivedPos < reviewerPos) {
+		t.Fatalf("unexpected team order after live update:\n%s", panel)
+	}
+}
+
+func TestInviteImmediatelyRefreshesTeamAndShowsNewSlot(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	showsBefore := len(fake.shows)
+	listsBefore := len(fake.lists)
+
+	m = typeText(t, m, "/invite Scout")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+
+	if !m.inviteWindow.open {
+		t.Fatal("invite window did not open after /invite")
+	}
+	if len(fake.shows) <= showsBefore || len(fake.lists) <= listsBefore {
+		t.Fatalf("expected immediate show and list refresh after invite: shows=%d lists=%d", len(fake.shows), len(fake.lists))
 	}
 }

@@ -101,6 +101,10 @@ type (
 		participant string
 		err         error
 	}
+	roleChangedMsg struct {
+		result ParticipantRoleChanged
+		err    error
+	}
 	postedMsg   struct{ err error }
 	closedMsg   struct{ err error }
 	archivedMsg struct {
@@ -211,11 +215,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case createdMsg:
 		return m.onCreated(msg)
 	case invitedMsg:
-		return m.onInvited(msg), nil
+		return m.onInvited(msg)
 	case launchedMsg:
-		return m.onLaunched(msg), nil
+		return m.onLaunched(msg)
 	case retiredMsg:
 		return m.onRetired(msg)
+	case roleChangedMsg:
+		return m.onRoleChanged(msg)
 	case postedMsg:
 		return m.onPosted(msg)
 	case closedMsg:
