@@ -194,5 +194,6 @@ def test_join_prompt_truncates_multiline_briefs_and_keeps_code_placeholder(
         invitees=["Worker"],
     )
     assert team["join_prompt"] == f"{short}: {repository.JOIN_PROMPT}"
+    assert "report brief progress updates to the lead periodically" in team["join_prompt"]
     invitation = apply(conversation_db, "invite", token=team["token"], name="Analyst")
     assert invitation["join_prompt"] == f"{short} (Analyst): {repository.JOIN_PROMPT}"

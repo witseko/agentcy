@@ -49,6 +49,7 @@ def test_launch_preserves_installed_opencode_symlink_in_workspace(
         assert cwd == checkout
         assert arguments[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert arguments[3] == str(bin_directory / "opencode")
+        assert "report brief progress updates to the lead periodically" in arguments[-1]
         assert not options.get("shell")
         assert env["PATH"] == str(bin_directory)
         config = Path(env["XDG_CONFIG_HOME"]) / "opencode" / "opencode.json"

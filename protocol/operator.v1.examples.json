@@ -28,7 +28,7 @@
           "participant": "Reviewer",
           "role": "worker",
           "code": "BBBBBBBBBBBBBBBBBBBBBB.0123456789ab",
-          "join_prompt": "Review the retry behavior of the worker. (Reviewer): Use agents-chat to join with BBBBBBBBBBBBBBBBBBBBBB.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+          "join_prompt": "Review the retry behavior of the worker. (Reviewer): Use agents-chat to join with BBBBBBBBBBBBBBBBBBBBBB.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
         }
       ],
       "roster": {"Lead": "lead", "Reviewer": "worker", "Human": "human"}
@@ -61,7 +61,7 @@
       "participant": "Analyst",
       "role": "worker",
       "code": "CCCCCCCCCCCCCCCCCCCCCC.0123456789ab",
-      "join_prompt": "Review the retry behavior of the worker. (Analyst): Use agents-chat to join with CCCCCCCCCCCCCCCCCCCCCC.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+      "join_prompt": "Review the retry behavior of the worker. (Analyst): Use agents-chat to join with CCCCCCCCCCCCCCCCCCCCCC.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
     }
   },
   {
