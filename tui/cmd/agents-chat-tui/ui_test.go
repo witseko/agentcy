@@ -21,6 +21,7 @@ type fakeOperator struct {
 	archives []ArchiveRequest
 	searches []SearchRequest
 	view     ConversationView
+	showFunc func(ShowRequest) (ConversationView, error)
 	showErr  error
 	plugins  PluginList
 	creates  []CreateRequest
@@ -54,6 +55,9 @@ func (f *fakeOperator) Search(request SearchRequest) (SearchResults, error) {
 
 func (f *fakeOperator) Show(request ShowRequest) (ConversationView, error) {
 	f.shows = append(f.shows, request)
+	if f.showFunc != nil {
+		return f.showFunc(request)
+	}
 	return f.view, f.showErr
 }
 
@@ -519,8 +523,11 @@ func TestDraggingADividerResizesTheColumn(t *testing.T) {
 }
 
 func TestWheelScrollsTheTranscriptAndCtrlOReleasesTheMouse(t *testing.T) {
-	m := sized(chatModel(t, &fakeOperator{}), 140, 30)
-	next, _ := m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
+	fake := &fakeOperator{view: longChat()}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, command := m.openChat(testConversation)
+	m = drive(t, next.(model), command)
+	next, _ = m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
 	m = next.(model)
 	if m.chat.scroll != wheelLines {
 		t.Fatalf("scroll %d, want %d", m.chat.scroll, wheelLines)
@@ -914,5 +921,151 @@ func TestRetireSlashCommandSendsRequest(t *testing.T) {
 	m = drive(t, m, command)
 	if len(fake.retires) != 1 || fake.retires[0].Name != "Reviewer" {
 		t.Fatalf("retires = %+v, want Reviewer", fake.retires)
+	}
+}
+
+func TestShortChatScrollUpDoesNotHideArrivingMessages(t *testing.T) {
+	fake := &fakeOperator{}
+	m := sized(chatModel(t, fake), 140, 30)
+
+	// Scrolling up when everything already fits must keep scroll at 0 (following the tail).
+	next, _ := m.Update(tea.MouseWheelMsg{X: 60, Y: 10, Button: tea.MouseWheelUp})
+	m = next.(model)
+	m, _ = press(t, m, "up")
+	if m.chat.scroll != 0 {
+		t.Fatalf("scroll = %d on a short chat, want 0", m.chat.scroll)
+	}
+
+	// Subsequent arriving messages must remain visible at the bottom.
+	var incoming []TranscriptMessage
+	for id := int64(1); id <= 25; id++ {
+		incoming = append(incoming, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Fresh %d", id), Created: 1795000000,
+		})
+	}
+	fake.view.Messages = incoming
+	fake.view.Cursor = 25
+	var cmd tea.Cmd
+	m, cmd = m.pollChat()
+	m = drive(t, m, cmd)
+
+	if m.chat.scroll != 0 {
+		t.Fatalf("scroll drifted to %d after new messages arrived", m.chat.scroll)
+	}
+	visible := visibleTranscriptText(m)
+	if !strings.Contains(visible, "Fresh 25") {
+		t.Fatalf("newest message disappeared from view:\n%s", visible)
+	}
+}
+
+func TestOpenChatLoadsTailAndAutoPaginatesOlderOnScroll(t *testing.T) {
+	const total = 80
+	const pageSize = 40
+	totalCount := total
+	all := make([]TranscriptMessage, 0, total)
+	for id := int64(1); id <= total; id++ {
+		all = append(all, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Msg %d", id), Created: 1795000000,
+		})
+	}
+	baseView := func(messages []TranscriptMessage, more bool, cursor int64) ConversationView {
+		return ConversationView{
+			Conversation:  testConversation,
+			Brief:         "Long chat",
+			Status:        ConversationStatus{Open: true, Members: map[string]MemberStatus{"Lead": {Role: "lead", State: "joined"}}},
+			Messages:      messages,
+			More:          more,
+			Cursor:        cursor,
+			TotalMessages: &totalCount,
+		}
+	}
+	fake := &fakeOperator{
+		showFunc: func(req ShowRequest) (ConversationView, error) {
+			if req.Tail {
+				return baseView(all[total-pageSize:], true, total), nil
+			}
+			if req.Before != nil {
+				end := min(int(*req.Before-1), len(all))
+				start := max(end-pageSize, 0)
+				return baseView(all[start:end], start > 0, all[end-1].ID), nil
+			}
+			return baseView(nil, false, req.After), nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	if len(fake.shows) != 1 || !fake.shows[0].Tail {
+		t.Fatalf("initial shows = %+v, want one tail request", fake.shows)
+	}
+	if len(m.chat.messages) != pageSize || m.chat.messages[0].ID != 41 || !m.chat.hasOlder {
+		t.Fatalf("loaded %d messages starting at %d hasOlder=%v", len(m.chat.messages), m.chat.messages[0].ID, m.chat.hasOlder)
+	}
+	if !strings.Contains(m.View().Content, "80 messages") {
+		t.Fatal("header does not show total_messages count")
+	}
+
+	// Scroll to the top of the loaded page to trigger auto-pagination of older messages.
+	for range 20 {
+		var scrollCmd tea.Cmd
+		m, scrollCmd = m.scrollTranscript("pgup")
+		m = drive(t, m, scrollCmd)
+	}
+	if len(fake.shows) < 2 || fake.shows[1].Before == nil || *fake.shows[1].Before != 41 {
+		t.Fatalf("shows after scroll up = %+v, want before=41", fake.shows)
+	}
+	if len(m.chat.messages) != total || m.chat.messages[0].ID != 1 || m.chat.hasOlder {
+		t.Fatalf("after auto-pagination: len=%d first=%d hasOlder=%v", len(m.chat.messages), m.chat.messages[0].ID, m.chat.hasOlder)
+	}
+}
+
+func TestSearchStartAutoPaginatesNewerOnScrollDown(t *testing.T) {
+	const total = 60
+	const pageSize = 30
+	totalCount := total
+	all := make([]TranscriptMessage, 0, total)
+	for id := int64(1); id <= total; id++ {
+		all = append(all, TranscriptMessage{
+			ID: id, Label: "Lead", Body: fmt.Sprintf("Entry %d", id), Created: 1795000000,
+		})
+	}
+	fake := &fakeOperator{
+		showFunc: func(req ShowRequest) (ConversationView, error) {
+			start := int(req.After)
+			end := min(start+pageSize, len(all))
+			return ConversationView{
+				Conversation:  testConversation,
+				Brief:         "Long chat",
+				Status:        ConversationStatus{Open: true, Members: map[string]MemberStatus{"Lead": {Role: "lead", State: "joined"}}},
+				Messages:      all[start:end],
+				More:          end < len(all),
+				Cursor:        int64(end),
+				TotalMessages: &totalCount,
+			}, nil
+		},
+	}
+
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChatAt(testConversation, 0)
+	m = drive(t, next.(model), cmd)
+
+	// Only the first page should be loaded, not eagerly drained.
+	if len(fake.shows) != 1 || len(m.chat.messages) != pageSize || !m.chat.hasNewer {
+		t.Fatalf("shows=%d len=%d hasNewer=%v, want 1 page with hasNewer=true", len(fake.shows), len(m.chat.messages), m.chat.hasNewer)
+	}
+
+	// Scroll down near the bottom to auto-load the next page.
+	for range 15 {
+		var scrollCmd tea.Cmd
+		m, scrollCmd = m.scrollTranscript("pgdown")
+		m = drive(t, m, scrollCmd)
+	}
+	if len(fake.shows) != 2 || fake.shows[1].After != pageSize {
+		t.Fatalf("shows after scroll down = %+v, want second call with after=%d", fake.shows, pageSize)
+	}
+	if len(m.chat.messages) != total || m.chat.hasNewer {
+		t.Fatalf("len=%d hasNewer=%v, want %d and false", len(m.chat.messages), m.chat.hasNewer, total)
 	}
 }

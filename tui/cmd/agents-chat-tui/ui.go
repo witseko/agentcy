@@ -50,6 +50,17 @@ var (
 	errClipboardUnavailable = errors.New("copying is unavailable on this platform; select the text with the mouse")
 )
 
+// showMode describes which page of the transcript a Show request asked for.
+type showMode int
+
+const (
+	showAfter showMode = iota
+	showTail
+	showOlder
+	showStart
+	showJump
+)
+
 // Messages that commands send back to Update.
 type (
 	tickMsg    time.Time
@@ -64,7 +75,9 @@ type (
 	}
 	showMsg struct {
 		conversation string
+		mode         showMode
 		after        int64
+		before       int64
 		view         ConversationView
 		err          error
 	}
@@ -164,6 +177,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeInputs()
+		m.clampChatScroll()
 		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -185,7 +199,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dragging = noDivider
 		return m, nil
 	case tea.MouseWheelMsg:
-		return m.onWheel(msg.Mouse()), nil
+		return m.onWheel(msg.Mouse())
 	case tickMsg:
 		return m.onTick()
 	case pluginsMsg:
@@ -252,7 +266,7 @@ func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) onTick() (tea.Model, tea.Cmd) {
 	m.ticks++
 	commands := []tea.Cmd{tick()}
-	if m.chat.id != "" && m.screen == screenChat {
+	if m.chat.id != "" && m.screen == screenChat && !m.chat.hasNewer {
 		var poll tea.Cmd
 		m, poll = m.pollChat()
 		commands = append(commands, poll)

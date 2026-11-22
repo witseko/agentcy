@@ -217,6 +217,7 @@ func (m model) onDrag(mouse tea.Mouse) model {
 		return m
 	}
 	m.resizeInputs()
+	m.clampChatScroll()
 	return m
 }
 
@@ -227,7 +228,7 @@ func (m model) clampSide(width int, other int) int {
 }
 
 // onWheel scrolls the chat list, the transcript or the team selection under the pointer.
-func (m model) onWheel(mouse tea.Mouse) model {
+func (m model) onWheel(mouse tea.Mouse) (model, tea.Cmd) {
 	step := 0
 	switch mouse.Button {
 	case tea.MouseWheelUp:
@@ -235,10 +236,10 @@ func (m model) onWheel(mouse tea.Mouse) model {
 	case tea.MouseWheelDown:
 		step = 1
 	default:
-		return m
+		return m, nil
 	}
 	if m.screen == screenNew || m.inviteWindow.open {
-		return m
+		return m, nil
 	}
 	switch m.regionAt(mouse.X) {
 	case regionList:
@@ -246,12 +247,12 @@ func (m model) onWheel(mouse tea.Mouse) model {
 	case regionCenter:
 		switch m.screen {
 		case screenChat:
-			m.chat.scroll = max(m.chat.scroll-step*wheelLines, 0)
+			return m.scrollTranscriptBy(-step * wheelLines)
 		case screenSearch:
 			m.search.selected = min(max(m.search.selected+step, 0), max(len(m.search.hits)-1, 0))
 		}
 	case regionTeam:
 		m.chat.selected = min(max(m.chat.selected+step, 0), max(len(m.slotNames())-1, 0))
 	}
-	return m
+	return m, nil
 }
