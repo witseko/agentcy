@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from pydantic.json_schema import models_json_schema
 
 from agents_chat.conversations import models
+from agents_chat.tokens.settings import ModelName, TokenBudget
 
 Directory = Annotated[str, StringConstraints(max_length=4096, pattern=r"^/[^\x00]*$")]
 OperatorKey = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -21,6 +22,8 @@ LaunchState = Literal[
 ]
 RoundName = Literal["sealed", "critique"]
 SearchQuery = Annotated[str, StringConstraints(min_length=1, max_length=200)]
+UsageSource = Literal["estimated", "reported", "plugin"]
+BudgetStatus = Literal["ok", "warning", "exhausted"]
 
 
 class OperatorRequest(BaseModel):
@@ -161,6 +164,22 @@ class ListPlugins(OperatorRequest):
     action: Literal["operator_plugins"]
 
 
+class SetMemberBudget(ConversationRequest):
+    """Bind a model name and/or per-conversation starting token budget to a participant."""
+
+    action: Literal["operator_set_member_budget"]
+    name: models.Label
+    model: ModelName | None = None
+    token_budget: TokenBudget | None = None
+
+    @model_validator(mode="after")
+    def validate_budget(self) -> "SetMemberBudget":
+        """Require at least a model name or a starting token budget."""
+        if self.model is None and self.token_budget is None:
+            raise ValueError("Specify model, token_budget, or both")
+        return self
+
+
 OperatorAction = (
     ListConversations
     | ShowConversation
@@ -175,6 +194,7 @@ OperatorAction = (
     | ArchiveConversation
     | SearchConversations
     | ListPlugins
+    | SetMemberBudget
 )
 
 
@@ -208,8 +228,34 @@ class OpenTask(Result):
     blocked: bool | None = None
 
 
+class MemberUsage(Result):
+    """Report one member's token spend and remaining budget."""
+
+    model: str | None = None
+    conversation_tokens: int
+    input_tokens: int
+    output_tokens: int
+    model_tokens_used: int
+    source: UsageSource
+    initial_tokens: int | None = None
+    remaining_tokens: int | None = None
+    used_percent: float | None = None
+    remaining_percent: float | None = None
+    status: BudgetStatus | None = None
+
+
+class TokenBalance(Result):
+    """Summarize whether active models are spending evenly relative to their initial budgets."""
+
+    balanced: bool
+    imbalance_gap_percent: float
+    overloaded: list[str] | None = None
+    preferred: list[str] | None = None
+    recommendation: str | None = None
+
+
 class MemberStatus(Result):
-    """Report one member's role, membership state, launch state and open tasks."""
+    """Report one member's role, membership state, launch state, open tasks and usage."""
 
     role: RoleName
     state: MemberState
@@ -217,6 +263,7 @@ class MemberStatus(Result):
     idle_seconds: int | None = None
     messages: int | None = None
     open_tasks: list[OpenTask] | None = None
+    usage: MemberUsage | None = None
 
 
 class ConversationStatus(Result):
@@ -227,6 +274,7 @@ class ConversationStatus(Result):
     open_invite: bool | None = None
     round: RoundName | None = None
     round_deadline: int | None = None
+    token_balance: TokenBalance | None = None
 
 
 class TranscriptMessage(Result):
@@ -361,6 +409,14 @@ class PluginList(Result):
     plugins: list[PluginSummary]
 
 
+class MemberBudgetUpdated(Result):
+    """Confirm the participant's updated model and/or starting token budget."""
+
+    participant: str
+    model: str | None = None
+    token_budget: int | None = None
+
+
 CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     ListConversations: ConversationList,
     ShowConversation: ConversationView,
@@ -375,6 +431,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     ArchiveConversation: ArchivedConversation,
     SearchConversations: SearchResults,
     ListPlugins: PluginList,
+    SetMemberBudget: MemberBudgetUpdated,
 }
 
 

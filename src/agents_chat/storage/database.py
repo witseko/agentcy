@@ -25,8 +25,9 @@ from agents_chat.conversations.assignment_tables import assignment
 from agents_chat.conversations.search_tables import create_search_index
 from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agents_chat.executables import find_on_path
+from agents_chat.tokens.tables import participant_usage
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -161,3 +162,7 @@ def upgrade(connection: Connection, version: int) -> None:
             ["open_invite_hash"],
             unique=True,
         )
+    if version < 11:
+        operations.add_column("participant", Column("model", String))
+        operations.add_column("participant", Column("token_budget", Integer))
+        create_table(operations, participant_usage)

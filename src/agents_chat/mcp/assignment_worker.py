@@ -108,7 +108,14 @@ class AssignmentWorker(Thread):
             self.retry_operation(job.workspace, row, "inspect")
             return
         if result.state != "starting":
-            self.record(job.workspace, row, result.state, result.exit_code)
+            self.record(
+                job.workspace,
+                row,
+                result.state,
+                result.exit_code,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+            )
 
     @staticmethod
     def stop_reason(row: RowMapping) -> str | None:
@@ -136,9 +143,12 @@ class AssignmentWorker(Thread):
             plugin = configured_plugin(row["plugin"])
             result = plugin_client.run_operation(plugin, operation, row["id"])
         except ValueError:
-            state, exit_code = "unknown", None
+            state, exit_code, input_tokens, output_tokens = "unknown", None, None, None
         else:
-            state, exit_code = result.state, result.exit_code
+            state = result.state
+            exit_code = result.exit_code
+            input_tokens = result.input_tokens
+            output_tokens = result.output_tokens
         if state == "unknown":
             self.reconcile_unconfirmed(workspace, row, operation)
             return
@@ -147,7 +157,14 @@ class AssignmentWorker(Thread):
             return
         if terminal == "timed_out" and state == "cancelled":
             state = terminal
-        self.record(workspace, row, state, exit_code)
+        self.record(
+            workspace,
+            row,
+            state,
+            exit_code,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     def poll_stopping_run(
         self, workspace: str, row: RowMapping, state: str, exit_code: int | None
@@ -186,11 +203,26 @@ class AssignmentWorker(Thread):
         self.retries[assignment_id] = Retry(operation, failures, monotonic() + delay)
 
     def record(
-        self, workspace: str, row: RowMapping, state: str, exit_code: int | None = None
+        self,
+        workspace: str,
+        row: RowMapping,
+        state: str,
+        exit_code: int | None = None,
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
-        """Commit the state update, clear its prior retry, and notify listeners of an event."""
+        """Commit the state update, optional plugin usage, and notify listeners of an event."""
         with transaction(workspace) as connection:
-            added_event = assignments.record(connection, row, state, exit_code)
+            added_event = assignments.record(
+                connection,
+                row,
+                state,
+                exit_code,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                workspace=workspace,
+            )
         self.retries.pop(row["id"], None)
         if added_event:
             self.notifications.notify(workspace, row["room"])

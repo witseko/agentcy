@@ -280,5 +280,23 @@
         }
       ]
     }
+  },
+  {
+    "action": "operator_set_member_budget",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_set_member_budget",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Claude",
+      "model": "claude-sonnet-4-6",
+      "token_budget": 200000
+    },
+    "result": {
+      "participant": "Claude",
+      "model": "claude-sonnet-4-6",
+      "token_budget": 200000
+    }
   }
 ]

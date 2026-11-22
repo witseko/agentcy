@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -902,8 +904,89 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	case command == "/open-invite" && strings.EqualFold(argument, "off"):
 		m.chat.input.Reset()
 		return m.inform("Disabling open invite."), m.setOpenInvite(false)
+	case command == "/budget" && argument != "":
+		return m.runBudgetCommand(argument)
 	}
-	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /open-invite [off]"), nil
+	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off]"), nil
+}
+
+// parseTokenAmount parses a positive integer token budget, supporting optional k/m suffixes.
+func parseTokenAmount(raw string) (int64, error) {
+	text := strings.ToLower(strings.TrimSpace(raw))
+	multiplier := int64(1)
+	if strings.HasSuffix(text, "k") {
+		multiplier = 1000
+		text = strings.TrimSuffix(text, "k")
+	} else if strings.HasSuffix(text, "m") {
+		multiplier = 1000000
+		text = strings.TrimSuffix(text, "m")
+	}
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, errors.New("token budget must be a positive integer (e.g. 200000 or 200k)")
+	}
+	total := value * multiplier
+	if total <= 0 || total > 1000000000 {
+		return 0, errors.New("token budget must be between 1 and 1000000000")
+	}
+	return total, nil
+}
+
+// runBudgetCommand parses "/budget Name <tokens> [model]" and updates the participant's budget.
+func (m model) runBudgetCommand(argument string) (tea.Model, tea.Cmd) {
+	parts := strings.Fields(argument)
+	if len(parts) < 2 {
+		return m.inform("Usage: /budget Name tokens [model]"), nil
+	}
+	budgetIndex := len(parts) - 1
+	modelName := ""
+	tokens, err := parseTokenAmount(parts[budgetIndex])
+	if err != nil && len(parts) >= 3 {
+		budgetIndex = len(parts) - 2
+		modelName = parts[len(parts)-1]
+		tokens, err = parseTokenAmount(parts[budgetIndex])
+	}
+	if err != nil {
+		return m.inform("Usage: /budget Name tokens [model]"), nil
+	}
+	name := strings.Join(parts[:budgetIndex], " ")
+	if name == "" {
+		return m.inform("Usage: /budget Name tokens [model]"), nil
+	}
+	m.chat.input.Reset()
+	return m.inform(fmt.Sprintf("Updating budget for %s.", cleanLine(name))), m.setMemberBudget(name, tokens, modelName)
+}
+
+// setMemberBudget sends an operator_set_member_budget request for one participant.
+func (m model) setMemberBudget(name string, budget int64, modelName string) tea.Cmd {
+	request := SetMemberBudgetRequest{
+		Directory:    m.directory,
+		Conversation: m.chat.id,
+		Name:         name,
+		Model:        modelName,
+		TokenBudget:  &budget,
+	}
+	client := m.client
+	return func() tea.Msg {
+		result, err := client.SetMemberBudget(request)
+		return budgetUpdatedMsg{result: result, err: err}
+	}
+}
+
+// onBudgetUpdated reports the updated budget and refreshes the conversation.
+func (m model) onBudgetUpdated(msg budgetUpdatedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	detail := cleanLine(msg.result.Participant)
+	if msg.result.TokenBudget != nil {
+		detail += " budget " + formatTokens(*msg.result.TokenBudget)
+	}
+	if msg.result.Model != "" {
+		detail += " (" + cleanLine(msg.result.Model) + ")"
+	}
+	m = m.inform("Updated " + detail + ".")
+	return m.pollChat()
 }
 
 // setOpenInvite enables, rotates, or disables the shared room-level invite code.
@@ -1394,6 +1477,45 @@ func kindLabel(message TranscriptMessage) string {
 	return tag(strings.ToUpper(kind), colorText)
 }
 
+// formatTokens shortens large token counts into compact k/M labels.
+func formatTokens(count int64) string {
+	switch {
+	case count >= 1000000:
+		return fmt.Sprintf("%.1fM", float64(count)/1000000.0)
+	case count >= 1000:
+		return fmt.Sprintf("%.1fk", float64(count)/1000.0)
+	default:
+		return fmt.Sprintf("%d", count)
+	}
+}
+
+// usageBar renders an 8-cell visual meter for a percentage consumed.
+func usageBar(usedPercent float64) string {
+	clamped := max(0.0, min(100.0, usedPercent))
+	filled := int(math.Round(clamped / 100.0 * 8.0))
+	return strings.Repeat("▓", filled) + strings.Repeat("░", 8-filled)
+}
+
+// memberUsageLine formats one compact budget or token-spend line for the team panel.
+func memberUsageLine(usage *MemberUsage) string {
+	if usage == nil {
+		return ""
+	}
+	if usage.UsedPercent != nil && usage.RemainingTokens != nil {
+		bar := usageBar(*usage.UsedPercent)
+		text := fmt.Sprintf("%s %.0f%% · %s left", bar, *usage.UsedPercent, formatTokens(*usage.RemainingTokens))
+		if usage.Status == "warning" || usage.Status == "exhausted" {
+			return warnStyle.Render(text)
+		}
+		return okStyle.Render(text)
+	}
+	suffix := ""
+	if usage.Source == "estimated" {
+		suffix = " est"
+	}
+	return dimStyle.Render(fmt.Sprintf("%s tok%s", formatTokens(usage.ConversationTokens), suffix))
+}
+
 // memberBlock renders one member's lines with selection or hover highlight.
 func (m model) memberBlock(name string, member MemberStatus, selected string, width int) []string {
 	glyph, detail := memberState(member)
@@ -1408,6 +1530,9 @@ func (m model) memberBlock(name string, member MemberStatus, selected string, wi
 	block := []string{
 		glyph + " " + styledName + " " + dimStyle.Render(member.Role),
 		"  " + dimStyle.Render(detail),
+	}
+	if usageLine := memberUsageLine(member.Usage); usageLine != "" {
+		block = append(block, "  "+usageLine)
 	}
 	if member.State == "invited" && member.LaunchState == "" {
 		copyButton, _ := m.buttons(button{id: "copy:" + name, label: "Copy join prompt"})
@@ -1472,8 +1597,16 @@ func (m model) teamView(width int, height int) []string {
 		appendGroup(archived)
 	}
 	var footer []string
+	if balance := m.chat.view.Status.TokenBalance; balance != nil && !balance.Balanced {
+		summary := fmt.Sprintf("gap %.0f%%", balance.ImbalanceGapPercent)
+		if len(balance.Preferred) > 0 {
+			summary += " · prefer " + cleanLine(balance.Preferred[0])
+		}
+		footer = append(footer, " "+warnStyle.Render("▲ TOKEN BALANCE"), " "+dimStyle.Render(summary), "")
+	}
 	if len(tasks) > 0 {
-		footer = append([]string{" " + headStyle.Render("OPEN TASKS")}, tasks...)
+		footer = append(footer, " "+headStyle.Render("OPEN TASKS"))
+		footer = append(footer, tasks...)
 	}
 	if m.chat.view.Status.Open {
 		invite, _ := m.buttons(button{id: "invite-member", label: "+ Invite member"})
@@ -1503,10 +1636,14 @@ func (m model) teamRows() []teamRow {
 	addGroup := func(names []string) {
 		for _, name := range names {
 			member := members[name]
-			row := teamRow{name: name, top: top, size: 2, copyRow: -1}
+			size := 2
+			if member.Usage != nil {
+				size++
+			}
+			row := teamRow{name: name, top: top, size: size, copyRow: -1}
 			if member.State == "invited" && member.LaunchState == "" {
-				row.copyRow = top + 2
-				row.size = 3
+				row.copyRow = top + size
+				row.size++
 			}
 			rows = append(rows, row)
 			top += row.size + 1

@@ -10,6 +10,7 @@ from agents_chat.conversations.assignment_tables import PENDING_STATES
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, room
 from agents_chat.storage.database import workspace_key
+from agents_chat.tokens import usage as token_usage
 
 LIST_LIMIT = 100
 PAGE_SIZE = 50
@@ -21,7 +22,9 @@ LEAD_JOIN_PROMPT = (
     "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
     "open_invite, and retire inactive or unneeded teammates with retire_participant. "
     "Track the team status in read_messages, assign follow-up work when workers finish, and post "
-    f"brief team updates so waiting teammates stay active. Messages from {HUMAN_LABEL} come from "
+    "brief team updates so waiting teammates stay active. Mind teammate token budgets in "
+    "team/token_balance and prefer assigning new tasks or handoffs to models with more remaining "
+    f"budget. Messages from {HUMAN_LABEL} come from "
     "your user. Follow the bridge's guidance during this turn."
 )
 
@@ -296,7 +299,12 @@ def set_open_invite(
 
 
 def launch(
-    connection: Connection, workspace: str, request: operator_models.LaunchParticipant, timeout: int
+    connection: Connection,
+    workspace: str,
+    request: operator_models.LaunchParticipant,
+    timeout: int,
+    *,
+    model: str | None = None,
 ) -> tuple[dict, str | None, str]:
     """Queue a fresh run for a worker slot. Relaunch is not supported yet."""
     human = writing_actor(connection, request.conversation)
@@ -305,7 +313,44 @@ def launch(
     previous = assignments.find_assignment(connection, request.conversation, request.name)
     if previous is not None and previous["state"] not in PENDING_STATES:
         raise ValueError("The fresh run for this slot has ended. Relaunch is not supported yet")
-    return assignments.queue(connection, human, workspace, request.name, request.plugin, timeout)
+    return assignments.queue(
+        connection, human, workspace, request.name, request.plugin, timeout, model=model
+    )
+
+
+def set_member_budget(
+    connection: Connection, workspace: str, request: operator_models.SetMemberBudget
+) -> dict:
+    """Bind a model name and/or per-conversation starting token budget to one participant."""
+    human = human_actor(connection, request.conversation)
+    if not human["open"]:
+        raise ValueError("Conversation is closed")
+    rows = connection.execute(
+        select(member.c.id, member.c.label, member.c.role, member.c.model, member.c.token_budget)
+        .where(member.c.room == request.conversation)
+    ).mappings()
+    target = next((row for row in rows if row["label"].casefold() == request.name.casefold()), None)
+    if target is None:
+        raise ValueError("Unknown participant in this conversation")
+    if target["role"] == Role.HUMAN:
+        raise ValueError(f"Cannot set a token budget for {HUMAN_LABEL}")
+    snapshot = token_usage.set_member_budget(
+        connection,
+        target["id"],
+        model=request.model,
+        token_budget=request.token_budget,
+    )
+    token_usage.sync_ledger(workspace, snapshot)
+    result: dict[str, object] = {"participant": target["label"]}
+    final_model = request.model if request.model is not None else target["model"]
+    final_budget = (
+        request.token_budget if request.token_budget is not None else target["token_budget"]
+    )
+    if final_model is not None:
+        result["model"] = final_model
+    if final_budget is not None:
+        result["token_budget"] = final_budget
+    return result
 
 
 def archive(connection: Connection, request: operator_models.ArchiveConversation) -> dict:
@@ -362,6 +407,8 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
     if isinstance(request, operator_models.SetParticipantRole):
         human = writing_actor(connection, request.conversation)
         return repository.set_role(connection, human, request.name, request.role)
+    if isinstance(request, operator_models.SetMemberBudget):
+        return set_member_budget(connection, workspace, request)
     if isinstance(request, operator_models.PostMessage):
         human = writing_actor(connection, request.conversation)
         return repository.post_in_round(connection, human, request, int(time.time()))

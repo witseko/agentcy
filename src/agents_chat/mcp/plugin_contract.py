@@ -10,6 +10,7 @@ RunState = Literal["starting", "running", "finished", "failed", "cancelled", "ti
 Timeout = Annotated[int, Field(ge=1, le=3600)]
 TokenCap = Annotated[int, Field(gt=0, le=100_000_000)]
 CostCap = Annotated[int, Field(gt=0, le=100_000_000)]
+TokenUsage = Annotated[int, Field(ge=0, le=1_000_000_000)]
 
 
 class ContractModel(BaseModel):
@@ -49,3 +50,5 @@ class RunResult(ContractModel):
 
     state: RunState
     exit_code: int | None = None
+    input_tokens: TokenUsage | None = None
+    output_tokens: TokenUsage | None = None

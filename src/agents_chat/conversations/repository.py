@@ -1,6 +1,7 @@
 """Apply conversation operations in one transaction owned by the local core."""
 
 import hashlib
+import logging
 import re
 import secrets
 import time
@@ -12,6 +13,11 @@ from agents_chat.conversations import models, rounds, tasks
 from agents_chat.conversations.assignment_tables import PENDING_STATES, assignment
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, message, receipt, room
+from agents_chat.tokens import balancer, estimator, ledger
+from agents_chat.tokens import settings as token_settings
+from agents_chat.tokens import usage as token_usage
+
+LOG = logging.getLogger(__name__)
 
 ACTIVITY_UPDATE_SECONDS = 10
 EVENT_KIND = "event"
@@ -161,19 +167,43 @@ def insert_room(
 
 
 def insert_invitation(
-    connection: Connection, room_id: str, workspace: str, label: str, role: Role
+    connection: Connection,
+    room_id: str,
+    workspace: str,
+    label: str,
+    role: Role,
+    *,
+    model: str | None = None,
+    token_budget: int | None = None,
 ) -> str:
     """Reserve one slot and return its new join code."""
     code, invitation_fields = new_join_code(workspace)
     connection.execute(
-        insert(member).values(room=room_id, label=label, role=role, **invitation_fields)
+        insert(member).values(
+            room=room_id,
+            label=label,
+            role=role,
+            model=model,
+            token_budget=token_budget,
+            **invitation_fields,
+        )
     )
     return code
+
+
+def slot_metadata(request: models.Create) -> dict[str, tuple[str | None, int | None]]:
+    """Extract optional per-invitee model and token budget overrides from a create request."""
+    meta: dict[str, tuple[str | None, int | None]] = {}
+    for slot in request.invitees:
+        if isinstance(slot, models.Invitation):
+            meta[slot.name] = (slot.model, slot.token_budget)
+    return meta
 
 
 def create(connection: Connection, request: models.Create) -> dict:
     """Return the creator credential and a different invitation for each slot."""
     roles = team_roles(request)
+    meta = slot_metadata(request)
     room_id, round_state, open_code = insert_room(connection, request)
     token = secrets.token_urlsafe(32)
     connection.execute(
@@ -182,10 +212,20 @@ def create(connection: Connection, request: models.Create) -> dict:
             label=request.initiator,
             role=roles[request.initiator],
             token_hash=digest(token),
+            model=request.initiator_model,
+            token_budget=request.initiator_token_budget,
         )
     )
     invitations = {
-        label: insert_invitation(connection, room_id, request.workspace, label, role)
+        label: insert_invitation(
+            connection,
+            room_id,
+            request.workspace,
+            label,
+            role,
+            model=meta.get(label, (None, None))[0],
+            token_budget=meta.get(label, (None, None))[1],
+        )
         for label, role in roles.items()
         if label != request.initiator
     }
@@ -254,7 +294,12 @@ def join_open(connection: Connection, request: models.Join, code_digest: str) ->
     token = secrets.token_urlsafe(32)
     member_id = connection.execute(
         insert(member).values(
-            room=room_id, label=label, role=Role.WORKER, token_hash=digest(token)
+            room=room_id,
+            label=label,
+            role=Role.WORKER,
+            token_hash=digest(token),
+            model=request.model,
+            token_budget=request.token_budget,
         )
     ).inserted_primary_key[0]
     record_event(
@@ -300,9 +345,12 @@ def join(connection: Connection, request: models.Join) -> dict:
     if slot["token_hash"]:
         raise ValueError(f"Invitation slot already taken: {slot['label']}")
     token = secrets.token_urlsafe(32)
-    connection.execute(
-        update(member).where(member.c.id == slot["id"]).values(token_hash=digest(token))
-    )
+    values: dict[str, object] = {"token_hash": digest(token)}
+    if request.model is not None:
+        values["model"] = request.model
+    if request.token_budget is not None:
+        values["token_budget"] = request.token_budget
+    connection.execute(update(member).where(member.c.id == slot["id"]).values(**values))
     return {
         "conversation": slot["room"],
         "participant": slot["label"],
@@ -320,6 +368,9 @@ def invite(
     workspace: str,
     name: str,
     requested_role: models.InviteRole | None,
+    *,
+    model: str | None = None,
+    token_budget: int | None = None,
 ) -> dict:
     """Reserve a slot or replace an unused code within the actor's conversation.
 
@@ -358,13 +409,24 @@ def invite(
     if requested_role is None and slot is not None:
         role = Role(slot.role)
     if slot is None:
-        code = insert_invitation(connection, room_id, workspace, label, role)
+        code = insert_invitation(
+            connection,
+            room_id,
+            workspace,
+            label,
+            role,
+            model=model,
+            token_budget=token_budget,
+        )
         event = f"Invited {label} as {role.label}."
     else:
         code, invitation_fields = new_join_code(workspace)
-        connection.execute(
-            update(member).where(member.c.id == slot.id).values(role=role, **invitation_fields)
-        )
+        updates: dict[str, object] = {"role": role, **invitation_fields}
+        if model is not None:
+            updates["model"] = model
+        if token_budget is not None:
+            updates["token_budget"] = token_budget
+        connection.execute(update(member).where(member.c.id == slot.id).values(**updates))
         event = f"Reissued the invitation for {label} as {role.label}."
     if role == Role.CO_LEAD:
         connection.execute(
@@ -622,6 +684,46 @@ def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
     return entry
 
 
+def read_token_config() -> token_settings.TokenSettings | None:
+    """Load private token settings, degrading gracefully if misconfigured."""
+    try:
+        return token_settings.read_settings()
+    except ValueError:
+        LOG.warning("Ignoring invalid token configuration in status")
+        return None
+
+
+def enrich_token_status(
+    connection: Connection,
+    room_id: str,
+    slot_ids: dict[str, int],
+    members: dict[str, dict],
+    now: int,
+) -> dict | None:
+    """Attach per-member token usage and return team balance when budgets are active."""
+    raw_by_slot = token_usage.room_usage(connection, room_id)
+    config = read_token_config()
+    models_in_room = {
+        raw["model"] for raw in raw_by_slot.values() if raw.get("model")
+    }
+    since_by_model: dict[str, int | None] = {}
+    if config is not None:
+        for model_name in models_in_room:
+            window = config.reset_window_seconds_for(model_name)
+            since_by_model[model_name] = (now - window) if window is not None else None
+    ledger_spend = ledger.model_spend(models_in_room, since_by_model)
+    for label, entry in members.items():
+        if entry["role"] == Role.HUMAN.label:
+            continue
+        raw = raw_by_slot.get(slot_ids[label])
+        if raw is None:
+            continue
+        summary = balancer.build_member_usage(raw, config, ledger_spend)
+        if summary is not None:
+            entry["usage"] = summary
+    return balancer.evaluate_balance(members, config)
+
+
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     """Report activity and message counts for the authenticated participant's team."""
     open_tasks = tasks.open_tasks(connection, participant["room"])
@@ -688,14 +790,18 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         )
         .where(member.c.room == participant["room"])
         .order_by(member.c.id)
-    ).mappings()
+    ).mappings().all()
     members = {row["label"]: member_entry(row, open_tasks.get(row["id"], []), now) for row in rows}
+    slot_ids = {row["label"]: row["id"] for row in rows}
+    balance = enrich_token_status(connection, participant["room"], slot_ids, members, now)
     result = {
         "open": bool(participant["open"]),
         "members": members,
         "participant": participant["label"],
         **rounds.fields(participant),
     }
+    if balance is not None:
+        result["token_balance"] = balance
     if participant.get("open_invite_hash") is not None:
         result["open_invite"] = True
     if participant["round"] == rounds.SEALED and participant["role"] == Role.WORKER:
@@ -726,7 +832,13 @@ def post_content(connection: Connection, room_id: str, request: models.Submissio
     }
 
 
-def post(connection: Connection, participant: RowMapping, request: models.Submission) -> dict:
+def post(
+    connection: Connection,
+    participant: RowMapping,
+    request: models.Submission,
+    *,
+    workspace: str | None = None,
+) -> dict:
     """Deduplicate retries with the same text, kind, addressee, and reply target."""
     author = participant["id"]
     content = post_content(connection, participant["room"], request)
@@ -765,6 +877,16 @@ def post(connection: Connection, participant: RowMapping, request: models.Submis
         number = connection.execute(
             insert(message).values(room=participant["room"], author=author, created=now, **content)
         ).inserted_primary_key[0]
+        if participant["role"] != Role.HUMAN:
+            snapshot = token_usage.add_estimated(
+                connection,
+                participant["room"],
+                author,
+                output_tokens=estimator.estimate_post(request.body),
+                now=now,
+            )
+            if workspace:
+                token_usage.sync_ledger(workspace, snapshot)
     connection.execute(
         insert(receipt).values(author=author, key=request.submission_id, message_id=number)
     )
@@ -873,6 +995,16 @@ def read(connection: Connection, participant: RowMapping, request: models.Read) 
         result["closed"] = True
     if participant.get("retired"):
         result["retired"] = True
+    read_tokens = estimator.estimate_read(page, result.get("brief"))
+    if read_tokens > 0 and participant["role"] != Role.HUMAN:
+        snapshot = token_usage.add_estimated(
+            connection,
+            participant["room"],
+            participant["id"],
+            input_tokens=read_tokens,
+            now=int(time.time()),
+        )
+        token_usage.sync_ledger(request.workspace, snapshot)
     return result
 
 
@@ -922,8 +1054,45 @@ def release(connection: Connection, participant: RowMapping, now: int) -> dict:
     return {"round": rounds.CRITIQUE}
 
 
+def report_usage(
+    connection: Connection,
+    participant: RowMapping,
+    request: models.ReportUsage,
+    now: int,
+) -> dict:
+    """Record exact cumulative token usage reported by the authenticated participant."""
+    if participant.get("retired"):
+        raise ValueError(RETIRED_ERROR)
+    if not participant["open"]:
+        raise ValueError("Conversation is closed")
+    snapshot = token_usage.record_exact(
+        connection,
+        participant["room"],
+        participant["id"],
+        input_tokens=request.input_tokens,
+        output_tokens=request.output_tokens,
+        source="reported",
+        model=request.model,
+        now=now,
+    )
+    token_usage.sync_ledger(request.workspace, snapshot)
+    current = status(connection, participant, now)
+    result: dict = {"participant": participant["label"]}
+    member_usage = current["members"][participant["label"]].get("usage")
+    if member_usage is not None:
+        result["usage"] = member_usage
+    if "token_balance" in current:
+        result["token_balance"] = current["token_balance"]
+    return result
+
+
 def post_in_round(
-    connection: Connection, participant: RowMapping, request: models.Submission, now: int
+    connection: Connection,
+    participant: RowMapping,
+    request: models.Submission,
+    now: int,
+    *,
+    workspace: str | None = None,
 ) -> dict:
     """Route an ordinary message or a proposal through the correct submission store."""
     if participant.get("retired"):
@@ -935,7 +1104,7 @@ def post_in_round(
             connection, participant["id"], request.submission_id
         ):
             raise ValueError("Submission ID already used for a different message")
-        return post(connection, participant, request)
+        return post(connection, participant, request, workspace=workspace)
     result = rounds.post(connection, participant, request)
     if "proposal_id" in result and rounds.complete(connection, participant["room"]):
         release_round(connection, participant, now)
@@ -977,15 +1146,25 @@ def apply(connection: Connection, request: models.Request) -> dict:
     if isinstance(request, models.Status):
         return status(connection, participant, now)
     if isinstance(request, models.Invite):
-        return invite(connection, participant, request.workspace, request.name, request.role)
+        return invite(
+            connection,
+            participant,
+            request.workspace,
+            request.name,
+            request.role,
+            model=request.model,
+            token_budget=request.token_budget,
+        )
     if isinstance(request, models.Retire):
         return retire(connection, participant, request.name)
     if isinstance(request, models.SetRole):
         return set_role(connection, participant, request.name, request.role)
     if isinstance(request, models.OpenInvite):
         return set_open_invite(connection, participant, request.workspace, request.enabled)
+    if isinstance(request, models.ReportUsage):
+        return report_usage(connection, participant, request, now)
     if isinstance(request, models.Post):
-        return post_in_round(connection, participant, request, now)
+        return post_in_round(connection, participant, request, now, workspace=request.workspace)
     if isinstance(request, models.Read):
         return read(connection, participant, request)
     if isinstance(request, models.Close):

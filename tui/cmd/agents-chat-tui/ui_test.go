@@ -20,14 +20,15 @@ type fakeOperator struct {
 	lists    []ListRequest
 	archives []ArchiveRequest
 	searches []SearchRequest
-	view     ConversationView
-	showFunc func(ShowRequest) (ConversationView, error)
-	showErr  error
+	view        ConversationView
+	showFunc    func(ShowRequest) (ConversationView, error)
+	showErr     error
 	plugins  PluginList
 	creates     []CreateRequest
 	launches    []LaunchRequest
 	retires     []RetireRequest
 	roleChanges []SetRoleRequest
+	budgets     []SetMemberBudgetRequest
 	posts       []PostRequest
 	closes      []CloseRequest
 	invites     []InviteRequest
@@ -102,6 +103,15 @@ func (f *fakeOperator) Retire(request RetireRequest) (RetiredParticipant, error)
 func (f *fakeOperator) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
 	f.roleChanges = append(f.roleChanges, request)
 	return ParticipantRoleChanged{Participant: request.Name, Role: request.Role}, nil
+}
+
+func (f *fakeOperator) SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error) {
+	f.budgets = append(f.budgets, request)
+	return MemberBudgetUpdated{
+		Participant: request.Name,
+		Model:       request.Model,
+		TokenBudget: request.TokenBudget,
+	}, nil
 }
 
 func (f *fakeOperator) Post(request PostRequest) (PostedMessage, error) {
@@ -1206,6 +1216,7 @@ func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) 
 		t.Fatalf("archived detail missing:\n%s", panel)
 	}
 
+	// Clicking the archived row selects OldWorker accurately.
 	var archivedRow teamRow
 	for _, row := range m.teamRows() {
 		if row.name == "OldWorker" {
@@ -1222,6 +1233,7 @@ func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) 
 		t.Fatalf("selectedMember = %q, want OldWorker", m.selectedMember())
 	}
 
+	// Archived participants cannot be made lead or retired again.
 	m, _ = press(t, m, "m")
 	if len(fake.roleChanges) != 0 || !strings.Contains(m.status, "archived") {
 		t.Fatalf("unexpected make-lead on archived: changes=%+v status=%q", fake.roleChanges, m.status)
@@ -1238,6 +1250,7 @@ func TestMakeLeadAndRoleSlashCommandsUpdateRunningTUI(t *testing.T) {
 	showsBefore := len(fake.shows)
 	listsBefore := len(fake.lists)
 
+	// Tab to team panel, select Reviewer, press m to make lead.
 	m, _ = press(t, m, "tab")
 	m, _ = press(t, m, "down")
 	var cmd tea.Cmd
@@ -1253,6 +1266,7 @@ func TestMakeLeadAndRoleSlashCommandsUpdateRunningTUI(t *testing.T) {
 		t.Fatalf("expected immediate show and list refresh after role change: shows=%d lists=%d", len(fake.shows), len(fake.lists))
 	}
 
+	// Slash commands /lead and /role work and validate role values.
 	m, _ = press(t, m, "esc")
 	m = typeText(t, m, "/role Reviewer co-lead")
 	m, cmd = press(t, m, "enter")
@@ -1319,6 +1333,7 @@ func TestLivePollReflectsAddedArchivedAndLeadChangedParticipants(t *testing.T) {
 	next, cmd := m.openChat(testConversation)
 	m = drive(t, next.(model), cmd)
 
+	// Select Lead in the team panel before the lead change arrives.
 	m, _ = press(t, m, "tab")
 	if m.selectedMember() != "Lead" {
 		t.Fatalf("initial selectedMember = %q, want Lead", m.selectedMember())
@@ -1326,6 +1341,7 @@ func TestLivePollReflectsAddedArchivedAndLeadChangedParticipants(t *testing.T) {
 	versionBefore := m.chat.version
 	listsBefore := len(fake.lists)
 
+	// One poll tick brings the added Scout (new lead), demoted Lead, and archived Reviewer.
 	next, cmd = m.Update(tickMsg(time.Now()))
 	m = drive(t, next.(model), cmd)
 
@@ -1367,5 +1383,94 @@ func TestInviteImmediatelyRefreshesTeamAndShowsNewSlot(t *testing.T) {
 	}
 	if len(fake.shows) <= showsBefore || len(fake.lists) <= listsBefore {
 		t.Fatalf("expected immediate show and list refresh after invite: shows=%d lists=%d", len(fake.shows), len(fake.lists))
+	}
+}
+
+
+func TestTeamViewRendersTokenUsageBarsAndBalanceWarning(t *testing.T) {
+	claudeUsed := 78.0
+	claudeRem := int64(22000)
+	geminiUsed := 12.0
+	geminiRem := int64(880000)
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Balance work across models",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Claude": {
+						Role:  "lead",
+						State: "replied",
+						Usage: &MemberUsage{
+							Model:              "claude-sonnet-4-6",
+							ConversationTokens: 78000,
+							ModelTokensUsed:    78000,
+							Source:             "reported",
+							UsedPercent:        &claudeUsed,
+							RemainingTokens:    &claudeRem,
+							Status:             "warning",
+						},
+					},
+					"Gemini": {
+						Role:  "worker",
+						State: "replied",
+						Usage: &MemberUsage{
+							Model:              "gemini-2.5-pro",
+							ConversationTokens: 120000,
+							ModelTokensUsed:    120000,
+							Source:             "plugin",
+							UsedPercent:        &geminiUsed,
+							RemainingTokens:    &geminiRem,
+							Status:             "ok",
+						},
+					},
+					"Human": {Role: "human", State: "human"},
+				},
+				TokenBalance: &TokenBalance{
+					Balanced:            false,
+					ImbalanceGapPercent: 66.0,
+					Overloaded:          []string{"Claude"},
+					Preferred:           []string{"Gemini"},
+					Recommendation:      "Prefer assigning new tasks or handoffs to Gemini.",
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(32, 28), "\n"))
+	if !strings.Contains(panel, "78% · 22.0k left") {
+		t.Fatalf("expected Claude usage bar in team panel:\n%s", panel)
+	}
+	if !strings.Contains(panel, "12% · 880.0k left") {
+		t.Fatalf("expected Gemini usage bar in team panel:\n%s", panel)
+	}
+	if !strings.Contains(panel, "TOKEN BALANCE") || !strings.Contains(panel, "prefer Gemini") {
+		t.Fatalf("expected TOKEN BALANCE warning in team panel:\n%s", panel)
+	}
+	rows := m.teamRows()
+	if len(rows) < 2 || rows[0].size != 3 || rows[1].size != 3 {
+		t.Fatalf("expected 3-line team rows for members with usage, got %+v", rows)
+	}
+}
+
+func TestBudgetSlashCommandSendsOperatorSetMemberBudget(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+
+	m = typeText(t, m, "/budget Reviewer 250k gemini-2.5-pro")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+
+	if len(fake.budgets) != 1 {
+		t.Fatalf("expected 1 SetMemberBudget call, got %d", len(fake.budgets))
+	}
+	req := fake.budgets[0]
+	if req.Name != "Reviewer" || req.Model != "gemini-2.5-pro" || req.TokenBudget == nil || *req.TokenBudget != 250000 {
+		t.Fatalf("unexpected SetMemberBudget request: %+v", req)
 	}
 }

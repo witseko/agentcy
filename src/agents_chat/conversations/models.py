@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
+from agents_chat.tokens.settings import ModelName, TokenBudget, TokenCount
+
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -36,6 +38,8 @@ class Invitation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Label
     role: InviteRole = "worker"
+    model: ModelName | None = None
+    token_budget: TokenBudget | None = None
 
 
 # A plain name retains the original worker invitation format.
@@ -58,6 +62,8 @@ class Create(Request):
     action: Literal["create"] = "create"
     brief: Body
     initiator: Label
+    initiator_model: ModelName | None = None
+    initiator_token_budget: TokenBudget | None = None
     invitees: OptionalSlots = Field(default_factory=list)
     open_invite: bool = False
     sealed: bool = False
@@ -79,6 +85,8 @@ class Join(Request):
     action: Literal["join"] = "join"
     code: Key
     name: Label | None = None
+    model: ModelName | None = None
+    token_budget: TokenBudget | None = None
 
 
 class Member(Request):
@@ -131,14 +139,8 @@ class Invite(Member):
     action: Literal["invite"] = "invite"
     name: Label
     role: InviteRole | None = None
-
-
-class SetRole(Member):
-    """Change a participant's role in an open conversation as a lead or co-lead."""
-
-    action: Literal["set_role"] = "set_role"
-    name: Label
-    role: AssignableRole
+    model: ModelName | None = None
+    token_budget: TokenBudget | None = None
 
 
 class Release(Member):
@@ -163,6 +165,14 @@ class Retire(Member):
     name: Label
 
 
+class SetRole(Member):
+    """Change a participant's role in an open conversation as a lead or co-lead."""
+
+    action: Literal["set_role"] = "set_role"
+    name: Label
+    role: AssignableRole
+
+
 class Plugins(Member):
     """List locally configured fresh-run plugins for a lead or co-lead."""
 
@@ -174,6 +184,15 @@ class OpenInvite(Member):
 
     action: Literal["open_invite"] = "open_invite"
     enabled: bool = True
+
+
+class ReportUsage(Member):
+    """Report exact cumulative token usage for the authenticated participant."""
+
+    action: Literal["report_usage"] = "report_usage"
+    input_tokens: TokenCount
+    output_tokens: TokenCount
+    model: ModelName | None = None
 
 
 MemberRequest = (
@@ -188,6 +207,7 @@ MemberRequest = (
     | SetRole
     | Plugins
     | OpenInvite
+    | ReportUsage
     | Release
     | Launch
 )

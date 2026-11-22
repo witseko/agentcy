@@ -50,6 +50,7 @@ type Operator interface {
 	Launch(request LaunchRequest) (LaunchQueued, error)
 	Retire(request RetireRequest) (RetiredParticipant, error)
 	SetRole(request SetRoleRequest) (ParticipantRoleChanged, error)
+	SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
@@ -151,6 +152,22 @@ type SearchRequest struct {
 	Query     string `json:"query"`
 }
 
+// SetMemberBudgetRequest binds a model name and/or starting token budget to one participant.
+type SetMemberBudgetRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
+	Model        string `json:"model,omitempty"`
+	TokenBudget  *int64 `json:"token_budget,omitempty"`
+}
+
+// MemberBudgetUpdated confirms a participant's updated model and/or starting token budget.
+type MemberBudgetUpdated struct {
+	Participant string `json:"participant"`
+	Model       string `json:"model,omitempty"`
+	TokenBudget *int64 `json:"token_budget,omitempty"`
+}
+
 // PluginSummary names one configured plugin and its model.
 type PluginSummary struct {
 	Name  string `json:"name"`
@@ -183,14 +200,39 @@ type OpenTask struct {
 	Blocked *bool `json:"blocked,omitempty"`
 }
 
-// MemberStatus reports one member's role, state, launch state and open tasks.
+// MemberUsage reports one member's token spend and remaining budget.
+type MemberUsage struct {
+	Model              string   `json:"model,omitempty"`
+	ConversationTokens int64    `json:"conversation_tokens"`
+	InputTokens        int64    `json:"input_tokens"`
+	OutputTokens       int64    `json:"output_tokens"`
+	ModelTokensUsed    int64    `json:"model_tokens_used"`
+	Source             string   `json:"source"`
+	InitialTokens      *int64   `json:"initial_tokens,omitempty"`
+	RemainingTokens    *int64   `json:"remaining_tokens,omitempty"`
+	UsedPercent        *float64 `json:"used_percent,omitempty"`
+	RemainingPercent   *float64 `json:"remaining_percent,omitempty"`
+	Status             string   `json:"status,omitempty"`
+}
+
+// TokenBalance summarizes whether active models are spending evenly against their budgets.
+type TokenBalance struct {
+	Balanced            bool     `json:"balanced"`
+	ImbalanceGapPercent float64  `json:"imbalance_gap_percent"`
+	Overloaded          []string `json:"overloaded,omitempty"`
+	Preferred           []string `json:"preferred,omitempty"`
+	Recommendation      string   `json:"recommendation,omitempty"`
+}
+
+// MemberStatus reports one member's role, state, launch state, open tasks and usage.
 type MemberStatus struct {
-	Role        string     `json:"role"`
-	State       string     `json:"state"`
-	LaunchState string     `json:"launch_state,omitempty"`
-	IdleSeconds *int64     `json:"idle_seconds,omitempty"`
-	Messages    *int64     `json:"messages,omitempty"`
-	OpenTasks   []OpenTask `json:"open_tasks,omitempty"`
+	Role        string       `json:"role"`
+	State       string       `json:"state"`
+	LaunchState string       `json:"launch_state,omitempty"`
+	IdleSeconds *int64       `json:"idle_seconds,omitempty"`
+	Messages    *int64       `json:"messages,omitempty"`
+	OpenTasks   []OpenTask   `json:"open_tasks,omitempty"`
+	Usage       *MemberUsage `json:"usage,omitempty"`
 }
 
 // ConversationStatus reports whether the conversation is open and how each member stands.
@@ -200,6 +242,7 @@ type ConversationStatus struct {
 	OpenInvite    bool                    `json:"open_invite,omitempty"`
 	Round         string                  `json:"round,omitempty"`
 	RoundDeadline *int64                  `json:"round_deadline,omitempty"`
+	TokenBalance  *TokenBalance           `json:"token_balance,omitempty"`
 }
 
 // TranscriptMessage is one published message.
@@ -405,6 +448,13 @@ func (c *Client) Retire(request RetireRequest) (RetiredParticipant, error) {
 func (c *Client) SetRole(request SetRoleRequest) (ParticipantRoleChanged, error) {
 	var result ParticipantRoleChanged
 	err := c.call("operator_set_role", request, &result)
+	return result, err
+}
+
+// SetMemberBudget updates a participant's model and/or starting token budget.
+func (c *Client) SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error) {
+	var result MemberBudgetUpdated
+	err := c.call("operator_set_member_budget", request, &result)
 	return result, err
 }
 

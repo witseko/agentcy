@@ -110,6 +110,10 @@ type (
 		result ParticipantRoleChanged
 		err    error
 	}
+	budgetUpdatedMsg struct {
+		result MemberBudgetUpdated
+		err    error
+	}
 	postedMsg   struct{ err error }
 	closedMsg   struct{ err error }
 	archivedMsg struct {
@@ -232,6 +236,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onRetired(msg)
 	case roleChangedMsg:
 		return m.onRoleChanged(msg)
+	case budgetUpdatedMsg:
+		return m.onBudgetUpdated(msg)
 	case postedMsg:
 		return m.onPosted(msg)
 	case closedMsg:

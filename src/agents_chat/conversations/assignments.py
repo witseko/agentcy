@@ -9,6 +9,7 @@ from agents_chat.conversations import repository
 from agents_chat.conversations.assignment_tables import PENDING_STATES, assignment
 from agents_chat.conversations.roles import Role
 from agents_chat.conversations.tables import member, room
+from agents_chat.tokens import usage as token_usage
 
 EVENTS = {
     "failed": "could not complete the fresh run",
@@ -37,6 +38,8 @@ def queue(
     name: str,
     plugin: str,
     timeout: int,
+    *,
+    model: str | None = None,
 ) -> tuple[dict, str | None, str]:
     """Persist an approved assignment before handing its code to the dispatch worker."""
     room_id = participant["room"]
@@ -48,7 +51,7 @@ def queue(
             raise ValueError("This participant already has a fresh-run assignment")
         return {"assignment_id": previous["id"], "state": previous["state"]}, None, room_id
     protect_lead_slot(connection, room_id, name)
-    code, slot = reserve_worker(connection, participant, workspace, name)
+    code, slot = reserve_worker(connection, participant, workspace, name, model=model)
     assignment_id = secrets.token_hex(16)
     connection.execute(
         insert(assignment).values(
@@ -76,10 +79,15 @@ def find_assignment(connection: Connection, room_id: str, name: str) -> RowMappi
 
 
 def reserve_worker(
-    connection: Connection, participant: RowMapping, workspace: str, name: str
+    connection: Connection,
+    participant: RowMapping,
+    workspace: str,
+    name: str,
+    *,
+    model: str | None = None,
 ) -> tuple[str, int]:
     """Use the same invitation rules as a manual invitation."""
-    result = repository.invite(connection, participant, workspace, name, "worker")
+    result = repository.invite(connection, participant, workspace, name, "worker", model=model)
     slot = connection.scalar(
         select(member.c.id).where(
             member.c.room == participant["room"],
@@ -138,9 +146,28 @@ def report_unconfirmed(connection: Connection, row: RowMapping, operation: str) 
 
 
 def record(
-    connection: Connection, row: RowMapping, state: str, exit_code: int | None = None
+    connection: Connection,
+    row: RowMapping,
+    state: str,
+    exit_code: int | None = None,
+    *,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    workspace: str | None = None,
 ) -> bool:
-    """Save a state transition and its user-visible event in one transaction."""
+    """Save a state transition, optional plugin usage, and its user-visible event."""
+    if input_tokens is not None and output_tokens is not None:
+        snapshot = token_usage.record_exact(
+            connection,
+            row["room"],
+            row["slot"],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            source="plugin",
+            now=int(time.time()),
+        )
+        if workspace:
+            token_usage.sync_ledger(workspace, snapshot)
     if row["state"] == state:
         return False
     connection.execute(

@@ -640,3 +640,50 @@ def test_mcp_lead_can_set_participant_role(
     assert status["members"]["Scout"]["role"] == "lead"
     assert status["members"]["Lead"]["role"] == "worker"
     assert status["members"]["Lead"]["state"] == "joined"
+
+
+def test_lead_guidance_surfaces_token_balance_and_compact_team_usage(
+    shim: tuple[server.FastMCP, Counter[str]],
+) -> None:
+    """Expose compact teammate usage in team snapshot and rebalancing advice in lead next."""
+    app, _ = shim
+    team = tool(
+        app,
+        "create_conversation",
+        brief="Compare cache invalidation strategies",
+        your_name="Claude",
+        your_model="claude-sonnet-4-6",
+        your_token_budget=100_000,
+        invitees=[{"name": "Gemini", "model": "gemini-2.5-pro", "token_budget": 1_000_000}],
+    )
+    lead = team["token"]
+    gemini = tool(app, "join_conversation", code=team["invitations"]["Gemini"])["token"]
+    tool(
+        app,
+        "report_usage",
+        token=lead,
+        input_tokens=50_000,
+        output_tokens=20_000,
+    )
+    tool(
+        app,
+        "report_usage",
+        token=gemini,
+        input_tokens=40_000,
+        output_tokens=10_000,
+    )
+    tool(
+        app,
+        "post_message",
+        token=gemini,
+        submission_id="g1",
+        body="Initial cache scan complete.",
+    )
+
+    page = tool(app, "read_messages", token=lead, after=0, wait_seconds=1)
+    assert page["team"]["Gemini"]["usage"]["model"] == "gemini-2.5-pro"
+    assert page["team"]["Gemini"]["usage"]["used_percent"] == 5.0
+    assert page["token_balance"]["balanced"] is False
+    assert page["token_balance"]["preferred"] == ["Gemini"]
+    assert "Token balance:" in page["next"]
+    assert "Prefer assigning new tasks or handoffs to Gemini." in page["next"]

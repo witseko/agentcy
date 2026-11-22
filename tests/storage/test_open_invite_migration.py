@@ -21,8 +21,8 @@ def test_new_store_has_open_invite_column_and_unique_index(
     engine = database(token_hex(32))
     try:
         with engine.begin() as connection:
-            assert SCHEMA_VERSION == 10
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 10
+            assert SCHEMA_VERSION >= 10
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
             inspector = inspect(connection)
             columns = {column["name"] for column in inspector.get_columns("conversation")}
             assert "open_invite_hash" in columns

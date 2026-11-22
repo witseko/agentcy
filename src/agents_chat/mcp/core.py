@@ -34,6 +34,7 @@ NOTIFYING_OPERATOR_ACTIONS = (
     operator_models.SetOpenInvite,
     operator_models.RetireParticipant,
     operator_models.SetParticipantRole,
+    operator_models.SetMemberBudget,
     operator_models.PostMessage,
     operator_models.CloseConversation,
 )
@@ -141,6 +142,7 @@ class Core(socketserver.ThreadingUnixStreamServer):
                 request.name,
                 request.plugin,
                 plugin.timeout_seconds,
+                model=plugin.model,
             )
         return self.dispatch(request.workspace, directory, plugin, queued)
 
@@ -195,7 +197,9 @@ class Core(socketserver.ThreadingUnixStreamServer):
         directory = Path(request.directory).resolve(strict=True)
         plugin = configured_plugin(request.plugin)
         with transaction(workspace) as connection:
-            queued = operator.launch(connection, workspace, request, plugin.timeout_seconds)
+            queued = operator.launch(
+                connection, workspace, request, plugin.timeout_seconds, model=plugin.model
+            )
         return self.dispatch(workspace, directory, plugin, queued)
 
     def handle_timeout(self) -> None:
