@@ -479,3 +479,26 @@ def test_lead_list_plugins_and_open_invite_join_wakes_waiting_lead(bridge: Bridg
         },
     )
     assert "Only a lead" in worker_retire["error"]
+
+
+def test_closed_conversations_are_readable_without_a_token(bridge: Bridge) -> None:
+    """A chat with no token lists and reads a closed chat, but not an open one or a bad ID."""
+    workspace = bridge.workspace
+    no_store = send(bridge, {"action": "list_closed", "workspace": workspace})
+    assert no_store == {"result": {"conversations": []}}
+    assert not (bridge.home / f"{workspace}.sqlite3").exists()
+    missing = {"action": "read_closed", "workspace": workspace, "conversation": "a" * 24}
+    assert send(bridge, missing) == {"error": "Unknown closed conversation in this workspace"}
+
+    conversation = create(bridge)["conversation"]
+    read = {"action": "read_closed", "workspace": workspace, "conversation": conversation}
+    assert send(bridge, read) == {"error": "Unknown closed conversation in this workspace"}
+    operate(bridge, "operator_close", conversation=conversation, summary="All checks passed.")
+
+    listing = send(bridge, {"action": "list_closed", "workspace": workspace})["result"]
+    page = send(bridge, read)["result"]
+
+    assert [entry["conversation"] for entry in listing["conversations"]] == [conversation]
+    assert page["messages"][-1]["body"] == "All checks passed."
+    assert send(bridge, {**read, "conversation": "../etc"}) == {"error": "Invalid bridge arguments"}
+    assert send(bridge, {**read, "token": "x"}) == {"error": "Invalid bridge arguments"}

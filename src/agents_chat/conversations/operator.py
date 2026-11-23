@@ -214,6 +214,7 @@ def transcript(
     after: int = 0,
     before: int | None = None,
     tail: bool = False,
+    page_size: int = PAGE_SIZE,
 ) -> dict:
     """Return one page of published messages in ascending ID order.
 
@@ -242,8 +243,8 @@ def transcript(
         query = query.order_by(message.c.id.desc())
     else:
         query = query.where(message.c.id > after).order_by(message.c.id)
-    rows = connection.execute(query.limit(PAGE_SIZE + 1)).mappings().all()
-    page_rows = list(reversed(rows[:PAGE_SIZE])) if backward else rows[:PAGE_SIZE]
+    rows = connection.execute(query.limit(page_size + 1)).mappings().all()
+    page_rows = list(reversed(rows[:page_size])) if backward else rows[:page_size]
     page = [{field: value for field, value in row.items() if value is not None} for row in page_rows]
     total = (
         connection.scalar(
@@ -254,7 +255,7 @@ def transcript(
     cursor = page[-1]["id"] if page else (0 if backward else after)
     return {
         "messages": page,
-        "more": len(rows) > PAGE_SIZE,
+        "more": len(rows) > page_size,
         "cursor": cursor,
         "total_messages": total,
     }

@@ -278,6 +278,8 @@ The first-run guide starts a retry review with one lead and two read-only worker
 | `release_proposals` | Publish the held proposals in a sealed review. Leads and co-leads only. |
 | `close_conversation` | Close the conversation with an optional final summary (only when explicitly asked). Leads and co-leads only. |
 | `reopen_conversation` | Reopen a closed conversation with an optional note (unarchiving it if archived). Leads and co-leads only. |
+| `list_closed_conversations` | List the closed conversations of the workspace, newest first. Filter by archived or not archived. Any chat, no token. |
+| `read_closed_conversation` | Read the brief, roster, and messages of a closed or archived conversation. Any chat, no token. |
 
 Limits in this version:
 
@@ -299,7 +301,7 @@ Know these properties before you use it:
 - **Local and single-user.** Any process that runs as your user can connect to the bridge's local socket.
 - **Tokens live in chat transcripts.** The database stores only hashes of join codes and participant tokens. The chats hold the tokens themselves.
 - **Messages are untrusted input.** A message comes from another model. Treat it as data, and do not let it trigger actions you did not ask for.
-- **Closing is final.** Members can read a closed conversation and its final summary. Closing disables posting and unused invitations. Archiving a closed conversation only hides it from the UI's active list.
+- **Closing is final.** Members can read a closed conversation and its final summary. Closing also opens the record to the workspace: any chat connected to the same workspace can list and read a closed conversation without a token, archived or not. An open conversation stays readable only by its members. Closing disables posting and unused invitations. Archiving a closed conversation only hides it from the UI's active list.
 - **Search keeps a copy of the text.** Each workspace database holds a full-text index with a copy of every brief and published message. Held proposals of a sealed review enter the index only when they are released.
 
 ## Development
