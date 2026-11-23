@@ -37,6 +37,7 @@ NOTIFYING_OPERATOR_ACTIONS = (
     operator_models.SetMemberBudget,
     operator_models.PostMessage,
     operator_models.CloseConversation,
+    operator_models.ReopenConversation,
 )
 
 

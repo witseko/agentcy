@@ -159,4 +159,13 @@ func TestClientDrivesARealCore(t *testing.T) {
 	if !found.Hits[0].Archived || found.Hits[0].Author == nil || *found.Hits[0].Author != humanName {
 		t.Fatalf("hit = %+v", found.Hits[0])
 	}
+
+	reopened, err := client.Reopen(ReopenRequest{Directory: workspace, Conversation: conversation, Note: "Continue."})
+	if err != nil || !reopened.Reopened {
+		t.Fatalf("Reopen() = %+v, %v", reopened, err)
+	}
+	view, err = client.Show(ShowRequest{Directory: workspace, Conversation: conversation, After: view.Cursor})
+	if err != nil || !view.Status.Open || view.Archived {
+		t.Fatalf("Show() after reopen = %+v, %v", view, err)
+	}
 }

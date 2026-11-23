@@ -220,6 +220,7 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_set_member_budget": {reflect.TypeFor[SetMemberBudgetRequest](), reflect.TypeFor[MemberBudgetUpdated]()},
 	"operator_post":              {reflect.TypeFor[PostRequest](), reflect.TypeFor[PostedMessage]()},
 	"operator_close":             {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
+	"operator_reopen":            {reflect.TypeFor[ReopenRequest](), reflect.TypeFor[ReopenedConversation]()},
 	"operator_archive":           {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},
 	"operator_search":            {reflect.TypeFor[SearchRequest](), reflect.TypeFor[SearchResults]()},
 }

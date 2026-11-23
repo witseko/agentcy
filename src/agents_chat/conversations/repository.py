@@ -1156,6 +1156,19 @@ def read(
     return result
 
 
+def _expire_unjoined_invites(connection: Connection, room_id: str) -> None:
+    """Expire unused single-use join codes while keeping invite hashes for assignment joins."""
+    connection.execute(
+        update(member)
+        .where(
+            member.c.room == room_id,
+            member.c.token_hash.is_(None),
+            member.c.expires.is_not(None),
+        )
+        .values(expires=0)
+    )
+
+
 def close(connection: Connection, participant: RowMapping, summary: str | None) -> dict:
     """Record the final message of a lead, co-lead or the human and close the conversation once."""
     if participant.get("retired"):
@@ -1175,10 +1188,36 @@ def close(connection: Connection, participant: RowMapping, summary: str | None) 
                 created=int(time.time()),
             )
         )
+    _expire_unjoined_invites(connection, participant["room"])
     connection.execute(
         update(room).where(room.c.id == participant["room"]).values(open=0, open_invite_hash=None)
     )
     return {"closed": True}
+
+
+def reopen(connection: Connection, participant: RowMapping, note: str | None = None) -> dict:
+    """Reopen a closed conversation as a lead, co-lead, or the human and optionally post a note."""
+    if participant.get("retired"):
+        raise ValueError(RETIRED_ERROR)
+    if participant["role"] not in (Role.LEAD, Role.CO_LEAD, Role.HUMAN):
+        raise ValueError("Only a lead or co-lead can reopen the conversation")
+    if participant["open"]:
+        return {"reopened": True}
+    if note is not None:
+        connection.execute(
+            insert(message).values(
+                room=participant["room"],
+                author=participant["id"],
+                body=note,
+                created=int(time.time()),
+            )
+        )
+    # Keep previously closed unused codes expired even for rooms closed before this safeguard.
+    _expire_unjoined_invites(connection, participant["room"])
+    connection.execute(
+        update(room).where(room.c.id == participant["room"]).values(open=1, archived=0)
+    )
+    return {"reopened": True}
 
 
 def release_round(connection: Connection, participant: RowMapping, now: int) -> None:
@@ -1317,6 +1356,8 @@ def apply(connection: Connection, request: models.Request) -> dict:
         return read(connection, participant, request)
     if isinstance(request, models.Close):
         return close(connection, participant, request.summary)
+    if isinstance(request, models.Reopen):
+        return reopen(connection, participant, request.note)
     if isinstance(request, models.Release):
         return release(connection, participant, now)
     raise TypeError("Unknown membership operation")

@@ -55,6 +55,7 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_set_role` | Change an active participant's role (`lead`, `co-lead`, or `worker`). Setting `lead` demotes any previous lead or co-lead to `worker` while keeping them active. |
 | `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. |
 | `operator_close` | Close the conversation. An optional summary becomes the human's message. |
+| `operator_reopen` | Reopen a closed conversation (unarchiving it if archived). An optional note becomes the human's message. Previously expired join codes stay expired. |
 | `operator_archive` | Archive a closed conversation with `archived: true`, or return it to the active list with `archived: false`. Members keep read access. |
 | `operator_search` | Find every word of `query` in the briefs and published messages of all conversations, archived ones included. Each word also matches longer words. Returns up to 50 hits, best first, each with the conversation, title, archived flag, message ID, author, time, and a short snippet. A brief hit has no message ID or author. |
 

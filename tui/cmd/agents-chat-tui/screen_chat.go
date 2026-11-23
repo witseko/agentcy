@@ -844,6 +844,33 @@ func (m model) onClosed(msg closedMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(poll, m.loadList())
 }
 
+// reopenChat sends an operator_reopen request for a closed conversation.
+func (m model) reopenChat(conversation string, note string) (tea.Model, tea.Cmd) {
+	request := ReopenRequest{
+		Directory:    m.directory,
+		Conversation: conversation,
+		Note:         strings.TrimSpace(note),
+	}
+	client := m.client
+	return m.inform("Reopening."), func() tea.Msg {
+		_, err := client.Reopen(request)
+		return reopenedMsg{conversation: conversation, err: err}
+	}
+}
+
+// onReopened reports the result of a reopen request and refreshes the chat and list.
+func (m model) onReopened(msg reopenedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	m = m.inform("Chat reopened.")
+	if m.screen == screenChat && m.chat.id == msg.conversation {
+		m, poll := m.refreshChat()
+		return m, tea.Batch(poll, m.loadList())
+	}
+	return m, m.loadList()
+}
+
 // retireSelected asks for confirmation before retiring the selected member.
 func (m model) retireSelected() (tea.Model, tea.Cmd) {
 	name := m.selectedMember()
@@ -1072,8 +1099,11 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		return m.inform("Disabling open invite."), m.setOpenInvite(false)
 	case command == "/budget" && argument != "":
 		return m.runBudgetCommand(argument)
+	case command == "/reopen":
+		m.chat.input.Reset()
+		return m.reopenChat(m.chat.id, argument)
 	}
-	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off]"), nil
+	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off], /reopen [note]"), nil
 }
 
 // parseTokenAmount parses a positive integer token budget, supporting optional k/m suffixes.
@@ -1490,15 +1520,15 @@ func (m model) headerLayout(width int) headerParts {
 }
 
 // headerButtons draws the chat actions at the right end of the header. A closed chat can
-// move to the archive or back.
+// be reopened or moved to the archive and back.
 func (m model) headerButtons() (string, []span) {
 	switch {
 	case !m.chat.loaded:
 		return "", nil
 	case m.chat.view.Archived:
-		return m.buttons(button{id: "archive", label: "Unarchive"})
+		return m.buttons(button{id: "reopen", label: "Reopen"}, button{id: "archive", label: "Unarchive"})
 	case !m.chat.view.Status.Open:
-		return m.buttons(button{id: "archive", label: "Archive"})
+		return m.buttons(button{id: "reopen", label: "Reopen"}, button{id: "archive", label: "Archive"})
 	}
 	return m.buttons(button{id: "prompts", label: "Join prompts"}, button{id: "close", label: "Close chat"})
 }
@@ -1541,7 +1571,7 @@ func (m model) composer(width int) []string {
 func (m model) inputPreview() string {
 	text := strings.TrimSpace(m.chat.input.Value())
 	if !m.chat.view.Status.Open && m.chat.loaded {
-		return "This chat is closed."
+		return "This chat is closed. Click Reopen or type /reopen to continue it."
 	}
 	switch {
 	case text == "":

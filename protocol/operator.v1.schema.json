@@ -1396,6 +1396,78 @@
       "title": "PostedMessage",
       "type": "object"
     },
+    "ReopenConversation": {
+      "additionalProperties": false,
+      "description": "Reopen a closed conversation and record an optional note as the human's message.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_reopen",
+          "title": "Action",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action"
+      ],
+      "title": "ReopenConversation",
+      "type": "object"
+    },
+    "ReopenedConversation": {
+      "additionalProperties": false,
+      "description": "Confirm that the conversation is open again.",
+      "properties": {
+        "reopened": {
+          "const": true,
+          "title": "Reopened",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reopened"
+      ],
+      "title": "ReopenedConversation",
+      "type": "object"
+    },
     "RetireParticipant": {
       "additionalProperties": false,
       "description": "Retire a participant from an open conversation.",
@@ -2165,6 +2237,9 @@
     },
     {
       "$ref": "#/$defs/CloseConversation"
+    },
+    {
+      "$ref": "#/$defs/ReopenConversation"
     },
     {
       "$ref": "#/$defs/ArchiveConversation"

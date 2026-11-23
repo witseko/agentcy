@@ -518,6 +518,76 @@ def close(connection: Connection, conversation: str) -> None:
     run(connection, actions.CloseConversation, action="operator_close", conversation=conversation)
 
 
+def reopen(connection: Connection, conversation: str, note: str | None = None) -> dict:
+    """Reopen a conversation as the human with an optional note."""
+    return run(
+        connection,
+        actions.ReopenConversation,
+        action="operator_reopen",
+        conversation=conversation,
+        note=note,
+    )
+
+
+def test_reopen_restores_closed_and_archived_conversations(conversation_db: Connection) -> None:
+    """Reopening unarchives if needed, restores writes, and keeps old unused codes expired."""
+    workspace = conversation_db.info["workspace"]
+    created = create(conversation_db, invitees=["Worker", "Unused"])
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    worker = join(conversation_db, created["invitations"][1]["code"])
+    unused_code = created["invitations"][2]["code"]
+
+    # Retire a co-lead before closing to verify retired members cannot reopen.
+    colead_invite = repository.apply(
+        conversation_db,
+        models.Invite(workspace=workspace, token=lead["token"], name="CoLead", role="co-lead"),
+    )
+    colead = join(conversation_db, colead_invite["code"])
+    repository.apply(
+        conversation_db,
+        models.Retire(workspace=workspace, token=lead["token"], name="CoLead"),
+    )
+
+    close(conversation_db, conversation)
+    assert archive(conversation_db, conversation) == {"archived": True}
+    assert listed_ids(conversation_db, archived=True) == [conversation]
+
+    with pytest.raises(ValueError, match="Only a lead or co-lead can reopen"):
+        repository.apply(conversation_db, models.Reopen(workspace=workspace, token=worker["token"]))
+    with pytest.raises(ValueError, match=repository.RETIRED_ERROR):
+        repository.apply(conversation_db, models.Reopen(workspace=workspace, token=colead["token"]))
+
+    assert reopen(conversation_db, conversation, note="Continuing prep.") == {"reopened": True}
+    # Repeating reopen on an already-open conversation is idempotent and adds no second note.
+    assert reopen(conversation_db, conversation, note="Ignored duplicate.") == {"reopened": True}
+
+    view = show(conversation_db, conversation)
+    assert view["status"]["open"] is True
+    assert view["archived"] is False
+    assert listed_ids(conversation_db) == [conversation]
+    assert listed_ids(conversation_db, archived=True) == []
+    reopen_notes = [msg["body"] for msg in view["messages"] if "prep" in msg["body"] or "Ignored" in msg["body"]]
+    assert reopen_notes == ["Continuing prep."]
+
+    # Existing members can post again, while previously expired unused codes stay expired.
+    posted = repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="post-after-reopen",
+            body="Resuming work.",
+        ),
+    )
+    assert posted["message_id"] > 0
+    with pytest.raises(ValueError, match="Invalid or expired invitation"):
+        join(conversation_db, unused_code)
+
+    with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
+        reopen(conversation_db, token_hex(12))
+
+
 def test_archive_moves_a_closed_chat_between_lists(conversation_db: Connection) -> None:
     """Only a closed chat can be archived, and members can still read it."""
     created = create(conversation_db)
