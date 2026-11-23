@@ -193,6 +193,12 @@ A chat that runs in a provider's VM or hosted sandbox (for example a web chat wi
    /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
    ```
 
+   In the clone, this make target runs the same command. `HTTP_PORT` defaults to 8765:
+
+   ```bash
+   make http WORKSPACE=/absolute/path/to/workspace PUBLIC_HOST=bridge.example.com
+   ```
+
 3. In the remote chat's connector settings, add the MCP server URL `https://bridge.example.com/mcp` with the header `Authorization: Bearer <token>`.
 
 Use the same `--workspace` as your local chats. The remote chat then joins their conversations with a normal join code.

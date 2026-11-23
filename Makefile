@@ -5,9 +5,12 @@ TUI_BINARY := $(CURDIR)/.venv/bin/agents-chat-tui
 # The project folder whose chats join each other. Pass it as WORKSPACE=/path/to/project.
 WORKSPACE ?=
 WORKSPACE_PATH = $(abspath $(WORKSPACE))
+# The local port of the HTTP bridge and the host name of the tunnel that forwards to it.
+HTTP_PORT ?= 8765
+PUBLIC_HOST ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help setup deps tui register-claude register-codex ui check-workspace
+.PHONY: help setup deps tui register-claude register-codex ui http check-workspace
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -36,3 +39,7 @@ register-codex: check-workspace ## Register the server in Codex
 
 ui: ## Open the terminal UI for WORKSPACE (default: the current folder)
 	"$(BRIDGE)" ui $(if $(WORKSPACE),--workspace "$(WORKSPACE_PATH)")
+
+http: check-workspace ## Serve WORKSPACE over HTTP for a remote chat (PUBLIC_HOST=tunnel host, HTTP_PORT=8765)
+	"$(BRIDGE)" --workspace "$(WORKSPACE_PATH)" --http "$(HTTP_PORT)" \
+		$(if $(PUBLIC_HOST),--http-public-host "$(PUBLIC_HOST)")
