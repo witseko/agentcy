@@ -73,9 +73,9 @@ func (m model) copyText(label string, text string) (tea.Model, tea.Cmd) {
 // onTextCopied shows the result of a context-menu clipboard copy.
 func (m model) onTextCopied(msg textCopiedMsg) model {
 	if msg.err != nil {
-		return m.inform("Not copied: " + msg.err.Error())
+		return m.showError("Not copied: " + msg.err.Error())
 	}
-	return m.inform("Copied " + cleanLine(msg.label) + " to clipboard.")
+	return m.showSuccess("Copied " + cleanLine(msg.label) + " to clipboard.")
 }
 
 // prefillComposer switches to the Chat tab input, fills text, and optionally shows a notice.

@@ -335,6 +335,14 @@ func TestUnknownAddresseeIsRejected(t *testing.T) {
 	m.chat.input.SetValue("@Nobody hello")
 	m, command := press(t, m, "enter")
 	m = drive(t, m, command)
+	if m.popup.kind != popupError || !strings.Contains(m.popup.text, "no member named @Nobody") {
+		t.Fatalf("popup = %+v", m.popup)
+	}
+	// Enter dismisses the error popup and does not post.
+	m, _ = press(t, m, "enter")
+	if m.popup.kind != popupNone || len(fake.posts) != 0 {
+		t.Fatalf("popup %+v posts %+v", m.popup, fake.posts)
+	}
 	m.chat.input.SetValue("@Human hello")
 	m, command = press(t, m, "enter")
 	m = drive(t, m, command)
@@ -342,8 +350,8 @@ func TestUnknownAddresseeIsRejected(t *testing.T) {
 	if len(fake.posts) != 0 {
 		t.Fatalf("posted %+v", fake.posts)
 	}
-	if !strings.Contains(m.status, "no member named @Human") {
-		t.Fatalf("status = %q", m.status)
+	if !strings.Contains(m.popup.text, "no member named @Human") {
+		t.Fatalf("popup text = %q", m.popup.text)
 	}
 	if m.chat.input.Value() != "@Human hello" {
 		t.Fatalf("input lost: %q", m.chat.input.Value())
@@ -704,8 +712,8 @@ func TestArchiveKeyMovesAClosedChatAndVSwitchesTheList(t *testing.T) {
 
 	m, command := press(t, m, "a")
 	m = drive(t, m, command)
-	if len(fake.archives) != 0 || !strings.Contains(m.status, "Close the chat") {
-		t.Fatalf("archived an open chat: %+v, status %q", fake.archives, m.status)
+	if len(fake.archives) != 0 || !strings.Contains(m.popup.text, "Close the chat") {
+		t.Fatalf("archived an open chat: %+v, status %q", fake.archives, m.popup.text)
 	}
 	m, _ = press(t, m, "down")
 	m, command = press(t, m, "a")
@@ -955,8 +963,8 @@ func TestRetireFromTeamPanelConfirmsAndCancels(t *testing.T) {
 	if _, found := m.knownInvitation("Reviewer"); found {
 		t.Fatal("cached invitation was not cleared after retirement")
 	}
-	if !strings.Contains(m.status, "Retired Reviewer.") {
-		t.Fatalf("unexpected status: %q", m.status)
+	if !strings.Contains(m.popup.text, "Retired Reviewer.") {
+		t.Fatalf("unexpected status: %q", m.popup.text)
 	}
 }
 
@@ -1250,12 +1258,12 @@ func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) 
 
 	// Archived participants cannot be made lead or retired again.
 	m, _ = press(t, m, "m")
-	if len(fake.roleChanges) != 0 || !strings.Contains(m.status, "archived") {
-		t.Fatalf("unexpected make-lead on archived: changes=%+v status=%q", fake.roleChanges, m.status)
+	if len(fake.roleChanges) != 0 || !strings.Contains(m.popup.text, "archived") {
+		t.Fatalf("unexpected make-lead on archived: changes=%+v status=%q", fake.roleChanges, m.popup.text)
 	}
 	m, _ = press(t, m, "d")
-	if m.chat.retiring != "" || !strings.Contains(m.status, "already archived") {
-		t.Fatalf("unexpected retire on archived: retiring=%q status=%q", m.chat.retiring, m.status)
+	if m.chat.retiring != "" || !strings.Contains(m.popup.text, "already archived") {
+		t.Fatalf("unexpected retire on archived: retiring=%q status=%q", m.chat.retiring, m.popup.text)
 	}
 }
 
@@ -1299,8 +1307,8 @@ func TestMakeLeadAndRoleSlashCommandsUpdateRunningTUI(t *testing.T) {
 
 	m = typeText(t, m, "/role Lead boss")
 	m, _ = press(t, m, "enter")
-	if len(fake.roleChanges) != 3 || !strings.Contains(m.status, "Usage: /role") {
-		t.Fatalf("invalid role was not rejected: changes=%+v status=%q", fake.roleChanges, m.status)
+	if len(fake.roleChanges) != 3 || !strings.Contains(m.popup.text, "Usage: /role") {
+		t.Fatalf("invalid role was not rejected: changes=%+v status=%q", fake.roleChanges, m.popup.text)
 	}
 }
 

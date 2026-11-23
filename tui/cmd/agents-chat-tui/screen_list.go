@@ -77,7 +77,7 @@ func (m model) archiveSelected() (tea.Model, tea.Cmd) {
 	}
 	item := m.list.items[m.list.selected]
 	if item.Open {
-		return m.inform("Close the chat before archiving it."), nil
+		return m.showError("Close the chat before archiving it."), nil
 	}
 	return m, m.archive(item.Conversation, !m.list.archived)
 }
@@ -101,7 +101,7 @@ func (m model) onArchived(msg archivedMsg) (tea.Model, tea.Cmd) {
 	if msg.archived {
 		notice = "Chat archived. Press v to see the archive."
 	}
-	m = m.inform(notice)
+	m = m.showSuccess(notice)
 	commands := []tea.Cmd{m.loadList()}
 	if msg.conversation == m.chat.id {
 		var poll tea.Cmd

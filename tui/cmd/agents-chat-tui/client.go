@@ -19,7 +19,11 @@ const (
 	operatorKeyFile  = "operator.key"
 	socketFile       = "core.sock"
 	keyRejectedError = "Operator key rejected"
-	maxKeyBytes      = 1024
+	// The core answers this when a request does not match its schema. The UI sends only
+	// requests that match its own core version, so a mismatch means a stale core.
+	invalidArgumentsError = "Invalid bridge arguments"
+	coreVersionHelp       = "The running core is likely an older version. Stop agents_chat.mcp.core and restart the UI"
+	maxKeyBytes           = 1024
 	// maxResponseBytes matches MAX_RESPONSE in the Python transport.
 	maxResponseBytes = 2 * 1024 * 1024
 	dialTimeout      = 2 * time.Second
@@ -34,8 +38,11 @@ type CoreError struct {
 	Message string
 }
 
-// Error returns the core's error text.
+// Error returns the core's error text, with a restart hint when the core rejects the request schema.
 func (e *CoreError) Error() string {
+	if e.Message == invalidArgumentsError {
+		return e.Message + ". " + coreVersionHelp
+	}
 	return e.Message
 }
 
