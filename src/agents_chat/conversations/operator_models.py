@@ -238,10 +238,12 @@ class ConversationList(Result):
 
 
 class OpenTask(Result):
-    """Identify one unfinished task of a member."""
+    """Identify one unfinished task of a member, with its due time and overdue flag."""
 
     id: int
     blocked: bool | None = None
+    due: int | None = None
+    overdue: bool | None = None
 
 
 class MemberUsage(Result):
@@ -452,7 +454,7 @@ class TaskEvent(Result):
 
 
 class TaskDetail(Result):
-    """Summarize one task with its current owner, state, and chronological events."""
+    """Summarize one task with its owner, state, due time, and chronological events."""
 
     id: int
     title: str
@@ -463,6 +465,8 @@ class TaskDetail(Result):
     created: int
     updated: int
     pending_handoff_to: str | None = None
+    due: int | None = None
+    overdue: bool | None = None
     events: list[TaskEvent]
 
 

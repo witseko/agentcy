@@ -168,7 +168,7 @@
             "role": "worker",
             "state": "invited",
             "launch_state": "running",
-            "open_tasks": [{"id": 2}]
+            "open_tasks": [{"id": 2, "due": 1700001900}]
           },
           "Analyst": {"role": "worker", "state": "invited"},
           "Human": {"role": "human", "state": "human"}
@@ -319,6 +319,7 @@
           "state": "open",
           "created": 1700000100,
           "updated": 1700000120,
+          "due": 1700001900,
           "events": [
             {
               "id": 12,

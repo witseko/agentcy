@@ -6,8 +6,14 @@ from collections.abc import Callable
 import pytest
 
 
+def remove_version_twelve(previous: sqlite3.Connection) -> None:
+    """Drop the task due_minutes column added in version twelve."""
+    previous.execute("ALTER TABLE message DROP COLUMN due_minutes")
+
+
 def remove_version_eleven(previous: sqlite3.Connection) -> None:
-    """Drop the participant_usage table and token columns added in version eleven."""
+    """Drop the version-twelve column, the participant_usage table, and the token columns."""
+    remove_version_twelve(previous)
     previous.execute("DROP TABLE participant_usage")
     previous.execute("ALTER TABLE participant DROP COLUMN token_budget")
     previous.execute("ALTER TABLE participant DROP COLUMN model")
@@ -33,6 +39,12 @@ def remove_version_eight(previous: sqlite3.Connection) -> None:
     previous.execute("DROP TRIGGER conversation_search_message")
     previous.execute("DROP TABLE conversation_search")
     previous.execute("ALTER TABLE conversation DROP COLUMN archived")
+
+
+@pytest.fixture
+def undo_version_twelve() -> Callable[[sqlite3.Connection], None]:
+    """Return the helper that removes the version-twelve schema from an open store."""
+    return remove_version_twelve
 
 
 @pytest.fixture

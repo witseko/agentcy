@@ -111,6 +111,7 @@ async def exchange_task(
         submission_id="task",
         body="Check retry handling.",
         kind="task",
+        due_minutes=30,
         to="Worker",
     )
     task_id = task["message_id"]
@@ -122,6 +123,7 @@ async def exchange_task(
             "body": "Check retry handling.",
             "kind": "task",
             "to": "Worker",
+            "due_minutes": 30,
         }
     ]
     assert page["cursor"] == task_id

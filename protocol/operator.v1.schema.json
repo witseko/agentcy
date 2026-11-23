@@ -1186,7 +1186,7 @@
     },
     "OpenTask": {
       "additionalProperties": false,
-      "description": "Identify one unfinished task of a member.",
+      "description": "Identify one unfinished task of a member, with its due time and overdue flag.",
       "properties": {
         "id": {
           "title": "Id",
@@ -1203,6 +1203,30 @@
           ],
           "default": null,
           "title": "Blocked"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due"
+        },
+        "overdue": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overdue"
         }
       },
       "required": [
@@ -1340,6 +1364,20 @@
           ],
           "default": null,
           "title": "Reply To"
+        },
+        "due_minutes": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due Minutes"
         },
         "version": {
           "const": 1,
@@ -1917,7 +1955,7 @@
     },
     "TaskDetail": {
       "additionalProperties": false,
-      "description": "Summarize one task with its current owner, state, and chronological events.",
+      "description": "Summarize one task with its owner, state, due time, and chronological events.",
       "properties": {
         "id": {
           "title": "Id",
@@ -1967,6 +2005,30 @@
           ],
           "default": null,
           "title": "Pending Handoff To"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due"
+        },
+        "overdue": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overdue"
         },
         "events": {
           "items": {

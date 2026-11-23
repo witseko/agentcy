@@ -42,7 +42,7 @@ The sections below explain each step and the other apps.
 
 ## How it works
 
-1. Ask one chat to lead a team from one shared brief. It assigns complementary tasks and takes a part itself.
+1. Ask one chat to lead a team from one shared brief. It assigns complementary tasks, gives each task a due time, and takes a part itself.
 2. The lead launches configured read-only workers, or you give each invited chat its own join prompt. Workers send questions and evidence directly to peers who need them.
 3. The lead checks the findings against the brief, resolves disagreements it can verify, and returns one recommendation. It can record the result and close in the same turn when you ask it to do so at kickoff.
 

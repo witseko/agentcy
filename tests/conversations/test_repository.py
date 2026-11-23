@@ -183,6 +183,7 @@ def test_join_returns_initial_messages_and_cursor(conversation_db: Connection) -
         body="Check retry backoff",
         submission_id="m1",
         kind="task",
+        due_minutes=30,
         to=WORKER,
     )
     worker = join_worker(conversation_db, team)
@@ -233,6 +234,7 @@ def test_done_without_reply_to_warns_when_author_owns_open_tasks(
         body="Audit retries",
         submission_id="t1",
         kind="task",
+        due_minutes=30,
         to=WORKER,
     )["message_id"]
 

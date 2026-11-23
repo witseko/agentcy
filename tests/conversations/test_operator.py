@@ -200,6 +200,7 @@ def test_human_cannot_own_a_task(conversation_db: Connection) -> None:
                 submission_id="task",
                 body="Decide.",
                 kind="task",
+                due_minutes=30,
                 to=HUMAN_LABEL,
             ),
         )
@@ -801,6 +802,7 @@ def test_retire_joined_member_blocks_writes_and_keeps_read_access(
                 submission_id="task-to-retired",
                 body="Do this",
                 kind="task",
+                due_minutes=30,
                 to="Worker",
             ),
         )
@@ -904,6 +906,7 @@ def test_operator_tasks_returns_states_owners_handoffs_and_timelines(
             submission_id="t1",
             body="Fix retry backoff\nMake sure jitter is bounded.",
             kind="task",
+            due_minutes=30,
             to="Worker",
         ),
     )["message_id"]
@@ -973,6 +976,7 @@ def test_operator_tasks_returns_states_owners_handoffs_and_timelines(
             submission_id="t2",
             body="Design tasks tab\nShow list and details.",
             kind="task",
+            due_minutes=30,
             to="Worker",
         ),
     )["message_id"]
@@ -1009,6 +1013,7 @@ def test_operator_tasks_returns_states_owners_handoffs_and_timelines(
             submission_id="t3",
             body="Audit permissions",
             kind="task",
+            due_minutes=30,
             to="Peer",
         ),
     )["message_id"]
@@ -1031,6 +1036,8 @@ def test_operator_tasks_returns_states_owners_handoffs_and_timelines(
     assert blocked_task["state"] == "blocked"
     assert blocked_task["owner"] == "Peer"
     assert blocked_task["title"] == "Audit permissions"
+    assert blocked_task["due"] == blocked_task["created"] + 30 * 60
+    assert "overdue" not in blocked_task
     assert [ev["kind"] for ev in blocked_task["events"]] == ["task", "blocker"]
 
     assert open_task["state"] == "open"
