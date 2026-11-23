@@ -148,11 +148,15 @@ func (m model) listItemAt(row int, height int) (int, bool) {
 	return index, true
 }
 
-// clickTeam selects the clicked member, copies its join prompt on the copy line, or opens
-// a clicked open task in the Tasks tab.
+// clickTeam selects the clicked member, copies its join prompt on the copy line, collapses
+// or expands the ARCHIVED section on its header, or opens a clicked open task in the Tasks tab.
 func (m model) clickTeam(row int, bodyHeight int) (tea.Model, tea.Cmd) {
 	names := m.slotNames()
-	for _, block := range m.teamRows() {
+	blocks, archivedHeaderRow := m.teamLayout()
+	if row == archivedHeaderRow {
+		return m.toggleArchived(), nil
+	}
+	for _, block := range blocks {
 		if row < block.top || row >= block.top+block.size {
 			continue
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1473,8 +1474,8 @@ func TestTeamViewRendersTokenUsageBarsAndBalanceWarning(t *testing.T) {
 		t.Fatalf("expected TOKEN BALANCE warning in team panel:\n%s", panel)
 	}
 	rows := m.teamRows()
-	if len(rows) < 2 || rows[0].size != 3 || rows[1].size != 3 {
-		t.Fatalf("expected 3-line team rows for members with usage, got %+v", rows)
+	if len(rows) < 2 || rows[0].size != 4 || rows[1].size != 4 {
+		t.Fatalf("expected 4-line team rows for members with a model and usage, got %+v", rows)
 	}
 }
 
@@ -1870,11 +1871,11 @@ func TestProviderModelContextAndEndedLaunchStatesInTeamPanel(t *testing.T) {
 
 	panel := ansi.Strip(strings.Join(m.teamView(36, 28), "\n"))
 	for _, want := range []string{
-		"lead · xai/grok",
-		"worker · anthropic/claude-opus-4-6",
-		"worker · google/gemini-neon",
+		"Lead Grok lead\n   xai/grok\n",
+		"Claude Opus worker\n   anthropic/claude-opus-4-6\n",
+		"Gemini Neon worker\n   google/gemini-neon\n",
 		"run finished",
-		"worker · zai/glm-flash",
+		"GLM Flash worker\n   zai/glm-flash\n",
 		"#7 Gemini Neon run finished",
 	} {
 		if !strings.Contains(panel, want) {
@@ -1919,5 +1920,99 @@ func TestReopenClosedChatViaButtonAndSlashCommand(t *testing.T) {
 	m = drive(t, next.(model), cmd)
 	if len(fake.reopens) != 2 || fake.reopens[1].Note != "Need one more check" {
 		t.Fatalf("/reopen requests = %+v", fake.reopens)
+	}
+}
+
+// archivedTeamModel opens a chat with one archived member that still owns an open task.
+func archivedTeamModel(t *testing.T) model {
+	t.Helper()
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Review the retry rule.",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Lead":      {Role: "lead", State: "replied"},
+					"Reviewer":  {Role: "worker", State: "replied"},
+					"OldWorker": {Role: "worker", State: "retired", OpenTasks: []OpenTask{{ID: 41}}},
+					"Human":     {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	return drive(t, next.(model), cmd)
+}
+
+func TestArchivedSectionCollapsesAndExpandsWithKey(t *testing.T) {
+	m := archivedTeamModel(t)
+	next, _ := m.setChatFocus(focusTeam)
+	m = next.(model)
+	for range len(m.slotNames()) {
+		m, _ = press(t, m, "down")
+	}
+	if m.selectedMember() != "OldWorker" {
+		t.Fatalf("selected %q, want the archived member", m.selectedMember())
+	}
+
+	m, _ = press(t, m, "a")
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	if !strings.Contains(panel, "▸ ARCHIVED (1)") {
+		t.Fatalf("collapsed header missing:\n%s", panel)
+	}
+	if strings.Contains(panel, "✕ OldWorker") {
+		t.Fatalf("collapsed section still draws the archived member:\n%s", panel)
+	}
+	if !strings.Contains(panel, "#41 OldWorker archived") {
+		t.Fatalf("open task of the archived member should stay visible:\n%s", panel)
+	}
+	if slices.Contains(m.slotNames(), "OldWorker") || m.selectedMember() != "Reviewer" {
+		t.Fatalf("selection should move to a visible member, got %q of %v", m.selectedMember(), m.slotNames())
+	}
+
+	m, _ = press(t, m, "a")
+	panel = ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	if !strings.Contains(panel, "▾ ARCHIVED") || !strings.Contains(panel, "✕ OldWorker") {
+		t.Fatalf("expanded section should draw the archived member:\n%s", panel)
+	}
+}
+
+func TestClickingArchivedHeaderTogglesSectionAndKeepsTaskRowsAligned(t *testing.T) {
+	m := archivedTeamModel(t)
+	_, headerRow := m.teamLayout()
+	if headerRow < 0 {
+		t.Fatal("no ARCHIVED header row")
+	}
+	listW, centerW, _ := m.columnWidths()
+	teamX := listW + 1 + centerW + 2
+
+	m, _ = click(t, m, teamX, 1+headerRow)
+	if !m.archivedCollapsed {
+		t.Fatal("click on the ARCHIVED header should collapse the section")
+	}
+	lines := strings.Split(ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n")), "\n")
+	if !strings.Contains(lines[headerRow], "▸ ARCHIVED (1)") {
+		t.Fatalf("header row %d = %q", headerRow, lines[headerRow])
+	}
+	taskRows := m.teamTaskRows(28)
+	if len(taskRows) != 1 || !strings.Contains(lines[taskRows[0].row], "#41") {
+		t.Fatalf("task row %+v does not match the drawn panel:\n%s", taskRows, strings.Join(lines, "\n"))
+	}
+
+	m, _ = click(t, m, teamX, 1+headerRow)
+	if m.archivedCollapsed {
+		t.Fatal("second click should expand the section")
+	}
+}
+
+func TestProviderModelLineIsCutWithEllipsisInNarrowTeamPanel(t *testing.T) {
+	m := archivedTeamModel(t)
+	member := MemberStatus{Role: "worker", State: "replied", Usage: &MemberUsage{Model: "claude-opus-4-6"}}
+	block := m.memberBlock("Claude Opus", member, "", 20)
+	modelLine := ansi.Strip(block[1])
+	if ansi.StringWidth(modelLine) > 20 || !strings.HasSuffix(modelLine, "…") {
+		t.Fatalf("model line %q should fit 20 columns and end with an ellipsis", modelLine)
 	}
 }

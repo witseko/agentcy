@@ -230,7 +230,11 @@ func (m model) hoverAt(x int, y int) string {
 			}
 		}
 	case regionTeam:
-		for _, block := range m.teamRows() {
+		blocks, archivedHeaderRow := m.teamLayout()
+		if row == archivedHeaderRow {
+			return archivedHoverID
+		}
+		for _, block := range blocks {
 			if row >= block.top && row < block.top+block.size && m.chat.view.Status.Members[block.name].Role != "human" {
 				return "member:" + block.name
 			}
