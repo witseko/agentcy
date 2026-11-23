@@ -10,6 +10,7 @@ Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
+ConversationId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{24}$")]
 MAX_WAIT_SECONDS = 45
 Wait = Annotated[int, Field(strict=True, ge=0, le=MAX_WAIT_SECONDS)]
 MessageId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
@@ -202,6 +203,22 @@ class ReportUsage(Member):
     model: ModelName | None = None
 
 
+class ListClosed(Request):
+    """List the workspace's closed conversations for a chat that holds no participant token."""
+
+    action: Literal["list_closed"] = "list_closed"
+    archived: bool | None = None
+
+
+class ReadClosed(Request):
+    """Read one page of a closed conversation of the workspace without a participant token."""
+
+    action: Literal["read_closed"] = "read_closed"
+    conversation: ConversationId
+    after: Cursor = 0
+
+
+HistoryRequest = ListClosed | ReadClosed
 MemberRequest = (
     Create
     | Join
@@ -218,5 +235,7 @@ MemberRequest = (
     | ReportUsage
     | Release
     | Launch
+    | ListClosed
+    | ReadClosed
 )
 REQUEST = TypeAdapter(Annotated[MemberRequest, Field(discriminator="action")])

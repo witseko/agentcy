@@ -12,7 +12,7 @@ from agents_chat.tokens.settings import ModelName, TokenBudget
 
 Directory = Annotated[str, StringConstraints(max_length=4096, pattern=r"^/[^\x00]*$")]
 OperatorKey = Annotated[str, StringConstraints(min_length=1, max_length=128)]
-ConversationId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{24}$")]
+ConversationId = models.ConversationId
 PluginName = Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9-]{1,64}$")]
 HumanPostKind = Literal["note", "question"]
 RoleName = Literal["worker", "lead", "co-lead", "human"]

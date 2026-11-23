@@ -14,7 +14,14 @@ from pydantic import Field, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from agents_chat.conversations import assignments, models, operator, operator_models, repository
+from agents_chat.conversations import (
+    assignments,
+    history,
+    models,
+    operator,
+    operator_models,
+    repository,
+)
 from agents_chat.conversations.tables import room
 from agents_chat.mcp.assignment_worker import AssignmentWorker, Dispatch
 from agents_chat.mcp.concurrency import Notifications, transaction, wait_for_read
@@ -114,6 +121,8 @@ class Core(socketserver.ThreadingUnixStreamServer):
             return self.operate(request)
         if isinstance(request, models.Read) and request.wait_seconds:
             return wait_for_read(request, self.notifications)
+        if isinstance(request, models.HistoryRequest):
+            return self.read_history(request)
         if isinstance(request, models.Launch):
             return self.launch(request)
         if isinstance(request, models.Plugins):
@@ -130,6 +139,15 @@ class Core(socketserver.ThreadingUnixStreamServer):
         if room_id is not None:
             self.notifications.notify(request.workspace, room_id)
         return result
+
+    def read_history(self, request: models.HistoryRequest) -> dict:
+        """Serve closed conversations to any chat of the workspace without creating a store."""
+        if not database_exists(request.workspace):
+            if isinstance(request, models.ListClosed):
+                return {"conversations": []}
+            raise ValueError(history.UNKNOWN_CLOSED_CONVERSATION)
+        with transaction(request.workspace) as connection:
+            return history.apply(connection, request)
 
     def launch(self, request: models.Launch) -> dict:
         """Bind a requested worker to this checkout and queue the committed assignment."""
