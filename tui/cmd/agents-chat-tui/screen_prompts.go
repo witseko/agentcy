@@ -120,7 +120,7 @@ func (m model) inviteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.inform("Getting a new code for " + cleanLine(name) + "."), m.invite(name)
 	case "o":
 		if m.chat.loaded && !m.chat.view.Status.Open {
-			return m.inform("This chat is closed."), nil
+			return m.showError("This chat is closed."), nil
 		}
 		enable := !m.hasOpenInvite()
 		if enable {
@@ -163,12 +163,12 @@ func (m model) onCopied(msg copiedMsg) model {
 	}
 	if msg.err != nil {
 		delete(m.inviteWindow.copied, key)
-		return m.inform("Not copied: " + msg.err.Error())
+		return m.showError("Not copied: " + msg.err.Error())
 	}
 	if msg.name == openInviteCard {
-		return m.inform("Copied the shared open-invite prompt. Paste it into any chat to join.")
+		return m.showSuccess("Copied the shared open-invite prompt. Paste it into any chat to join.")
 	}
-	return m.inform("Copied the prompt for " + cleanLine(msg.name) + ". Paste it into its chat.")
+	return m.showSuccess("Copied the prompt for " + cleanLine(msg.name) + ". Paste it into its chat.")
 }
 
 // drawInvite draws the invite window over the main view.
