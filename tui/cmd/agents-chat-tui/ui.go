@@ -159,6 +159,8 @@ type model struct {
 	search       searchState
 	inviteWindow inviteState
 	contextMenu  contextMenuState
+	// popup is the error or success notice drawn over the screen.
+	popup popupState
 	// mouseOff hands the mouse back to the terminal so its own text selection works.
 	mouseOff bool
 	// sidebarCols and teamCols are the side column widths, changed by dragging a divider.
@@ -213,6 +215,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleKey(msg)
 	case tea.MouseClickMsg:
+		// A click dismisses an error and stops there; a success notice lets the click through.
+		dismissedError := m.popup.kind == popupError
+		m.popup = popupState{}
+		if dismissedError {
+			return m, nil
+		}
 		return m.onClick(msg.Mouse())
 	case tea.MouseMotionMsg:
 		if m.dragging != noDivider {
@@ -269,6 +277,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey sends a key press to the active screen.
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.popup.kind != popupNone {
+		return m.popupKey(msg)
+	}
 	if m.contextMenu.open {
 		return m.contextMenuKey(msg)
 	}
@@ -305,6 +316,7 @@ func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 // onTick polls the open conversation, expires transient notices, and refreshes the list.
 func (m model) onTick() (tea.Model, tea.Cmd) {
 	m.ticks++
+	m = m.expirePopup()
 	if m.statusTicks > 0 {
 		m.statusTicks--
 		if m.statusTicks == 0 && !m.offline {
@@ -347,7 +359,8 @@ func (m model) onPlugins(msg pluginsMsg) model {
 	return m.succeed()
 }
 
-// fail shows an error in the status line. The program keeps running.
+// fail shows an error in a popup. A lost core shows in the top bar instead, because the
+// poll retries every second. The program keeps running.
 func (m model) fail(err error) model {
 	if errors.Is(err, errCoreUnreachable) {
 		m.offline = true
@@ -355,9 +368,7 @@ func (m model) fail(err error) model {
 		m.statusTicks = 0
 		return m
 	}
-	m.status = "Error: " + cleanLine(err.Error())
-	m.statusTicks = statusDurationTicks
-	return m
+	return m.showError(err.Error())
 }
 
 // succeed clears the offline notice after the core answers again.
@@ -386,6 +397,8 @@ func (m *model) resizeInputs() {
 	_, center, _ := m.columnWidths()
 	if m.chat.id != "" {
 		m.chat.resize(center)
+		// The summary field sits in the close dialog after its "Summary " label and a cursor.
+		m.chat.summary.SetWidth(max(popupWidth(m.width, popupMaxWidth)-4-len("Summary ")-1, 10))
 	}
 	m.search.input.SetWidth(max(center-6, 10))
 }
@@ -422,9 +435,16 @@ func (m model) View() tea.View {
 	default:
 		body, help = m.mainView(bodyHeight), m.mainHelp()
 	}
+	if m.screen == screenChat && (m.chat.closing || m.chat.retiring != "") {
+		body = m.drawConfirm(body)
+	}
 	if m.contextMenu.open {
 		body = m.drawContextMenu(body)
 		help = m.contextMenuHelp()
+	}
+	if m.popup.kind != popupNone {
+		body = m.drawPopup(body)
+		help = []hint{{"esc", "dismiss"}}
 	}
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.topBar())

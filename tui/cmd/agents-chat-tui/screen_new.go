@@ -295,7 +295,7 @@ func (f formState) verticalNeighbor(step int) int {
 // addWorker appends a worker row with an unused default name and focuses it.
 func (m model) addWorker() (tea.Model, tea.Cmd) {
 	if len(m.form.workers) >= maxWorkers {
-		return m.inform(fmt.Sprintf("A conversation has at most %d workers.", maxWorkers)), nil
+		return m.showError(fmt.Sprintf("A conversation has at most %d workers.", maxWorkers)), nil
 	}
 	name := fmt.Sprintf("Worker %d", len(m.form.workers)+1)
 	m.form.workers = append(m.form.workers, workerRow{name: newNameInput(name)})
@@ -306,7 +306,7 @@ func (m model) addWorker() (tea.Model, tea.Cmd) {
 // removeWorker removes a worker row. At least one worker is kept unless open invite is enabled.
 func (m model) removeWorker(row int) (tea.Model, tea.Cmd) {
 	if len(m.form.workers) == 1 && !m.form.openInvite {
-		return m.inform("A conversation needs at least one worker unless open invite is on."), nil
+		return m.showError("A conversation needs at least one worker unless open invite is on."), nil
 	}
 	m.form.workers = append(m.form.workers[:row:row], m.form.workers[row+1:]...)
 	m.form.resize(m.width, m.height)
@@ -384,7 +384,7 @@ func checkNames(names []string) error {
 func (m model) submitForm() (tea.Model, tea.Cmd) {
 	request, launches, err := m.form.request(m.directory, m.plugins)
 	if err != nil {
-		return m.inform("Cannot create: " + err.Error()), nil
+		return m.showError("Cannot create: " + err.Error()), nil
 	}
 	m.form.submitting = true
 	m.status = "Creating the conversation."
@@ -442,11 +442,11 @@ func (m model) onCreated(msg createdMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case len(msg.launchFailure) > 0:
-		m = m.inform("Created. Launch failed for " + cleanLine(strings.Join(msg.launchFailure, "; ")))
+		m = m.showError("Created. Launch failed for " + cleanLine(strings.Join(msg.launchFailure, "; ")))
 	case promptCount > 0:
 		m = m.inform(fmt.Sprintf("Created. %d join prompt(s) to paste.", promptCount))
 	default:
-		m = m.inform("Created. Plugins are starting.")
+		m = m.showSuccess("Created. Plugins are starting.")
 	}
 	return m, command
 }

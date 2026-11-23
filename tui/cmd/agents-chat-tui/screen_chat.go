@@ -126,7 +126,6 @@ func newChat(conversation string, width int) chatState {
 // resize fits the input fields to the center column.
 func (c *chatState) resize(width int) {
 	c.input.SetWidth(max(width-6-sendButtonWidth, 10))
-	c.summary.SetWidth(max(width-24, 10))
 }
 
 // updateInput sends a message to the focused input field.
@@ -741,7 +740,7 @@ func (m model) copyMemberPrompt() (tea.Model, tea.Cmd) {
 	}
 	member := m.chat.view.Status.Members[name]
 	if member.State != "invited" || member.LaunchState != "" {
-		return m.inform(cleanLine(name) + " has no join prompt to copy."), nil
+		return m.showError(cleanLine(name) + " has no join prompt to copy."), nil
 	}
 	if _, found := m.knownInvitation(name); !found {
 		return m.inform("Getting a new code for " + cleanLine(name) + "."), m.invite(name)
@@ -801,6 +800,7 @@ func (m *model) clampChatScroll() {
 // startClosing asks for an optional summary before the conversation closes.
 func (m model) startClosing() (tea.Model, tea.Cmd) {
 	m.chat.closing = true
+	m.resizeInputs()
 	m.chat.input.Blur()
 	return m, m.chat.summary.Focus()
 }
@@ -839,7 +839,7 @@ func (m model) onClosed(msg closedMsg) (tea.Model, tea.Cmd) {
 		return m.fail(msg.err), nil
 	}
 	delete(m.openInvites, m.chat.id)
-	m = m.inform("Chat closed.")
+	m = m.showSuccess("Chat closed.")
 	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
@@ -863,7 +863,7 @@ func (m model) onReopened(msg reopenedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.fail(msg.err), nil
 	}
-	m = m.inform("Chat reopened.")
+	m = m.showSuccess("Chat reopened.")
 	if m.screen == screenChat && m.chat.id == msg.conversation {
 		m, poll := m.refreshChat()
 		return m, tea.Batch(poll, m.loadList())
@@ -883,11 +883,11 @@ func (m model) retireSelected() (tea.Model, tea.Cmd) {
 // startRetiring confirms retiring one active member from an open chat.
 func (m model) startRetiring(name string) (tea.Model, tea.Cmd) {
 	if m.chat.loaded && !m.chat.view.Status.Open {
-		return m.inform("This chat is closed."), nil
+		return m.showError("This chat is closed."), nil
 	}
 	member, found := m.chat.view.Status.Members[name]
 	if found && member.State == "retired" {
-		return m.inform(cleanLine(name) + " is already archived."), nil
+		return m.showError(cleanLine(name) + " is already archived."), nil
 	}
 	m.chat.retiring = name
 	m.chat.input.Blur()
@@ -924,7 +924,7 @@ func (m model) onRetired(msg retiredMsg) (tea.Model, tea.Cmd) {
 		return m.fail(msg.err), nil
 	}
 	delete(m.invitations[m.chat.id], foldName(msg.participant))
-	m = m.inform("Retired " + cleanLine(msg.participant) + ".")
+	m = m.showSuccess("Retired " + cleanLine(msg.participant) + ".")
 	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
@@ -932,7 +932,7 @@ func (m model) onRetired(msg retiredMsg) (tea.Model, tea.Cmd) {
 // makeLeadSelected promotes the selected active member to lead.
 func (m model) makeLeadSelected() (tea.Model, tea.Cmd) {
 	if m.chat.loaded && !m.chat.view.Status.Open {
-		return m.inform("This chat is closed."), nil
+		return m.showError("This chat is closed."), nil
 	}
 	name := m.selectedMember()
 	if name == "" {
@@ -940,10 +940,10 @@ func (m model) makeLeadSelected() (tea.Model, tea.Cmd) {
 	}
 	member := m.chat.view.Status.Members[name]
 	if member.State == "retired" {
-		return m.inform(cleanLine(name) + " is archived and cannot be made lead."), nil
+		return m.showError(cleanLine(name) + " is archived and cannot be made lead."), nil
 	}
 	if member.Role == "lead" {
-		return m.inform(cleanLine(name) + " is already the lead."), nil
+		return m.showError(cleanLine(name) + " is already the lead."), nil
 	}
 	return m.inform("Making " + cleanLine(name) + " lead."), m.setRole(name, "lead")
 }
@@ -965,7 +965,7 @@ func (m model) onRoleChanged(msg roleChangedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.fail(msg.err), nil
 	}
-	m = m.inform(fmt.Sprintf("%s is now %s.", cleanLine(msg.result.Participant), cleanLine(msg.result.Role)))
+	m = m.showSuccess(fmt.Sprintf("%s is now %s.", cleanLine(msg.result.Participant), cleanLine(msg.result.Role)))
 	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
@@ -981,7 +981,7 @@ func (m model) submitInput() (tea.Model, tea.Cmd) {
 	}
 	post, err := parsePost(text, m.chat.view.Status.Members)
 	if err != nil {
-		return m.inform(err.Error()), nil
+		return m.showError(err.Error()), nil
 	}
 	m.chat.input.Reset()
 	request := PostRequest{
@@ -1069,7 +1069,7 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	case command == "/launch" && argument != "":
 		cut := strings.LastIndex(argument, " ")
 		if cut < 0 {
-			return m.inform("Usage: /launch Name plugin"), nil
+			return m.showError("Usage: /launch Name plugin"), nil
 		}
 		m.chat.input.Reset()
 		return m, m.launch(strings.TrimSpace(argument[:cut]), argument[cut+1:])
@@ -1082,12 +1082,12 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	case command == "/role" && argument != "":
 		cut := strings.LastIndex(argument, " ")
 		if cut < 0 {
-			return m.inform("Usage: /role Name lead|co-lead|worker"), nil
+			return m.showError("Usage: /role Name lead|co-lead|worker"), nil
 		}
 		name := strings.TrimSpace(argument[:cut])
 		role := strings.ToLower(strings.TrimSpace(argument[cut+1:]))
 		if name == "" || (role != "lead" && role != "co-lead" && role != "worker") {
-			return m.inform("Usage: /role Name lead|co-lead|worker"), nil
+			return m.showError("Usage: /role Name lead|co-lead|worker"), nil
 		}
 		m.chat.input.Reset()
 		return m.inform(fmt.Sprintf("Setting %s as %s.", cleanLine(name), role)), m.setRole(name, role)
@@ -1181,7 +1181,7 @@ func (m model) onBudgetUpdated(msg budgetUpdatedMsg) (tea.Model, tea.Cmd) {
 	if msg.result.Model != "" {
 		detail += " (" + cleanLine(msg.result.Model) + ")"
 	}
-	m = m.inform("Updated " + detail + ".")
+	m = m.showSuccess("Updated " + detail + ".")
 	return m.refreshChat()
 }
 
@@ -1207,7 +1207,7 @@ func (m model) onOpenInvite(msg openInviteMsg) (tea.Model, tea.Cmd) {
 		if msg.conversation == m.chat.id {
 			delete(m.inviteWindow.copied, openInviteCard)
 			m.chat.view.Status.OpenInvite = false
-			m = m.inform("Open invite disabled.")
+			m = m.showSuccess("Open invite disabled.")
 		}
 		return m.refreshChat()
 	}
@@ -1540,21 +1540,6 @@ func (m model) sendButton() (string, []span) {
 
 // composer draws the message line with a hint that says what enter will send.
 func (m model) composer(width int) []string {
-	if m.chat.closing {
-		return []string{
-			rule(width),
-			" " + warnStyle.Render("Close this chat?") + " " + m.chat.summary.View(),
-			" " + dimStyle.Render("Participants can still read it. Posting stops and unused codes expire."),
-		}
-	}
-	if m.chat.retiring != "" {
-		return []string{
-			rule(width),
-			" " + warnStyle.Render("Retire "+cleanLine(m.chat.retiring)+"?") + " " +
-				dimStyle.Render("Press ⏎ to confirm or esc to cancel."),
-			" " + dimStyle.Render("Posting stops, unused codes expire, and any running plugin is cancelled."),
-		}
-	}
 	marker := dimStyle.Render("›")
 	if m.chat.focus == focusInput {
 		marker = accentStyle.Render("›")
