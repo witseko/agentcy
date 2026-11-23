@@ -80,9 +80,11 @@ type chatState struct {
 	input          textinput.Model
 	summary        textinput.Model
 	closing        bool
-	retiring       string
-	focus          chatFocus
-	selected       int
+	// deprecateOnClose makes the close also end the unfinished tasks as deprecated.
+	deprecateOnClose bool
+	retiring         string
+	focus            chatFocus
+	selected         int
 	// scroll counts transcript lines hidden below the view. Zero follows the tail.
 	scroll int
 	// jumping asks the view to scroll to jumpTarget once the initial page has loaded.
@@ -336,6 +338,7 @@ func (m *model) applyChatLifecycle() {
 		delete(m.invitations, m.chat.id)
 		m.inviteWindow.open = false
 		m.chat.closing = false
+		m.chat.deprecateOnClose = false
 		m.chat.retiring = ""
 		return
 	}
@@ -799,8 +802,17 @@ func (m *model) clampChatScroll() {
 	m.chat.scroll = min(max(m.chat.scroll, 0), m.maxTranscriptScroll())
 }
 
-// startClosing asks for an optional summary before the conversation closes.
+// startClosing starts the close of the open chat. Unfinished tasks open the alert first.
 func (m model) startClosing() (tea.Model, tea.Cmd) {
+	if count := m.openTaskCount(); count > 0 {
+		m.taskAlert = taskAlertState{open: true, conversation: m.chat.id, count: count}
+		return m, nil
+	}
+	return m.askCloseSummary()
+}
+
+// askCloseSummary asks for an optional summary before the conversation closes.
+func (m model) askCloseSummary() (tea.Model, tea.Cmd) {
 	m.chat.closing = true
 	m.resizeInputs()
 	m.chat.input.Blur()
@@ -812,15 +824,18 @@ func (m model) closingKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.chat.closing = false
+		m.chat.deprecateOnClose = false
 		m.chat.summary.Blur()
 		m.chat.focus = focusInput
 		return m, m.chat.input.Focus()
 	case "enter":
 		request := CloseRequest{
 			Directory: m.directory, Conversation: m.chat.id,
-			Summary: strings.TrimSpace(m.chat.summary.Value()),
+			Summary:        strings.TrimSpace(m.chat.summary.Value()),
+			DeprecateTasks: m.chat.deprecateOnClose,
 		}
 		m.chat.closing = false
+		m.chat.deprecateOnClose = false
 		m.chat.summary.Reset()
 		m.chat.summary.Blur()
 		m.chat.focus = focusInput

@@ -161,6 +161,8 @@ type model struct {
 	contextMenu  contextMenuState
 	// popup is the error or success notice drawn over the screen.
 	popup popupState
+	// taskAlert stops a close or an archive while tasks are unfinished.
+	taskAlert taskAlertState
 	// mouseOff hands the mouse back to the terminal so its own text selection works.
 	mouseOff bool
 	// sidebarCols and teamCols are the side column widths, changed by dragging a divider.
@@ -265,6 +267,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onClosed(msg)
 	case reopenedMsg:
 		return m.onReopened(msg)
+	case archiveCheckMsg:
+		return m.onArchiveCheck(msg)
 	case archivedMsg:
 		return m.onArchived(msg)
 	case searchedMsg:
@@ -281,6 +285,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.popup.kind != popupNone {
 		return m.popupKey(msg)
+	}
+	if m.taskAlert.open {
+		return m.taskAlertKey(msg)
 	}
 	if m.contextMenu.open {
 		return m.contextMenuKey(msg)
@@ -443,6 +450,10 @@ func (m model) View() tea.View {
 	if m.contextMenu.open {
 		body = m.drawContextMenu(body)
 		help = m.contextMenuHelp()
+	}
+	if m.taskAlert.open {
+		body = m.drawTaskAlert(body)
+		help = m.taskAlertHelp()
 	}
 	if m.popup.kind != popupNone {
 		body = m.drawPopup(body)
