@@ -5,6 +5,7 @@ import logging
 import re
 import secrets
 import time
+import unicodedata
 
 from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_, select, update
 from sqlalchemy.sql import ColumnElement
@@ -116,9 +117,38 @@ def new_join_code(workspace: str) -> tuple[str, dict[str, str | int]]:
     }
 
 
+# The word the terminal UI shows for the human, next to their member name.
+HUMAN_ALIAS = "You"
+# Small, non-exhaustive list of look-alike letters; the message role is the real proof of identity.
+LOOKALIKE_LETTERS = str.maketrans(
+    {
+        "н": "h",
+        "һ": "h",
+        "հ": "h",
+        "η": "h",
+        "υ": "u",
+        "ս": "u",
+        "у": "y",
+        "м": "m",
+        "μ": "m",
+        "а": "a",
+        "α": "a",
+        "ո": "n",
+        "о": "o",
+        "ο": "o",
+    }
+)
+
+
+def name_skeleton(name: str) -> str:
+    """Reduce a name to lowercase letters and digits with look-alike letters mapped to ASCII."""
+    folded = unicodedata.normalize("NFKC", name).casefold().translate(LOOKALIKE_LETTERS)
+    return "".join(character for character in folded if character.isalnum())
+
+
 def check_name(name: str) -> None:
-    """Keep the human's reserved name out of every invited slot."""
-    if name.casefold() == HUMAN_LABEL.casefold():
+    """Keep the human's reserved names, and names that look like them, out of every slot."""
+    if name_skeleton(name) in {name_skeleton(HUMAN_LABEL), name_skeleton(HUMAN_ALIAS)}:
         raise ValueError(f"The name {HUMAN_LABEL} is reserved for the user. Use a different name")
 
 
@@ -278,6 +308,18 @@ def resolve_open_name(existing_labels: list[str], requested: str | None) -> str:
         number += 1
 
 
+def message_fields(row: RowMapping) -> dict:
+    """Build one message for an agent: set fields only, plus role human for the user's messages."""
+    fields = {
+        field: value
+        for field, value in row.items()
+        if value is not None and field not in ("wake", "task_blocker", "author_role")
+    }
+    if row["author_role"] == Role.HUMAN:
+        fields["role"] = Role.HUMAN.label
+    return fields
+
+
 def initial_messages(
     connection: Connection,
     room_id: str,
@@ -297,6 +339,7 @@ def initial_messages(
                 recipient.c.label.label("to"),
                 message.c.reply_to,
                 message.c.due_minutes,
+                member.c.role.label("author_role"),
             )
             .join(member, message.c.author == member.c.id)
             .outerjoin(recipient, message.c.recipient == recipient.c.id)
@@ -307,10 +350,7 @@ def initial_messages(
         .mappings()
         .all()
     )
-    page = [
-        {field: value for field, value in row.items() if value is not None}
-        for row in rows[:PAGE_SIZE]
-    ]
+    page = [message_fields(row) for row in rows[:PAGE_SIZE]]
     read_tokens = estimator.estimate_read(page, brief)
     if read_tokens > 0:
         snapshot = token_usage.add_estimated(
@@ -1105,6 +1145,7 @@ def read(
                 recipient.c.label.label("to"),
                 message.c.reply_to,
                 message.c.due_minutes,
+                member.c.role.label("author_role"),
                 wake.label("wake"),
                 task.c.id.is_not(None).label("task_blocker"),
             )
@@ -1126,14 +1167,7 @@ def read(
         .mappings()
         .all()
     )
-    page = [
-        {
-            field: value
-            for field, value in row.items()
-            if value is not None and field not in ("wake", "task_blocker")
-        }
-        for row in rows[:PAGE_SIZE]
-    ]
+    page = [message_fields(row) for row in rows[:PAGE_SIZE]]
     more = len(rows) > PAGE_SIZE
     has_wake = any(row["wake"] for row in rows)
     if more and not has_wake:

@@ -9,20 +9,25 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// clean makes untrusted text safe to draw: it removes ANSI escape sequences, control
-// characters and bidirectional overrides, so a model cannot move the cursor, rewrite the
-// screen or send commands to the terminal. Newlines stay and tabs become spaces.
+// clean makes untrusted text safe to draw without hiding any of it. Newlines stay, tabs
+// become spaces and carriage returns are dropped. Other control characters (C0, DEL and C1)
+// become U+FFFD so tampering stays visible. Format characters, line and paragraph
+// separators and invisible fillers are removed, except the zero-width joiner and
+// non-joiner that emoji and some scripts need.
 func clean(text string) string {
-	stripped := ansi.Strip(text)
 	var builder strings.Builder
-	builder.Grow(len(stripped))
-	for _, character := range stripped {
+	builder.Grow(len(text))
+	for _, character := range text {
 		switch {
 		case character == '\n':
 			builder.WriteRune(character)
 		case character == '\t':
 			builder.WriteString("    ")
-		case unicode.IsControl(character), isBidiControl(character):
+		case character == '\r':
+			continue
+		case unicode.IsControl(character):
+			builder.WriteRune(unicode.ReplacementChar)
+		case isInvisible(character):
 			continue
 		default:
 			builder.WriteRune(character)
@@ -36,11 +41,15 @@ func cleanLine(text string) string {
 	return strings.ReplaceAll(clean(text), "\n", " ")
 }
 
-// isBidiControl reports the Unicode characters that reorder how text is displayed.
-func isBidiControl(character rune) bool {
-	return (character >= '‪' && character <= '‮') ||
-		(character >= '⁦' && character <= '⁩') ||
-		character == '‎' || character == '‏' || character == '؜'
+// isInvisible reports characters that draw nothing or reorder text, except the joiners.
+func isInvisible(character rune) bool {
+	switch character {
+	case '\u200c', '\u200d':
+		return false
+	case '\u2028', '\u2029', '\u3164', '\u115f', '\u1160':
+		return true
+	}
+	return unicode.Is(unicode.Cf, character)
 }
 
 // wrapLines cleans text and wraps it to width columns, with indent before every line.

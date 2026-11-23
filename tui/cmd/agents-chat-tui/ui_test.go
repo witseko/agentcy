@@ -388,7 +388,7 @@ func TestTranscriptDropsTerminalControls(t *testing.T) {
 			t.Errorf("view contains %q", forbidden)
 		}
 	}
-	if !strings.Contains(content, "Lead") || !strings.Contains(content, "hello") {
+	if !strings.Contains(content, "Le\uFFFD[2Jad") || !strings.Contains(content, "\uFFFD]0;owned\uFFFDhello") {
 		t.Errorf("view lost the message text:\n%s", content)
 	}
 }

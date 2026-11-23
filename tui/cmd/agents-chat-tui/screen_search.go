@@ -187,7 +187,7 @@ func (m model) hitLines(hit SearchHit, terms []string, width int) []string {
 	place := "in the brief"
 	if hit.Author != nil {
 		place = cleanLine(*hit.Author)
-		if place == humanName {
+		if *hit.Author == humanName {
 			place = "You"
 		}
 	}

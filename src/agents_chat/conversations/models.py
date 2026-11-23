@@ -1,13 +1,54 @@
 """Validate local bridge requests before they reach the conversation store."""
 
+import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    model_validator,
+)
 
 from agents_chat.tokens.settings import ModelName, TokenBudget, TokenCount
 
-Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
-Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
+# Control, format, surrogate, private-use, unassigned, and line or paragraph separator characters.
+HIDDEN_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+ALLOWED_BODY_CONTROLS = frozenset({"\n", "\t", "\r"})
+
+
+def check_label(name: str) -> str:
+    """Reject names with hidden characters or compatibility forms that look like another name."""
+    if any(unicodedata.category(character) in HIDDEN_CATEGORIES for character in name):
+        raise ValueError("Name must not contain control or format characters")
+    if unicodedata.normalize("NFKC", name) != name:
+        raise ValueError("Name must be in Unicode NFKC normal form")
+    return name
+
+
+def check_body(body: str) -> str:
+    """Reject control characters other than newline, tab, and carriage return."""
+    if any(
+        unicodedata.category(character) == "Cc" and character not in ALLOWED_BODY_CONTROLS
+        for character in body
+    ):
+        raise ValueError("Body must not contain control characters")
+    return body
+
+
+Label = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
+    AfterValidator(check_label),
+]
+Body = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=8192),
+    AfterValidator(check_body),
+]
 TITLE_LENGTH = 80
 # One line without control characters, short enough for a list view to show whole.
 Title = Annotated[
