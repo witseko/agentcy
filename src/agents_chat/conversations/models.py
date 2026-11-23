@@ -30,6 +30,8 @@ PostKind = Literal[
 InviteRole = Literal["worker", "co-lead"]
 AssignableRole = Literal["worker", "lead", "co-lead"]
 DeadlineMinutes = Annotated[int, Field(strict=True, ge=1, le=60)]
+MAX_DUE_MINUTES = 1440
+DueMinutes = Annotated[int, Field(strict=True, ge=1, le=MAX_DUE_MINUTES)]
 MAX_PARTICIPANTS = 17
 
 
@@ -105,6 +107,7 @@ class Submission(BaseModel):
     kind: PostKind = "note"
     to: Label | None = None
     reply_to: MessageId | None = None
+    due_minutes: DueMinutes | None = None
 
 
 class Post(Member, Submission):

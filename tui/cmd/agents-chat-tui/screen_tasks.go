@@ -385,6 +385,8 @@ func taskStatePill(task TaskDetail) string {
 		return okStyle.Render("done   ")
 	case task.State == "blocked":
 		return warnStyle.Render("blocked")
+	case task.Overdue:
+		return warnStyle.Render("overdue")
 	case task.PendingHandoffTo != "":
 		return accentStyle.Render("handoff")
 	default:
@@ -409,6 +411,9 @@ func (m model) taskDetailLines(task TaskDetail, width int) []string {
 	if task.PendingHandoffTo != "" {
 		header += "  " + tag("HANDOFF → "+cleanLine(task.PendingHandoffTo), colorAccent)
 	}
+	if task.Overdue {
+		header += "  " + tag("OVERDUE", colorWarn)
+	}
 	ownerLabel := cleanLine(task.Owner)
 	if member, ok := m.chat.view.Status.Members[task.Owner]; ok && member.State == "retired" {
 		ownerLabel += " (archived)"
@@ -420,6 +425,9 @@ func (m model) taskDetailLines(task TaskDetail, width int) []string {
 		time.Unix(task.Created, 0).Format("15:04"),
 		time.Unix(task.Updated, 0).Format("15:04"),
 	)
+	if task.Due != 0 {
+		meta += "  ·  Due " + time.Unix(task.Due, 0).Format("15:04")
+	}
 	lines := []string{header}
 	for _, line := range wrapLines(meta, max(width-2, 10), " ") {
 		lines = append(lines, dimStyle.Render(line))

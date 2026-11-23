@@ -1934,6 +1934,8 @@ func (m model) memberTasks(label string, member MemberStatus, width int) []strin
 			state = warnStyle.Render("blocked")
 		} else if member.State == "invited" {
 			state = dimStyle.Render("waiting to join")
+		} else if task.Overdue {
+			state = warnStyle.Render("overdue")
 		}
 		line := " " + accentStyle.Render(fmt.Sprintf("#%d", task.ID)) + " " + label + " " + state
 		if m.hover == fmt.Sprintf("team-task:%d", task.ID) {

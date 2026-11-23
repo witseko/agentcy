@@ -48,6 +48,31 @@ class Task:
     done: bool = False
     deprecated: bool = False
     handoff: int | None = None
+    due: int | None = None
+
+
+def due_time(event: RowMapping) -> int | None:
+    """Return the Unix time a task message is due, or None for a task stored without a timeline."""
+    if event["due_minutes"] is None:
+        return None
+    return event["created"] + event["due_minutes"] * 60
+
+
+def is_overdue(task: Task, now: int) -> bool:
+    """Recognize an unfinished task whose due time has passed."""
+    ended = task.done or task.deprecated
+    return not ended and task.due is not None and task.due < now
+
+
+def validate_due_minutes(kind: str, due_minutes: int | None) -> None:
+    """Require a timeline on every new task and reject one on any other message kind."""
+    if kind == "task" and due_minutes is None:
+        raise ValueError(
+            "A task requires a timeline. Set due_minutes to the number of minutes you expect "
+            "the task to take"
+        )
+    if kind != "task" and due_minutes is not None:
+        raise ValueError("Only a kind='task' message accepts due_minutes")
 
 
 def _apply_response(offers: dict[int, Task], event: RowMapping) -> None:
@@ -115,7 +140,7 @@ def apply_event(
     """Apply a task event in message order."""
     kind = event["kind"]
     if kind == "task":
-        tasks[event["id"]] = Task(owner=event["recipient"])
+        tasks[event["id"]] = Task(owner=event["recipient"], due=due_time(event))
         return
     if kind in RESPONSE_KINDS:
         _apply_response(offers, event)
@@ -290,7 +315,13 @@ def redelegate_tasks(
 def read_tasks(connection: Connection, room_id: str, task_id: int | None = None) -> dict[int, Task]:
     """Read all task states in a conversation or the events for one task."""
     query = select(
-        message.c.id, message.c.kind, message.c.author, message.c.recipient, message.c.reply_to
+        message.c.id,
+        message.c.kind,
+        message.c.author,
+        message.c.recipient,
+        message.c.reply_to,
+        message.c.created,
+        message.c.due_minutes,
     ).where(
         message.c.room == room_id,
         message.c.kind.in_(TASK_EVENT_KINDS),
@@ -321,8 +352,16 @@ def read_tasks(connection: Connection, room_id: str, task_id: int | None = None)
     return tasks
 
 
-def open_tasks(connection: Connection, room_id: str) -> dict[int, list[dict]]:
-    """Group unfinished task IDs and blocker flags by current owner."""
+def open_tasks(
+    connection: Connection, room_id: str, now: int | None = None
+) -> dict[int, list[dict]]:
+    """Group unfinished task IDs with blocker flags, due times, and overdue flags by current owner.
+
+    Args:
+        now: The Unix time used to flag overdue tasks. Defaults to the current time.
+    """
+    if now is None:
+        now = int(time.time())
     by_owner: dict[int, list[dict]] = {}
     for task_id, task in read_tasks(connection, room_id).items():
         if task.done:
@@ -330,6 +369,10 @@ def open_tasks(connection: Connection, room_id: str) -> dict[int, list[dict]]:
         summary = {"id": task_id}
         if task.blocked:
             summary["blocked"] = True
+        if task.due is not None:
+            summary["due"] = task.due
+        if is_overdue(task, now):
+            summary["overdue"] = True
         by_owner.setdefault(task.owner, []).append(summary)
     return by_owner
 
@@ -388,7 +431,7 @@ def _task_state_label(task: Task) -> str:
 
 
 def list_task_details(connection: Connection, room_id: str) -> list[dict[str, object]]:
-    """Return every task in a conversation with its current owner, state, and timeline."""
+    """Return every task in a conversation with its owner, state, due time, and event history."""
     task_ids = select(message.c.id).where(message.c.room == room_id, message.c.kind == "task")
     handoff_ids = select(message.c.id).where(
         message.c.room == room_id,
@@ -407,6 +450,7 @@ def list_task_details(connection: Connection, room_id: str) -> list[dict[str, ob
             message.c.body,
             message.c.created,
             message.c.reply_to,
+            message.c.due_minutes,
         )
         .join(member, message.c.author == member.c.id)
         .outerjoin(recipient, message.c.recipient == recipient.c.id)
@@ -428,6 +472,7 @@ def list_task_details(connection: Connection, room_id: str) -> list[dict[str, ob
     handoff_target: dict[int, str] = {}
     labels: dict[int, str] = {}
     leaders, inactive = _room_recovery_sets(connection, room_id)
+    now = int(time.time())
     for row in connection.execute(query).mappings():
         labels[row["author"]] = row["author_label"]
         if row["recipient"] is not None and row["to"] is not None:
@@ -462,6 +507,10 @@ def list_task_details(connection: Connection, room_id: str) -> list[dict[str, ob
         }
         if task.handoff is not None and task.handoff in handoff_target:
             detail["pending_handoff_to"] = handoff_target[task.handoff]
+        if task.due is not None:
+            detail["due"] = task.due
+        if is_overdue(task, now):
+            detail["overdue"] = True
         results.append(detail)
     return results
 

@@ -2017,6 +2017,33 @@ func TestProviderModelLineIsCutWithEllipsisInNarrowTeamPanel(t *testing.T) {
 	}
 }
 
+func TestTaskViewsShowDueTimeAndOverdueState(t *testing.T) {
+	due := time.Date(2026, 11, 23, 15, 30, 0, 0, time.Local).Unix()
+	task := TaskDetail{ID: 7, Title: "Review retries", Body: "Review retries", Author: "Lead", Owner: "Worker", State: "open", Due: due, Overdue: true}
+	m := model{}
+
+	detail := ansi.Strip(strings.Join(m.taskDetailLines(task, 120), "\n"))
+	for _, want := range []string{"OVERDUE", "Due 15:30"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("task detail missing %q:\n%s", want, detail)
+		}
+	}
+	if pill := ansi.Strip(taskStatePill(task)); pill != "overdue" {
+		t.Fatalf("expected overdue pill, got %q", pill)
+	}
+	member := MemberStatus{Role: "worker", State: "replied", OpenTasks: []OpenTask{{ID: 7, Due: due, Overdue: true}}}
+	if rows := ansi.Strip(strings.Join(m.memberTasks("Worker", member, 40), "\n")); !strings.Contains(rows, "#7 Worker overdue") {
+		t.Fatalf("team panel missing overdue task:\n%s", rows)
+	}
+
+	task.Overdue = false
+	task.Due = 0
+	onTime := ansi.Strip(strings.Join(m.taskDetailLines(task, 120), "\n"))
+	if strings.Contains(onTime, "OVERDUE") || strings.Contains(onTime, "Due ") {
+		t.Fatalf("task without a due time shows one:\n%s", onTime)
+	}
+}
+
 // chatWithOpenTasks returns an open chat in which the reviewer owns two unfinished tasks.
 func chatWithOpenTasks(t *testing.T, fake *fakeOperator) model {
 	t.Helper()

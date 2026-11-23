@@ -229,6 +229,7 @@ def test_lead_can_route_blocker_help_to_a_peer(shim: tuple[server.FastMCP, Count
         submission_id="task",
         body="Test retries",
         kind="task",
+        due_minutes=30,
         to="Owner",
     )["message_id"]
     blocker = tool(
@@ -285,7 +286,9 @@ def test_lead_can_route_blocker_help_to_a_peer(shim: tuple[server.FastMCP, Count
         reply_to=task,
     )
     member = tool(app, "conversation_status", token=lead)["members"]["Owner"]
-    assert member["open_tasks"] == [{"id": task}]
+    [resumed_task] = member["open_tasks"]
+    assert resumed_task["id"] == task
+    assert "blocked" not in resumed_task
     assert member["state"] == "replied"
 
 
@@ -311,6 +314,7 @@ def test_lead_catch_up_skips_a_resolved_task_blocker(
         submission_id="task",
         body="Test retries",
         kind="task",
+        due_minutes=30,
         to="Owner",
     )["message_id"]
     blocker = tool(
@@ -482,6 +486,7 @@ def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
         submission_id="task-a",
         body="Build API",
         kind="task",
+        due_minutes=30,
         to="Alice",
     )["message_id"]
     task_b = tool(
@@ -491,6 +496,7 @@ def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
         submission_id="task-b",
         body="Write tests",
         kind="task",
+        due_minutes=30,
         to="Bob",
     )["message_id"]
 
@@ -510,7 +516,7 @@ def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
     )["message_id"]
     lead_after_a = tool(app, "read_messages", token=lead, after=task_b, wait_seconds=1)
     assert lead_after_a["team"]["Alice"]["state"] == "done"
-    assert lead_after_a["team"]["Bob"]["open_tasks"] == [{"id": task_b}]
+    assert [item["id"] for item in lead_after_a["team"]["Bob"]["open_tasks"]] == [task_b]
     assert "Free teammates waiting for next steps: Alice" in lead_after_a["next"]
 
     # On repeated quiet waits while Bob works, the lead is reminded to check in.
@@ -740,10 +746,12 @@ def test_incoming_action_hints_for_task_handoff_and_question(
         submission_id="t1",
         body="Check retries",
         kind="task",
+        due_minutes=30,
         to="Alpha",
     )["message_id"]
     alpha_task = tool(app, "read_messages", token=alpha, after=0, wait_seconds=1)
-    assert f"New task #{task_id} assigned to you" in alpha_task["next"]
+    assert f"New task #{task_id} assigned to you, due in 30 minutes" in alpha_task["next"]
+    assert alpha_task["messages"][-1]["due_minutes"] == 30
 
     handoff_id = tool(
         app,

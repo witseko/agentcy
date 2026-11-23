@@ -220,10 +220,12 @@ type ConversationList struct {
 	Conversations []ConversationSummary `json:"conversations"`
 }
 
-// OpenTask identifies one unfinished task of a member.
+// OpenTask identifies one unfinished task of a member, with its due time as Unix seconds.
 type OpenTask struct {
 	ID      int64 `json:"id"`
 	Blocked *bool `json:"blocked,omitempty"`
+	Due     int64 `json:"due,omitempty"`
+	Overdue bool  `json:"overdue,omitempty"`
 }
 
 // TaskEvent is one message in a task's timeline.
@@ -237,7 +239,7 @@ type TaskEvent struct {
 	ReplyTo *int64 `json:"reply_to,omitempty"`
 }
 
-// TaskDetail holds one task's summary, owner, state, and chronological events.
+// TaskDetail holds one task's summary, owner, state, due time (Unix seconds), and chronological events.
 type TaskDetail struct {
 	ID               int64       `json:"id"`
 	Title            string      `json:"title"`
@@ -248,6 +250,8 @@ type TaskDetail struct {
 	Created          int64       `json:"created"`
 	Updated          int64       `json:"updated"`
 	PendingHandoffTo string      `json:"pending_handoff_to,omitempty"`
+	Due              int64       `json:"due,omitempty"`
+	Overdue          bool        `json:"overdue,omitempty"`
 	Events           []TaskEvent `json:"events"`
 }
 

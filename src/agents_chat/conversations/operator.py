@@ -25,7 +25,8 @@ TITLE_LENGTH = repository.TITLE_LENGTH
 UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
 LEAD_JOIN_PROMPT = (
     "Use agents-chat to join with CODE. You lead this conversation. Read the shared brief and "
-    "catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. "
+    "catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', "
+    "and due_minutes (the minutes you expect the task to take): you own the task timeline. "
     "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
     "open_invite, and retire inactive or unneeded teammates with retire_participant. "
     "Track the team status in read_messages, assign follow-up work when workers finish, and post "

@@ -130,7 +130,13 @@ def post_as(
 ) -> int:
     """Post through a bound client in the workflow, once per kind and recipient."""
     return member(
-        "post_message", submission_id=f"{kind}-{to}", kind=kind, body=body, to=to, reply_to=reply_to
+        "post_message",
+        submission_id=f"{kind}-{to}",
+        kind=kind,
+        body=body,
+        to=to,
+        reply_to=reply_to,
+        due_minutes=30 if kind == "task" else None,
     )["message_id"]
 
 
@@ -186,7 +192,8 @@ def test_two_fresh_workers_resolve_a_blocker_and_close_with_evidence(
     pending = lead("conversation_status")["members"]
     assert pending["Fixture"]["state"] == "invited"
     assert pending["Fixture"]["launch_state"] == "running"
-    assert pending["Schedule"]["open_tasks"] == [{"id": schedule_task, "blocked": True}]
+    [blocked_task] = pending["Schedule"]["open_tasks"]
+    assert (blocked_task["id"], blocked_task["blocked"]) == (schedule_task, True)
     lead_read = lead("read_messages", after=evidence_task, wait_seconds=1)
     assert "Ask a teammate who can clear the blocker" in lead_read["next"]
     question = post_as(
@@ -213,9 +220,9 @@ def test_two_fresh_workers_resolve_a_blocker_and_close_with_evidence(
     post_as(
         schedule, "resume", f"I have evidence from {recovered['file']}.", reply_to=schedule_task
     )
-    assert lead("conversation_status")["members"]["Schedule"]["open_tasks"] == [
-        {"id": schedule_task}
-    ]
+    [resumed_task] = lead("conversation_status")["members"]["Schedule"]["open_tasks"]
+    assert resumed_task["id"] == schedule_task
+    assert "blocked" not in resumed_task
     delays = [min(2 * 2**index, 8) for index in range(recovered["failures"])]
     post_as(schedule, "done", json.dumps(delays), reply_to=schedule_task)
     post_as(evidence, "done", source, reply_to=evidence_task)
@@ -298,6 +305,7 @@ def test_fresh_status_and_wait_distinguish_manual_invitation(
             submission_id="task",
             body="Check the remaining evidence",
             kind="task",
+            due_minutes=30,
             to="Fresh",
         )
     )

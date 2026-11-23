@@ -84,7 +84,7 @@ Starting pointers:
 - <Exact file paths, symbols, tests, or commands to inspect>
 
 Team split:
-- Lead: Assign the worker tasks below with kind="task" and each worker's name in "to". While workers start, <Lead's own concrete check>. Verify worker evidence against the codebase and resolve disagreements.
+- Lead: Assign the worker tasks below with kind="task", each worker's name in "to", and due_minutes (the minutes you expect the task to take). While workers start, <Lead's own concrete check>. Verify worker evidence against the codebase and resolve disagreements.
 - <Worker1>: <Specific read-only or interactive scope. Specify what to send directly to peers using to="<Name>". Reply kind="done" to the task ID with file/line evidence, or kind="blocker" if stuck.>
 - <Worker2>: <Complementary scope, cross-check instructions, and evidence format.>
 

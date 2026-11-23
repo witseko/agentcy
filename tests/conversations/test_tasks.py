@@ -3,9 +3,10 @@
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, select
 
-from agents_chat.conversations import models, repository
+from agents_chat.conversations import models, repository, tasks
+from agents_chat.conversations.tables import room
 from agents_chat.mcp import server
 
 
@@ -33,6 +34,8 @@ def post(
     connection: Connection, token: str, body: str, kind: models.PostKind, **fields: Any
 ) -> int:
     """Post through the validated request and return the recorded ID."""
+    if kind == "task":
+        fields.setdefault("due_minutes", 30)
     return repository.apply(
         connection,
         models.Post(
@@ -47,7 +50,16 @@ def post(
 
 
 def team_status(connection: Connection, token: str) -> dict:
-    """Read the status response for the current conversation."""
+    """Read the status response without task due times, which have their own tests."""
+    status = full_status(connection, token)
+    for member in status["members"].values():
+        for task in member.get("open_tasks", []):
+            task.pop("due", None)
+    return status
+
+
+def full_status(connection: Connection, token: str) -> dict:
+    """Read the complete status response for the current conversation."""
     return repository.apply(
         connection, models.Status(workspace=connection.info["workspace"], token=token)
     )
@@ -72,6 +84,71 @@ def test_task_requires_lead_and_addressee(
         post(conversation_db, task_team["Alpha"], "Unauthorized task", "task", to="Bravo")
     with pytest.raises(ValueError, match="requires an addressee"):
         post(conversation_db, task_team["Lead"], "No recipient", "task")
+
+
+def test_task_requires_a_timeline(conversation_db: Connection, task_team: dict[str, str]) -> None:
+    """Reject a task without due_minutes and a due time on any other message kind."""
+    lead = task_team["Lead"]
+    with pytest.raises(ValueError, match="A task requires a timeline"):
+        post(conversation_db, lead, "No timeline", "task", to="Alpha", due_minutes=None)
+    with pytest.raises(ValueError, match="Only a kind='task' message accepts due_minutes"):
+        post(conversation_db, lead, "Timed note", "note", to="Alpha", due_minutes=10)
+    assert "open_tasks" not in full_status(conversation_db, lead)["members"]["Alpha"]
+
+
+@pytest.mark.parametrize("due_minutes", [0, models.MAX_DUE_MINUTES + 1, 1.5, "30"])
+def test_due_minutes_must_be_a_bounded_whole_number(due_minutes: object) -> None:
+    """Reject a due time outside one minute to one day or of the wrong type."""
+    with pytest.raises(ValueError, match="due_minutes"):
+        models.Submission(submission_id="s", body="Task", kind="task", due_minutes=due_minutes)
+
+
+def test_status_reports_due_time_and_flags_overdue_tasks(
+    conversation_db: Connection, task_team: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Show the due time from assignment and flag the task to lead and owner once it passes."""
+    lead, alpha = task_team["Lead"], task_team["Alpha"]
+    assigned = 1_800_000_000
+    monkeypatch.setattr(repository.time, "time", lambda: assigned)
+    task = post(conversation_db, lead, "Review retry limits", "task", to="Alpha", due_minutes=20)
+    due = assigned + 20 * 60
+
+    monkeypatch.setattr(repository.time, "time", lambda: due)
+    on_time = full_status(conversation_db, lead)
+    assert on_time["members"]["Alpha"]["open_tasks"] == [{"id": task, "due": due}]
+    assert "overdue" not in server.finish_wait({"messages": []}, on_time, {}, "lead")["next"]
+
+    monkeypatch.setattr(repository.time, "time", lambda: due + 1)
+    late = full_status(conversation_db, lead)
+    assert late["members"]["Alpha"]["open_tasks"] == [{"id": task, "due": due, "overdue": True}]
+    lead_next = server.finish_wait({"messages": []}, late, {}, "lead")["next"]
+    assert f"#{task} for Alpha (overdue)" in lead_next
+    assert server.OVERDUE_LEAD_HELP in lead_next
+    owner_next = server.finish_wait(
+        {"messages": []}, full_status(conversation_db, alpha), {}, "alpha"
+    )["next"]
+    assert server.OVERDUE_WORKER_HELP in owner_next
+
+    [detail] = tasks.list_task_details(conversation_db, conversation_db.scalar(select(room.c.id)))
+    assert (detail["due"], detail["overdue"]) == (due, True)
+
+    post(conversation_db, alpha, "Retry limits checked", "done", reply_to=task)
+    assert "open_tasks" not in full_status(conversation_db, lead)["members"]["Alpha"]
+    [finished] = tasks.list_task_details(conversation_db, conversation_db.scalar(select(room.c.id)))
+    assert finished["due"] == due
+    assert "overdue" not in finished
+
+
+def test_task_retry_keeps_one_task_and_rejects_a_changed_timeline(
+    conversation_db: Connection, task_team: dict[str, str]
+) -> None:
+    """Return the same task for an identical retry and refuse the same ID with a new due time."""
+    lead = task_team["Lead"]
+    first = post(conversation_db, lead, "Review retry limits", "task", to="Alpha", due_minutes=20)
+    again = post(conversation_db, lead, "Review retry limits", "task", to="Alpha", due_minutes=20)
+    assert again == first
+    with pytest.raises(ValueError, match="Submission ID already used"):
+        post(conversation_db, lead, "Review retry limits", "task", to="Alpha", due_minutes=40)
 
 
 def test_resume_clears_only_its_task_and_deduplicates_retries(

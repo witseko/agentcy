@@ -290,6 +290,7 @@ def initial_messages(
                 message.c.kind,
                 recipient.c.label.label("to"),
                 message.c.reply_to,
+                message.c.due_minutes,
             )
             .join(member, message.c.author == member.c.id)
             .outerjoin(recipient, message.c.recipient == recipient.c.id)
@@ -814,7 +815,7 @@ def enrich_token_status(
 
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     """Report activity and message counts for the authenticated participant's team."""
-    open_tasks = tasks.open_tasks(connection, participant["room"])
+    open_tasks = tasks.open_tasks(connection, participant["room"], now)
     message_count = (
         select(func.count())
         .select_from(message)
@@ -923,6 +924,7 @@ def post_content(connection: Connection, room_id: str, request: models.Submissio
         "kind": None if request.kind == "note" else request.kind,
         "recipient": recipient,
         "reply_to": request.reply_to,
+        "due_minutes": request.due_minutes,
     }
 
 
@@ -978,6 +980,7 @@ def post(
                 message.c.kind,
                 message.c.recipient,
                 message.c.reply_to,
+                message.c.due_minutes,
             )
             .join(receipt)
             .where(receipt.c.author == author, receipt.c.key == request.submission_id)
@@ -1095,6 +1098,7 @@ def read(
                 message.c.kind,
                 recipient.c.label.label("to"),
                 message.c.reply_to,
+                message.c.due_minutes,
                 wake.label("wake"),
                 task.c.id.is_not(None).label("task_blocker"),
             )
@@ -1286,6 +1290,7 @@ def post_in_round(
         raise ValueError(RETIRED_ERROR)
     if not participant["open"]:
         raise ValueError("Conversation is closed")
+    tasks.validate_due_minutes(request.kind, request.due_minutes)
     if request.kind != rounds.PROPOSAL:
         if participant["round"] == rounds.SEALED and rounds.key_is_held(
             connection, participant["id"], request.submission_id

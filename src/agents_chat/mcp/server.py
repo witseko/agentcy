@@ -69,6 +69,17 @@ BLOCKER_HELP = (
 TASK_RESUME_HELP = (
     "Once you can continue a blocked task, reply to its original task ID with kind='resume'."
 )
+TASK_TIMELINE_HELP = (
+    "Plan the timeline before you assign work: set due_minutes on each kind='task' to the "
+    "minutes you expect the task to take."
+)
+OVERDUE_LEAD_HELP = (
+    "For each overdue task, ask the owner for progress with the owner's name in 'to', or move "
+    "the work to a free teammate."
+)
+OVERDUE_WORKER_HELP = (
+    "Report progress on each overdue task to the lead, or reply to the task with kind='blocker'."
+)
 LEAD_CHECKIN_HELP = (
     "Check in on quiet teammates or post a brief team update so waiting peers stay active."
 )
@@ -116,8 +127,10 @@ def incoming_action_hint(messages: list[dict], me: str) -> str:
         kind = message.get("kind")
         msg_id = message["id"]
         if kind == "task":
+            due = message.get("due_minutes")
+            due_text = f", due in {due} minutes from its assignment" if due else ""
             return (
-                f"New task #{msg_id} assigned to you. Start immediately and reply with "
+                f"New task #{msg_id} assigned to you{due_text}. Start immediately and reply with "
                 f"reply_to={msg_id} using kind='done' (with evidence) or kind='blocker'."
             )
         if kind == "handoff":
@@ -189,7 +202,14 @@ def describe_open_task(name: str, member: dict, task: dict) -> str:
         detail += " (invitation unused)"
     if task.get("blocked"):
         detail += " (blocked)"
+    if task.get("overdue"):
+        detail += " (overdue)"
     return detail
+
+
+def has_overdue_task(open_tasks: list[dict]) -> bool:
+    """Recognize an open task list that holds a task past its due time."""
+    return any(task.get("overdue") for task in open_tasks)
 
 
 def lead_task_guidance(
@@ -202,6 +222,8 @@ def lead_task_guidance(
         for task in member["open_tasks"]
     ]
     summary = f"Open tasks are {', '.join(descriptions)}."
+    if any(has_overdue_task(member["open_tasks"]) for member in owners.values()):
+        summary += f" {OVERDUE_LEAD_HELP}"
     idle_note = free_teammates_note(members, owners, me)
     if has_messages:
         return f"{summary}{idle_note} {NEXT_AFTER_MESSAGES}"
@@ -336,7 +358,11 @@ def worker_guidance(
     if has_messages:
         return _worker_message_guidance(open_tasks, action_hint)
     if any(not task.get("blocked") for task in open_tasks):
-        return "Continue your open tasks. Reply to each task with kind='done' or 'blocker'."
+        overdue = f" {OVERDUE_WORKER_HELP}" if has_overdue_task(open_tasks) else ""
+        return (
+            "Continue your open tasks. Reply to each task with kind='done' or 'blocker'."
+            f"{overdue}"
+        )
     if caller["state"] == "joined":
         return "You have not posted your part. Do the work and post your findings or blockers."
     if silent_waits >= _worker_idle_limit(members, me, caller["state"]):
@@ -537,8 +563,9 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
             "open_invite, or launch_participant (see list_plugins); retire unneeded peers with "
             "retire_participant. "
             f"{HTTP_BRIDGE_NOTE if http else SEPARATE_BRIDGE_WARNING}"
-            "Leads: assign complementary tasks (kind='task' with 'to'), take a substantive part "
-            "yourself, route blockers to a peer who can help, balance work across models using "
+            "Leads: assign complementary tasks (kind='task' with 'to' and due_minutes), take a "
+            f"substantive part yourself. {TASK_TIMELINE_HELP} Act on tasks that 'next' reports "
+            "as overdue. Also route blockers to a peer who can help, balance work across models using "
             "'team' and 'token_balance', and return one evidence-backed conclusion. Leave the "
             "conversation open unless your user explicitly asks to close it; if closed by "
             "mistake, a lead, co-lead, or Human can reopen it with reopen_conversation. "
@@ -577,6 +604,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
 
         Give the team one brief. Assign complementary tasks and take a part yourself.
+        You own the timeline: give each task due_minutes when you assign it.
         Do not call this from a VM or a hosted sandbox, unless the server instructions say
         that this bridge runs on your user's computer: chats on that computer cannot join a
         conversation created on a separate bridge.
@@ -720,6 +748,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         kind: models.PostKind = "note",
         to: models.Label | None = None,
         reply_to: models.MessageId | None = None,
+        due_minutes: models.DueMinutes | None = None,
     ) -> dict:
         """Post a message, assign a task, or hand off work within the conversation.
 
@@ -730,7 +759,9 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         In open discussion, share evidence with the peer who needs it as soon as you find it.
         Use kind='question' to reach the member who can answer, and 'reply_to' to link the
         answer to the question.
-        Leads assign kind='task' with 'to'. The owner replies to the task ID with kind='done'
+        Leads assign kind='task' with 'to' and due_minutes, the minutes the lead expects the
+        task to take. A task without due_minutes is rejected. Status and 'next' flag a task as
+        overdue after that time. The owner replies to the task ID with kind='done'
         to complete it or kind='blocker' to ask for help. To clear the blocker, only the owner
         can post kind='resume' with the original task ID in 'reply_to'. To offer a transfer,
         the owner posts kind='handoff' with 'to' and the task ID in 'reply_to'. The receiver
@@ -748,6 +779,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
                 kind=kind,
                 to=to,
                 reply_to=reply_to,
+                due_minutes=due_minutes,
             )
         )
         silent_waits.pop(hashlib.sha256(token.encode()).hexdigest(), None)
@@ -782,7 +814,9 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
 
     @server.tool()
     def conversation_status(token: models.Key) -> dict:
-        """See member activity and the IDs of open tasks by current owner.
+        """See member activity and the open tasks by current owner, with due times.
+
+        Each open task has its ID, its 'due' Unix time, and 'overdue' when that time has passed.
 
         A worker reading files might make no bridge calls for minutes. A large idle_seconds
         cannot tell you whether that worker's turn ended.
