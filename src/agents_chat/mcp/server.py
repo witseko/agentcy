@@ -25,6 +25,8 @@ from agents_chat.conversations.progress import (
     working_peers_without_tasks,
 )
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
+from agents_chat.mcp import http_transport
+from agents_chat.mcp.http_transport import HttpSettings
 from agents_chat.mcp.transport import exchange
 from agents_chat.tokens.settings import ModelName, TokenBudget, TokenCount
 
@@ -48,6 +50,16 @@ NEXT_AFTER_CLOSE = (
 )
 NEXT_AFTER_RETIRE = (
     "You have been retired from this conversation. Stop listening and report to your user."
+)
+SEPARATE_BRIDGE_WARNING = (
+    "If your client runs in a VM or a hosted sandbox, do not create a conversation: "
+    "that bridge is separate from the bridge on your user's computer, so local chats "
+    "cannot join it. Tell your user to start the conversation from a local chat. "
+)
+# A remote chat reaches the HTTP bridge through a tunnel, so the warning above does not apply.
+HTTP_BRIDGE_NOTE = (
+    "This bridge runs on your user's computer, also when your client runs in a VM or a hosted "
+    "sandbox, so you can create and join conversations here. "
 )
 BLOCKER_HELP = (
     "Ask a teammate who can clear the blocker. Post kind='question' with their name in 'to' "
@@ -505,8 +517,8 @@ async def read_member(
     )
 
 
-def serve(workspace: str, directory: Path | None = None) -> None:
-    """Bind a stdio MCP connection to one host-configured workspace."""
+def serve(workspace: str, directory: Path | None = None, http: HttpSettings | None = None) -> None:
+    """Bind one host-configured workspace to a stdio MCP connection, or to HTTP when set."""
     silent_waits: dict[str, int] = {}
     last_teams: dict[str, dict] = {}
     icon_png = files("agents_chat.mcp").joinpath("icon.png").read_bytes()
@@ -519,13 +531,12 @@ def serve(workspace: str, directory: Path | None = None) -> None:
                 sizes=["64x64"],
             )
         ],
+        transport_security=http_transport.transport_security(http) if http else None,
         instructions=(
             "Use one conversation and brief per team task. Invite chats via join codes, "
             "open_invite, or launch_participant (see list_plugins); retire unneeded peers with "
             "retire_participant. "
-            "If your client runs in a VM or a hosted sandbox, do not create a conversation: "
-            "that bridge is separate from the bridge on your user's computer, so local chats "
-            "cannot join it. Tell your user to start the conversation from a local chat. "
+            f"{HTTP_BRIDGE_NOTE if http else SEPARATE_BRIDGE_WARNING}"
             "Leads: assign complementary tasks (kind='task' with 'to'), take a substantive part "
             "yourself, route blockers to a peer who can help, balance work across models using "
             "'team' and 'token_balance', and return one evidence-backed conclusion. Leave the "
@@ -566,8 +577,9 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
 
         Give the team one brief. Assign complementary tasks and take a part yourself.
-        Do not call this from a VM or a hosted sandbox: chats on your user's computer
-        cannot join a conversation created there.
+        Do not call this from a VM or a hosted sandbox, unless the server instructions say
+        that this bridge runs on your user's computer: chats on that computer cannot join a
+        conversation created on a separate bridge.
         For an existing chat, give it the returned join_prompt with CODE replaced by its code.
         Set open_invite=True to also create a reusable room-level join code that works for
         everyone who joins (invitees may be omitted when open_invite=True).
@@ -841,4 +853,7 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             models.ReadClosed(workspace=workspace, conversation=conversation, after=after)
         )
 
-    server.run(transport="stdio")
+    if http:
+        http_transport.run(server, http)
+    else:
+        server.run(transport="stdio")

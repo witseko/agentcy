@@ -1,4 +1,4 @@
-"""Launch the local standard-input/output bridge for a desktop app or CLI, or the terminal UI."""
+"""Launch the bridge for a desktop app or CLI over stdio or HTTP, or the terminal UI."""
 
 import argparse
 import os
@@ -31,13 +31,36 @@ def start_shim(arguments: list[str]) -> None:
     parser.add_argument(
         "--workspace", type=Path, required=True, help="directory shared by the apps and CLIs"
     )
+    parser.add_argument(
+        "--http",
+        type=int,
+        metavar="PORT",
+        help="serve MCP over HTTP on 127.0.0.1:PORT in place of stdio, for a remote chat "
+        "behind a tunnel; needs a secret in AGENTS_CHAT_HTTP_TOKEN",
+    )
+    parser.add_argument(
+        "--http-public-host",
+        metavar="HOST",
+        help="host name of the tunnel that forwards to the HTTP port, for example "
+        "bridge.example.com",
+    )
     options = parser.parse_args(arguments)
     os.umask(0o077)
     directory = options.workspace.resolve(strict=True)
     # The UI path never loads the MCP server.
+    from agents_chat.mcp.http_transport import read_settings
     from agents_chat.mcp.server import serve
 
-    serve(workspace_key(directory), directory)
+    if options.http is None:
+        if options.http_public_host is not None:
+            parser.error("--http-public-host needs --http")
+        serve(workspace_key(directory), directory)
+        return
+    try:
+        http = read_settings(options.http, options.http_public_host)
+    except ValueError as error:
+        parser.error(str(error))
+    serve(workspace_key(directory), directory, http)
 
 
 def tui_executable() -> str:

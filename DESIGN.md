@@ -13,7 +13,7 @@ This document describes the planned first release. Start a task in a familiar ch
 
 ## Non-goals
 
-The first release does not include remote or multi-user access, a graphical interface for the human, cloud synchronization, committing to Git, or fresh runs that edit the workspace. The human participates through a chat or the terminal UI.
+The first release does not include multi-user access, a hosted or shared core, remote access other than the user's own remote chat through the [HTTP transport](#http-transport), a graphical interface for the human, cloud synchronization, committing to Git, or fresh runs that edit the workspace. The human participates through a chat or the terminal UI.
 
 ## Core and plugin interface
 
@@ -34,6 +34,12 @@ Use the Model Context Protocol (MCP) for both public interfaces. A desktop app o
 ### Process model
 
 Chats launch local MCP servers over stdio and stop them when the chat closes, while assignments, deadlines, and publications must outlive any single chat. Run one long-lived core per user. Each chat launches a small stdio shim that forwards to the core over a Unix socket in private local application data with owner-only permissions. The shim starts the core when it is not running, using a lock file so concurrent chats start one instance. Waiting reads sleep on a conversation condition in the core and release the database while they wait. The core exits when no conversation is open and no assignment or publication is pending. Measure the cold start from the first tool call.
+
+### HTTP transport
+
+A chat that runs in a provider's VM or hosted sandbox cannot launch the stdio shim on the user's computer. For such a chat the user runs `agents-chat --workspace DIR --http PORT`. This process serves the same tools over MCP Streamable HTTP at `/mcp` and forwards to the same core, so the workspace key comes from the directory on the user's computer and join codes work across local and remote chats.
+
+The process listens on the loopback interface only. The user exposes it through a tunnel with TLS and passes the tunnel's host name with `--http-public-host`. The process rejects every other Host header. Every request must carry `Authorization: Bearer` with the access token from `AGENTS_CHAT_HTTP_TOKEN`, a secret of at least 32 characters. The process compares it in constant time, answers 401 without it, never logs it, and removes it from its environment before it starts the core. The access token admits a caller to the tools of one workspace, which include starting fresh runs. Participant tokens keep their function inside a conversation.
 
 ### Participant identity
 

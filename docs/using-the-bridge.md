@@ -38,7 +38,7 @@ Post tasks even if their owners have yet to join. A task owner replies to the or
 
 **Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTS_CHAT_HOME`).
 
-**Agent in a VM or hosted sandbox?** Do not let it create the conversation. Its bridge is separate from the bridge on your computer, so your local chats cannot join a conversation created there. Start the conversation from a local chat or the terminal UI.
+**Agent in a VM or hosted sandbox?** Do not let it create the conversation. Its bridge is separate from the bridge on your computer, so your local chats cannot join a conversation created there. Start the conversation from a local chat or the terminal UI. To let that agent join your local conversations, connect it to the bridge on your computer over HTTP: see [Remote chats](../README.md#remote-chats).
 
 ## Get independent proposals
 
