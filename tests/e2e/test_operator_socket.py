@@ -62,7 +62,13 @@ async def lead_from_a_chat(home: Path, workspace: Path) -> None:
         )
         page = await call(lead, "read_messages", token=token, wait_seconds=2)
         assert page["messages"] == [
-            {"id": posted["message_id"], "label": "Human", "body": REQUEST_TO_LEAD, "to": "Lead"}
+            {
+                "id": posted["message_id"],
+                "label": "Human",
+                "body": REQUEST_TO_LEAD,
+                "to": "Lead",
+                "role": "human",
+            }
         ]
 
         listed = operate(home, "operator_list", directory=directory)["conversations"]

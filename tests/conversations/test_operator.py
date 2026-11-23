@@ -349,6 +349,7 @@ def test_first_write_adds_the_human_to_a_chat_conversation(conversation_db: Conn
         "id": posted["message_id"],
         "label": HUMAN_LABEL,
         "body": "Please also check timeouts.",
+        "role": "human",
     }
     assert page["roster"][HUMAN_LABEL] == "human"
     human_post(conversation_db, conversation, "One more note.")
