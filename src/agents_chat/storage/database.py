@@ -27,7 +27,7 @@ from agents_chat.conversations.tables import SUBMISSION_TARGET, metadata, propos
 from agents_chat.executables import find_on_path
 from agents_chat.tokens.tables import participant_usage
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -168,3 +168,5 @@ def upgrade(connection: Connection, version: int) -> None:
         create_table(operations, participant_usage)
     if version < 12:
         operations.add_column("message", Column("due_minutes", Integer))
+    if version < 13:
+        operations.add_column("conversation", Column("title", String))

@@ -63,6 +63,7 @@ type Operator interface {
 	Close(request CloseRequest) (ClosedConversation, error)
 	Reopen(request ReopenRequest) (ReopenedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
+	Rename(request RenameRequest) (RenamedConversation, error)
 	Search(request SearchRequest) (SearchResults, error)
 }
 
@@ -170,6 +171,13 @@ type ArchiveRequest struct {
 	Archived     bool   `json:"archived"`
 	// DeprecateTasks ends every unfinished task as deprecated in the same step.
 	DeprecateTasks bool `json:"deprecate_tasks,omitempty"`
+}
+
+// RenameRequest sets a custom title. A nil Title uses the first line of the brief again.
+type RenameRequest struct {
+	Directory    string  `json:"directory"`
+	Conversation string  `json:"conversation"`
+	Title        *string `json:"title"`
 }
 
 // SearchRequest finds words in every brief and published message of the workspace.
@@ -316,9 +324,10 @@ type TranscriptMessage struct {
 	ReplyTo *int64 `json:"reply_to,omitempty"`
 }
 
-// ConversationView holds the brief, status and one transcript page.
+// ConversationView holds the title, brief, status and one transcript page.
 type ConversationView struct {
 	Conversation  string              `json:"conversation"`
+	Title         string              `json:"title"`
 	Brief         string              `json:"brief"`
 	Created       *int64              `json:"created"`
 	Archived      bool                `json:"archived"`
@@ -397,6 +406,11 @@ type ReopenedConversation struct {
 // ArchivedConversation reports whether the conversation is now in the archive.
 type ArchivedConversation struct {
 	Archived bool `json:"archived"`
+}
+
+// RenamedConversation holds the title that list views now show.
+type RenamedConversation struct {
+	Title string `json:"title"`
 }
 
 // SearchHit locates one match. A match in the brief has no message ID or author.
@@ -555,6 +569,13 @@ func (c *Client) Reopen(request ReopenRequest) (ReopenedConversation, error) {
 func (c *Client) Archive(request ArchiveRequest) (ArchivedConversation, error) {
 	var result ArchivedConversation
 	err := c.call("operator_archive", request, &result)
+	return result, err
+}
+
+// Rename sets or clears a conversation's custom title.
+func (c *Client) Rename(request RenameRequest) (RenamedConversation, error) {
+	var result RenamedConversation
+	err := c.call("operator_rename", request, &result)
 	return result, err
 }
 

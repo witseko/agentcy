@@ -135,6 +135,16 @@ func TestClientDrivesARealCore(t *testing.T) {
 		t.Fatalf("List() = %+v, %v", listed, err)
 	}
 
+	title := "Retry audit"
+	renamed, err := client.Rename(RenameRequest{Directory: workspace, Conversation: conversation, Title: &title})
+	if err != nil || renamed.Title != title {
+		t.Fatalf("Rename() = %+v, %v", renamed, err)
+	}
+	listed, err = client.List(ListRequest{Directory: workspace})
+	if err != nil || len(listed.Conversations) != 1 || listed.Conversations[0].Title != title {
+		t.Fatalf("List() after rename = %+v, %v", listed, err)
+	}
+
 	closed, err := client.Close(CloseRequest{Directory: workspace, Conversation: conversation, Summary: "Done."})
 	if err != nil || !closed.Closed {
 		t.Fatalf("Close() = %+v, %v", closed, err)

@@ -286,10 +286,14 @@
     },
     "ConversationView": {
       "additionalProperties": false,
-      "description": "Return the brief, status and one transcript page. Pass cursor as the next after.",
+      "description": "Return the title, brief, status and one transcript page. Pass cursor as the next after.",
       "properties": {
         "conversation": {
           "title": "Conversation",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
           "type": "string"
         },
         "brief": {
@@ -344,6 +348,7 @@
       },
       "required": [
         "conversation",
+        "title",
         "brief",
         "created",
         "archived",
@@ -1444,6 +1449,78 @@
       "title": "PostedMessage",
       "type": "object"
     },
+    "RenameConversation": {
+      "additionalProperties": false,
+      "description": "Set a custom title, or pass null to use the first line of the brief again.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_rename",
+          "title": "Action",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "title"
+      ],
+      "title": "RenameConversation",
+      "type": "object"
+    },
+    "RenamedConversation": {
+      "additionalProperties": false,
+      "description": "Return the title that list views now show.",
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "title": "RenamedConversation",
+      "type": "object"
+    },
     "ReopenConversation": {
       "additionalProperties": false,
       "description": "Reopen a closed conversation and record an optional note as the human's message.",
@@ -2316,6 +2393,9 @@
     },
     {
       "$ref": "#/$defs/ArchiveConversation"
+    },
+    {
+      "$ref": "#/$defs/RenameConversation"
     },
     {
       "$ref": "#/$defs/SearchConversations"

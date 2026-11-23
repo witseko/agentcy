@@ -159,6 +159,7 @@ type model struct {
 	search       searchState
 	inviteWindow inviteState
 	contextMenu  contextMenuState
+	rename       renameState
 	// popup is the error or success notice drawn over the screen.
 	popup popupState
 	// taskAlert stops a close or an archive while tasks are unfinished.
@@ -271,6 +272,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onArchiveCheck(msg)
 	case archivedMsg:
 		return m.onArchived(msg)
+	case renamedMsg:
+		return m.onRenamed(msg)
 	case searchedMsg:
 		return m.onSearched(msg), nil
 	case copiedMsg:
@@ -292,6 +295,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.contextMenu.open {
 		return m.contextMenuKey(msg)
 	}
+	if m.rename.open {
+		return m.renameKey(msg)
+	}
 	switch m.screen {
 	case screenNew:
 		return m.formKey(msg)
@@ -311,6 +317,10 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // text field that has focus.
 func (m model) updateFocusedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var command tea.Cmd
+	if m.rename.open {
+		m.rename.input, command = m.rename.input.Update(msg)
+		return m, command
+	}
 	switch m.screen {
 	case screenNew:
 		m.form, command = m.form.updateFocused(msg)
@@ -410,6 +420,9 @@ func (m *model) resizeInputs() {
 		m.chat.summary.SetWidth(max(popupWidth(m.width, popupMaxWidth)-4-len("Summary ")-1, 10))
 	}
 	m.search.input.SetWidth(max(center-6, 10))
+	if m.rename.open {
+		m.rename.input.SetWidth(max(popupWidth(m.width, popupMaxWidth)-4-len("Title ")-1, 10))
+	}
 }
 
 // columnWidths returns the widths of the chat list, the center and the team panel. A side
@@ -446,6 +459,10 @@ func (m model) View() tea.View {
 	}
 	if m.screen == screenChat && (m.chat.closing || m.chat.retiring != "") {
 		body = m.drawConfirm(body)
+	}
+	if m.rename.open {
+		body = m.drawRename(body)
+		help = []hint{{"⏎", "rename"}, {"esc", "cancel"}}
 	}
 	if m.contextMenu.open {
 		body = m.drawContextMenu(body)

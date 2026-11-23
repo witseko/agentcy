@@ -157,6 +157,7 @@
     },
     "result": {
       "conversation": "0123456789abcdef01234567",
+      "title": "Review the retry behavior of the worker.",
       "brief": "Review the retry behavior of the worker.\nCite files and tests.",
       "created": 1795000000,
       "archived": false,
@@ -226,6 +227,18 @@
       "archived": true
     },
     "result": {"archived": true}
+  },
+  {
+    "action": "operator_rename",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_rename",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "title": "Retry review"
+    },
+    "result": {"title": "Retry review"}
   },
   {
     "action": "operator_list",

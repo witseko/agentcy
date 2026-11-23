@@ -167,6 +167,13 @@ class ArchiveConversation(ConversationRequest):
     deprecate_tasks: bool = False
 
 
+class RenameConversation(ConversationRequest):
+    """Set a custom title, or pass null to use the first line of the brief again."""
+
+    action: Literal["operator_rename"]
+    title: models.Title | None
+
+
 class SearchConversations(WorkspaceRequest):
     """Find words in the briefs and published messages of every conversation in the workspace."""
 
@@ -216,6 +223,7 @@ OperatorAction = (
     | CloseConversation
     | ReopenConversation
     | ArchiveConversation
+    | RenameConversation
     | SearchConversations
     | ListPlugins
     | SetMemberBudget
@@ -316,9 +324,10 @@ class TranscriptMessage(Result):
 
 
 class ConversationView(Result):
-    """Return the brief, status and one transcript page. Pass cursor as the next after."""
+    """Return the title, brief, status and one transcript page. Pass cursor as the next after."""
 
     conversation: str
+    title: str
     brief: str
     created: int | None
     archived: bool
@@ -410,6 +419,12 @@ class ArchivedConversation(Result):
     archived: bool
 
 
+class RenamedConversation(Result):
+    """Return the title that list views now show."""
+
+    title: str
+
+
 class SearchHit(Result):
     """Locate one match. A match in the brief has no message ID or author."""
 
@@ -498,6 +513,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     CloseConversation: ClosedConversation,
     ReopenConversation: ReopenedConversation,
     ArchiveConversation: ArchivedConversation,
+    RenameConversation: RenamedConversation,
     SearchConversations: SearchResults,
     ListPlugins: PluginList,
     SetMemberBudget: MemberBudgetUpdated,

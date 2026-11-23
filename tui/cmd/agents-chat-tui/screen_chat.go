@@ -359,6 +359,7 @@ func (m model) onShowStatus(msg showMsg) (tea.Model, tea.Cmd) {
 	listChanged := m.chat.loaded && (rosterChanged(prevMembers, msg.view.Status.Members) ||
 		prevOpen != msg.view.Status.Open ||
 		prevArchived != msg.view.Archived)
+	m.chat.view.Title = msg.view.Title
 	m.chat.view.Brief = msg.view.Brief
 	m.chat.view.Created = msg.view.Created
 	m.chat.view.Status = msg.view.Status
@@ -726,7 +727,7 @@ func (m model) chatListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "n":
 		return m.openForm()
-	case "/", "a", "v":
+	case "/", "a", "v", "e":
 		return m.listAction(msg.String())
 	case "esc":
 		return m.setChatFocus(focusInput)
@@ -1420,12 +1421,12 @@ func (m model) archivedHint() string {
 	return "hide archived"
 }
 
-// listHints returns the search, archive and view hints of the chat list.
+// listHints returns the search, archive, rename and view hints of the chat list.
 func (m model) listHints() []hint {
 	if m.list.archived {
-		return []hint{{"/", "search"}, {"a", "unarchive"}, {"v", "active chats"}}
+		return []hint{{"/", "search"}, {"a", "unarchive"}, {"e", "rename"}, {"v", "active chats"}}
 	}
-	return []hint{{"/", "search"}, {"a", "archive"}, {"v", "archived chats"}}
+	return []hint{{"/", "search"}, {"a", "archive"}, {"e", "rename"}, {"v", "archived chats"}}
 }
 
 // mouseHint names what ctrl+o does now.
@@ -1520,7 +1521,7 @@ const minTitleWidth = 20
 // action buttons, so the title stays readable.
 func (m model) headerLayout(width int) headerParts {
 	view := m.chat.view
-	parts := headerParts{title: cleanLine(strings.SplitN(view.Brief, "\n", 2)[0]), state: badge("OPEN", colorOK)}
+	parts := headerParts{title: chatTitle(view), state: badge("OPEN", colorOK)}
 	switch {
 	case !m.chat.loaded:
 		parts.state, parts.title = badge("LOADING", colorDim), "Loading the chat"
@@ -1554,6 +1555,15 @@ func (m model) headerLayout(width int) headerParts {
 	}
 	parts.title = ansi.Truncate(parts.title, max(room, 10), "…")
 	return parts
+}
+
+// chatTitle returns the title the core sent. A core from before titles sends none, so the
+// first line of the brief stands in.
+func chatTitle(view ConversationView) string {
+	if view.Title != "" {
+		return cleanLine(view.Title)
+	}
+	return cleanLine(strings.SplitN(view.Brief, "\n", 2)[0])
 }
 
 // headerButtons draws the chat actions at the right end of the header. A closed chat can

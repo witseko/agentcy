@@ -8,6 +8,17 @@ from agents_chat.tokens.settings import ModelName, TokenBudget, TokenCount
 
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Body = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)]
+TITLE_LENGTH = 80
+# One line without control characters, short enough for a list view to show whole.
+Title = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=TITLE_LENGTH,
+        pattern=r"^[^\x00-\x1f\x7f]+$",
+    ),
+]
 Key = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 Cursor = Annotated[int, Field(ge=0, le=2**63 - 1)]
 ConversationId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{24}$")]

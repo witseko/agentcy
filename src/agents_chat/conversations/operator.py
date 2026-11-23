@@ -59,9 +59,9 @@ def ready_open_prompt(code: str, brief: str) -> str:
     return repository.open_join_prompt(brief, code=code)
 
 
-def title(brief_start: str) -> str:
-    """Shorten the first line of a brief for a list view."""
-    return repository.session_title(brief_start)
+def title(title_source: str) -> str:
+    """Shorten a custom title or the first line of a brief for a list view."""
+    return repository.session_title(title_source)
 
 
 def list_conversations(connection: Connection, archived: bool = False) -> dict:
@@ -80,7 +80,7 @@ def list_conversations(connection: Connection, archived: bool = False) -> dict:
     rows = connection.execute(
         select(
             room.c.id,
-            func.substr(room.c.brief, 1, TITLE_LENGTH + 1).label("brief_start"),
+            repository.title_source(),
             room.c.open,
             room.c.created,
             members.label("members"),
@@ -98,7 +98,7 @@ def list_conversations(connection: Connection, archived: bool = False) -> dict:
         "conversations": [
             {
                 "conversation": row["id"],
-                "title": title(row["brief_start"]),
+                "title": title(row["title_source"]),
                 "open": bool(row["open"]),
                 "created": row["created"],
                 "members": row["members"],
@@ -125,6 +125,7 @@ def human_actor(connection: Connection, conversation_id: str) -> dict:
                 room.c.created,
                 room.c.archived,
                 room.c.open_invite_hash,
+                room.c.title,
                 member.c.id,
             )
             .select_from(
@@ -269,6 +270,7 @@ def show(connection: Connection, request: operator_models.ShowConversation) -> d
     status.pop("participant")
     return {
         "conversation": request.conversation,
+        "title": title(human["title"] or human["brief"]),
         "brief": human["brief"],
         "created": human["created"],
         "archived": bool(human["archived"]),
@@ -375,16 +377,25 @@ def archive(connection: Connection, request: operator_models.ArchiveConversation
     return {"archived": request.archived}
 
 
+def rename(connection: Connection, request: operator_models.RenameConversation) -> dict:
+    """Store a custom title, or clear it so the title follows the brief again."""
+    human = human_actor(connection, request.conversation)
+    connection.execute(
+        update(room).where(room.c.id == request.conversation).values(title=request.title)
+    )
+    return {"title": title(request.title or human["brief"])}
+
+
 def search_conversations(
     connection: Connection, request: operator_models.SearchConversations
 ) -> dict:
     """Find the query's words in every brief and published message, best match first."""
-    matches = search.find_matches(connection, request.query, TITLE_LENGTH + 1)
+    matches = search.find_matches(connection, request.query, repository.title_source())
     return {
         "hits": [
             {
                 "conversation": match["room"],
-                "title": title(match["brief_start"]),
+                "title": title(match["title_source"]),
                 "archived": bool(match["archived"]),
                 "message_id": match["message_id"],
                 "author": match["author"],
@@ -412,6 +423,8 @@ def _apply_read_or_workspace_action(
         return search_conversations(connection, request)
     if isinstance(request, operator_models.ArchiveConversation):
         return archive(connection, request)
+    if isinstance(request, operator_models.RenameConversation):
+        return rename(connection, request)
     if isinstance(request, operator_models.ShowConversation):
         return show(connection, request)
     if isinstance(request, operator_models.ListTasks):

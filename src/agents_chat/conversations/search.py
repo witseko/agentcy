@@ -3,6 +3,7 @@
 import re
 
 from sqlalchemy import Connection, func, literal_column, select
+from sqlalchemy.sql import ColumnElement
 
 from agents_chat.conversations.search_tables import conversation_search
 from agents_chat.conversations.tables import member, message, room
@@ -24,17 +25,20 @@ def match_expression(query: str) -> str:
     return " ".join(f'"{term}"*' for term in terms)
 
 
-def find_matches(connection: Connection, query: str, brief_length: int) -> list[dict]:
+def find_matches(
+    connection: Connection, query: str, title_source: ColumnElement[str]
+) -> list[dict]:
     """Return the best matches with their conversation, author, time and a short snippet.
 
     A brief match has no message, so its time is the conversation's created time.
+    ``title_source`` selects the text that the caller shortens into the hit's title.
     """
     index = literal_column("conversation_search")
     snippet = func.snippet(index, 0, "", "", "…", SNIPPET_TOKENS)
     rows = connection.execute(
         select(
             conversation_search.c.room,
-            func.substr(room.c.brief, 1, brief_length).label("brief_start"),
+            title_source,
             room.c.archived,
             conversation_search.c.message_id,
             member.c.label.label("author"),

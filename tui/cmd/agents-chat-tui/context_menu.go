@@ -492,6 +492,10 @@ func (m model) listItemMenuItems(item ConversationSummary) []contextItem {
 			id: "list:copy-title", label: "Copy title",
 			action: func(m model) (tea.Model, tea.Cmd) { return m.copyText("title", item.Title) },
 		},
+		{
+			id: "list:rename", label: "Rename chat…", key: "e",
+			action: func(m model) (tea.Model, tea.Cmd) { return m.startRename(item.Conversation, item.Title) },
+		},
 	}
 	if !item.Open {
 		items = append(items, contextItem{
@@ -1024,6 +1028,12 @@ func (m model) chatConversationMenuItems() []contextItem {
 			id: "chat:copy-brief", label: "Copy brief",
 			action: func(m model) (tea.Model, tea.Cmd) { return m.copyText("brief", m.chat.view.Brief) },
 		},
+	}
+	if m.chat.loaded {
+		items = append(items, contextItem{
+			id: "chat:rename", label: "Rename chat…",
+			action: func(m model) (tea.Model, tea.Cmd) { return m.startRename(m.chat.id, chatTitle(m.chat.view)) },
+		})
 	}
 	if m.chat.tab == tabTasks {
 		items = append(items, contextItem{
