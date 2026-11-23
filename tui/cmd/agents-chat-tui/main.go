@@ -12,10 +12,18 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// main parses the workspace, then runs the UI until the user quits.
+// version is the release version. The Makefile sets it at build time with -ldflags.
+var version = "dev"
+
+// main parses the flags, then runs the UI until the user quits.
 func main() {
 	workspace := flag.String("workspace", ".", "checkout directory whose conversations to manage")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("agents-chat-tui", version)
+		return
+	}
 	if err := run(*workspace); err != nil {
 		fmt.Fprintln(os.Stderr, "agents-chat-tui:", err)
 		os.Exit(1)

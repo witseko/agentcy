@@ -114,6 +114,11 @@ jobs:
         run: go test ./...
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Check that the committed binaries match the source
+        working-directory: .
+        run: |
+          make tui-binaries
+          git diff --exit-code -- bin
 
   e2e:
     name: End-to-end tests (${{ matrix.os }})

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish the GitHub release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Check that the tag matches the project version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version in pyproject.toml"
+            exit 1
+          fi
+      - name: Check that the committed binaries match the source
+        run: |
+          make tui-binaries
+          git diff --exit-code -- bin
+      - name: Collect the release files
+        run: |
+          mkdir "$RUNNER_TEMP/release"
+          for platform in bin/*/; do
+            platform="$(basename "$platform")"
+            cp "bin/$platform/agents-chat-tui" "$RUNNER_TEMP/release/agents-chat-tui-$platform"
+          done
+          cd "$RUNNER_TEMP/release"
+          sha256sum agents-chat-tui-* > SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --title "$GITHUB_REF_NAME" "$RUNNER_TEMP"/release/*

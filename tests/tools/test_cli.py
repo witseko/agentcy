@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -187,3 +188,12 @@ def test_public_host_flag_needs_the_http_flag(
 
     with pytest.raises(SystemExit):
         cli.main(["--workspace", str(tmp_path), "--http-public-host", "bridge.example.com"])
+
+
+def test_version_flag_prints_the_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
+    """`--version` prints the package version and exits without a workspace."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["--version"])
+
+    assert stopped.value.code == 0
+    assert capsys.readouterr().out == f"agents-chat {version('agents-chat')}\n"
