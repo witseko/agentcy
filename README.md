@@ -54,7 +54,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 - Python 3.12 or later.
 - [uv](https://docs.astral.sh/uv/).
 - Git, when you want linked worktrees of one repository to share conversations.
-- Go 1.26 or later, to build the terminal UI.
+- Go 1.26 or later, only when you want to build the terminal UI from source. The repository includes a prebuilt binary for macOS and Linux on arm64 and amd64.
 - `make`, which macOS and most Linux systems include.
 
 ## Install
@@ -65,13 +65,13 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
    git clone https://github.com/witseko/agents-chat.git
    ```
 
-2. Run this command in the clone. It installs the Python dependencies into `.venv` and builds the terminal UI into `.venv/bin`:
+2. Run this command in the clone. It installs the Python dependencies and the terminal UI into `.venv`:
 
    ```bash
    make setup
    ```
 
-   Without Go, run `make deps` to install the bridge alone.
+   With Go installed, it builds the terminal UI from source. Without Go, it installs the prebuilt binary from `bin/`.
 
 3. Register the server in each app or CLI (next section).
 
@@ -207,19 +207,60 @@ The bridge listens on `127.0.0.1` only and answers 401 without the token. Anyone
 
 For a chat without local MCP support, ask a connected chat for the brief, paste it into the other chat, and paste the reply back with its source named.
 
+## Versions and releases
+
+`pyproject.toml` holds the version. The bridge and the terminal UI both report it:
+
+```bash
+.venv/bin/agents-chat --version
+```
+
+```bash
+.venv/bin/agents-chat-tui --version
+```
+
+To make a release:
+
+1. Set the new version and rebuild the binaries:
+
+   ```bash
+   make release VERSION=0.0.2
+   ```
+
+2. Commit the changes and merge them into `main`.
+3. Tag that commit and push the tag:
+
+   ```bash
+   git tag v0.0.2 && git push origin v0.0.2
+   ```
+
+The tag starts the release workflow. It checks that the tag matches the version and that the committed binaries match the source. Then it publishes a GitHub release with the four binaries and a `SHA256SUMS` file.
+
 ## Terminal UI
 
 The terminal UI lets you start, watch, and close conversations without a kickoff chat.
 
 ### Build it
 
-`make setup` builds it. To rebuild only the UI after a change, run this in the clone:
+`make setup` installs it. To rebuild only the UI after a change, run this in the clone:
 
 ```bash
 make tui
 ```
 
 The binary goes to `.venv/bin/agents-chat-tui`, where `agents-chat ui` finds it. To use a binary elsewhere, set `AGENTS_CHAT_TUI` to its absolute path.
+
+### Prebuilt binaries
+
+The repository holds one prebuilt binary for each platform in `bin/<os>-<arch>/agents-chat-tui`. `make tui` installs the one for your machine when Go is not installed.
+
+After you change the terminal UI source, rebuild all of them and commit the result:
+
+```bash
+make tui-binaries
+```
+
+The build is reproducible: the same source, version, and Go release give the same bytes on every machine. CI rebuilds the binaries with Go 1.27.4 and fails when they differ from the committed ones, so build them with that Go release.
 
 ### Start it
 

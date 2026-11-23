@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 from agents_chat.executables import find_on_path
@@ -28,6 +29,9 @@ def main(arguments: list[str] | None = None) -> None:
 def start_shim(arguments: list[str]) -> None:
     """Start a shim for the workspace chosen in the host's MCP settings."""
     parser = argparse.ArgumentParser(prog="agents-chat", description=__doc__)
+    parser.add_argument(
+        "--version", action="version", version=f"agents-chat {version('agents-chat')}"
+    )
     parser.add_argument(
         "--workspace", type=Path, required=True, help="directory shared by the apps and CLIs"
     )
