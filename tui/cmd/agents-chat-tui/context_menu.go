@@ -81,6 +81,7 @@ func (m model) onTextCopied(msg textCopiedMsg) model {
 // prefillComposer switches to the Chat tab input, fills text, and optionally shows a notice.
 func (m model) prefillComposer(text string, notice string) (tea.Model, tea.Cmd) {
 	m.chat.closing = false
+	m.chat.deprecateOnClose = false
 	m.chat.retiring = ""
 	m.chat.tab = tabChat
 	m.chat.input.SetValue(text)
@@ -505,7 +506,7 @@ func (m model) listItemMenuItems(item ConversationSummary) []contextItem {
 		}
 		items = append(items, contextItem{
 			id: "list:archive", label: label, key: "a",
-			action: func(m model) (tea.Model, tea.Cmd) { return m, m.archive(item.Conversation, targetArchived) },
+			action: func(m model) (tea.Model, tea.Cmd) { return m.requestArchive(item.Conversation, targetArchived) },
 		})
 	} else if m.screen == screenChat && m.chat.id == item.Conversation {
 		items = append(items, contextItem{
@@ -1057,7 +1058,7 @@ func (m model) chatConversationMenuItems() []contextItem {
 		}
 		items = append(items, contextItem{
 			id: "chat:archive", label: label,
-			action: func(m model) (tea.Model, tea.Cmd) { return m, m.archive(m.chat.id, targetArchived) },
+			action: func(m model) (tea.Model, tea.Cmd) { return m.requestArchive(m.chat.id, targetArchived) },
 		})
 	}
 	return items

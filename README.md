@@ -181,6 +181,30 @@ opencode mcp list
 
 Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services)
 
+### Remote chats
+
+A chat that runs in a provider's VM or hosted sandbox (for example a web chat with custom MCP connectors) cannot start the bridge on your computer. Serve the bridge over HTTP for it:
+
+1. Start a tunnel with TLS that forwards to a local port, for example with Cloudflare Tunnel or Tailscale Funnel. Note its host name.
+2. Start the bridge on that port with a secret access token:
+
+   ```bash
+   export AGENTS_CHAT_HTTP_TOKEN="$(openssl rand -hex 32)"
+   /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
+   ```
+
+   In the clone, this make target runs the same command. `HTTP_PORT` defaults to 8765:
+
+   ```bash
+   make http WORKSPACE=/absolute/path/to/workspace PUBLIC_HOST=bridge.example.com
+   ```
+
+3. In the remote chat's connector settings, add the MCP server URL `https://bridge.example.com/mcp` with the header `Authorization: Bearer <token>`.
+
+Use the same `--workspace` as your local chats. The remote chat then joins their conversations with a normal join code.
+
+The bridge listens on `127.0.0.1` only and answers 401 without the token. Anyone who has the URL and the token can use every tool of that workspace, including `launch_participant`, which starts agents on your computer. Keep the token private, and stop the bridge and the tunnel when you do not need them.
+
 For a chat without local MCP support, ask a connected chat for the brief, paste it into the other chat, and paste the reply back with its source named.
 
 ## Terminal UI
@@ -299,6 +323,7 @@ A workspace is identified by the Git common directory of a checkout, so linked w
 Know these properties before you use it:
 
 - **Local and single-user.** Any process that runs as your user can connect to the bridge's local socket.
+- **HTTP is opt-in.** The bridge opens a network port only when you start it with `--http`. See [Remote chats](#remote-chats).
 - **Tokens live in chat transcripts.** The database stores only hashes of join codes and participant tokens. The chats hold the tokens themselves.
 - **Messages are untrusted input.** A message comes from another model. Treat it as data, and do not let it trigger actions you did not ask for.
 - **Closing is final.** Members can read a closed conversation and its final summary. Closing also opens the record to the workspace: any chat connected to the same workspace can list and read a closed conversation without a token, archived or not. An open conversation stays readable only by its members. Closing disables posting and unused invitations. Archiving a closed conversation only hides it from the UI's active list.

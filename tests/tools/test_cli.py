@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from agents_chat.mcp import server
+from agents_chat.mcp.http_transport import HttpSettings
 from agents_chat.storage.database import workspace_key
 from agents_chat.tools import cli
 
@@ -144,3 +145,45 @@ def test_cli_import_leaves_the_mcp_server_unloaded() -> None:
     # The test's own interpreter runs a fixed script with no shell.
     result = subprocess.run([sys.executable, "-I", "-c", check], check=False)  # noqa: S603
     assert result.returncode == 0
+
+
+def test_http_flag_needs_an_access_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    private_home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The bridge refuses to listen on HTTP without a secret in the environment."""
+    monkeypatch.delenv("AGENTS_CHAT_HTTP_TOKEN", raising=False)
+    monkeypatch.setattr(server, "serve", lambda *arguments: pytest.fail("bridge started"))
+
+    with pytest.raises(SystemExit):
+        cli.main(["--workspace", str(tmp_path), "--http", "8765"])
+
+    assert "AGENTS_CHAT_HTTP_TOKEN" in capsys.readouterr().err
+
+
+def test_http_flag_starts_the_bridge_with_http_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
+) -> None:
+    """`--http PORT` passes the port, the token, and the tunnel host name to the server."""
+    monkeypatch.setenv("AGENTS_CHAT_HTTP_TOKEN", "t" * 32)
+    calls = []
+    monkeypatch.setattr(server, "serve", lambda *arguments: calls.append(arguments))
+
+    cli.main(
+        ["--workspace", str(tmp_path), "--http", "8765", "--http-public-host", "bridge.example.com"]
+    )
+
+    settings = HttpSettings(8765, "t" * 32, "bridge.example.com")
+    assert calls == [(workspace_key(tmp_path), tmp_path.resolve(), settings)]
+
+
+def test_public_host_flag_needs_the_http_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
+) -> None:
+    """A tunnel host name has no meaning for the stdio shim."""
+    monkeypatch.setattr(server, "serve", lambda *arguments: pytest.fail("bridge started"))
+
+    with pytest.raises(SystemExit):
+        cli.main(["--workspace", str(tmp_path), "--http-public-host", "bridge.example.com"])

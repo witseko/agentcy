@@ -46,7 +46,7 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_plugins` | List configured plugin names and models. Takes no `directory`. |
 | `operator_list` | List up to 100 active conversations, newest first. Pass `archived: true` to list archived ones instead. A checkout without a store lists none. |
 | `operator_show` | Return the brief, member status, and one page of messages: forward after `after`, the latest page with `tail: true`, or an older page before `before`. |
-| `operator_tasks` | List every task in a conversation with its title, full description, current owner, state (`open`, `blocked`, or `done`), pending handoff target if any, due time (`due`, Unix seconds) and `overdue` flag when the lead's timeline has passed, and chronological timeline of task events and replies. |
+| `operator_tasks` | List every task in a conversation with its title, full description, current owner, state (`open`, `blocked`, `done`, or `deprecated`), pending handoff target if any, due time (`due`, Unix seconds) and `overdue` flag when the lead's timeline has passed, and chronological timeline of task events and replies. |
 | `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. Set `open_invite: true` to also create a reusable room-level join code (and allow zero preset `invitees`). |
 | `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
 | `operator_open_invite` | Enable, rotate (`enabled: true`), or disable (`enabled: false`) a reusable room-level join code that works for everyone who joins until closed, rotated, or revoked. |
@@ -54,9 +54,9 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_retire` | Retire a participant from an open conversation. Expires unused codes, stops writes, and cancels any active fresh run. Moves unfinished tasks to the least busy available worker (joined, invited, or launched), or to the lead when none is available. Rejects retiring the lead. |
 | `operator_set_role` | Change an active participant's role (`lead`, `co-lead`, or `worker`). Setting `lead` demotes any previous lead or co-lead to `worker` while keeping them active. |
 | `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. The core rejects `due_minutes` here: only a lead's `task` accepts it. |
-| `operator_close` | Close the conversation. An optional summary becomes the human's message. |
+| `operator_close` | Close the conversation. An optional summary becomes the human's message. With `deprecate_tasks: true`, every unfinished task ends as `deprecated` in the same step: each gets a `deprecate` message from the human. |
 | `operator_reopen` | Reopen a closed conversation (unarchiving it if archived). An optional note becomes the human's message. Previously expired join codes stay expired. |
-| `operator_archive` | Archive a closed conversation with `archived: true`, or return it to the active list with `archived: false`. Members keep read access. |
+| `operator_archive` | Archive a closed conversation with `archived: true`, or return it to the active list with `archived: false`. Members keep read access. `deprecate_tasks: true` works as in `operator_close`. |
 | `operator_search` | Find every word of `query` in the briefs and published messages of all conversations, archived ones included. Each word also matches longer words. Returns up to 50 hits, best first, each with the conversation, title, archived flag, message ID, author, time, and a short snippet. A brief hit has no message ID or author. |
 
 The human is the member `Human` with role and state `human`. No model can take that name. The

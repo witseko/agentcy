@@ -2043,3 +2043,110 @@ func TestTaskViewsShowDueTimeAndOverdueState(t *testing.T) {
 		t.Fatalf("task without a due time shows one:\n%s", onTime)
 	}
 }
+
+// chatWithOpenTasks returns an open chat in which the reviewer owns two unfinished tasks.
+func chatWithOpenTasks(t *testing.T, fake *fakeOperator) model {
+	t.Helper()
+	m := chatModel(t, fake)
+	fake.view.Status.Members["Reviewer"] = MemberStatus{
+		Role: "worker", State: "joined", OpenTasks: []OpenTask{{ID: 3}, {ID: 5}},
+	}
+	m, command := m.pollChat()
+	return drive(t, m, command)
+}
+
+func TestCloseWithOpenTasksAlertsAndDeprecatesOnConfirm(t *testing.T) {
+	fake := &fakeOperator{}
+	m := sized(chatWithOpenTasks(t, fake), 120, 30)
+
+	m, _ = press(t, m, "ctrl+x")
+	if !m.taskAlert.open || m.chat.closing {
+		t.Fatalf("close with open tasks did not alert: alert=%+v closing=%v", m.taskAlert, m.chat.closing)
+	}
+	if content := ansi.Strip(m.View().Content); !strings.Contains(content, "2 tasks are still open") {
+		t.Fatalf("alert does not name the open tasks:\n%s", content)
+	}
+	m, _ = press(t, m, "enter")
+	if !m.taskAlert.open || len(fake.closes) != 0 {
+		t.Fatalf("enter passed the alert: alert=%+v closes=%+v", m.taskAlert, fake.closes)
+	}
+	m, _ = press(t, m, "esc")
+	if m.taskAlert.open || m.chat.closing || len(fake.closes) != 0 {
+		t.Fatalf("esc did not cancel the close: alert=%+v closes=%+v", m.taskAlert, fake.closes)
+	}
+
+	m, _ = press(t, m, "ctrl+x")
+	m = typeText(t, m, "d")
+	if m.taskAlert.open || !m.chat.closing {
+		t.Fatalf("d did not continue to the close confirmation: alert=%+v", m.taskAlert)
+	}
+	if content := ansi.Strip(m.View().Content); !strings.Contains(content, "open tasks become deprecated") {
+		t.Fatalf("confirmation does not announce the deprecation:\n%s", content)
+	}
+	m, command := press(t, m, "enter")
+	drive(t, m, command)
+	want := CloseRequest{Directory: "/work", Conversation: testConversation, DeprecateTasks: true}
+	if len(fake.closes) != 1 || fake.closes[0] != want {
+		t.Fatalf("closes = %+v, want %+v", fake.closes, want)
+	}
+}
+
+func TestOpenTasksAlertOpensTheTasksTab(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatWithOpenTasks(t, fake)
+
+	m, _ = press(t, m, "ctrl+x")
+	m = typeText(t, m, "t")
+	if m.taskAlert.open || m.chat.closing || m.chat.tab != tabTasks || m.chat.tasks.filter != filterOpen {
+		t.Fatalf("t did not open the open tasks: alert=%+v tab=%v", m.taskAlert, m.chat.tab)
+	}
+	if len(fake.closes) != 0 {
+		t.Fatalf("checking tasks closed the chat: %+v", fake.closes)
+	}
+}
+
+func TestCancelledDeprecationDoesNotLeakIntoALaterClose(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatWithOpenTasks(t, fake)
+
+	m, _ = press(t, m, "ctrl+x")
+	m = typeText(t, m, "d")
+	m, _ = press(t, m, "esc")
+	if m.chat.closing || m.chat.deprecateOnClose || len(fake.closes) != 0 {
+		t.Fatalf("esc kept the close: closing=%v deprecate=%v", m.chat.closing, m.chat.deprecateOnClose)
+	}
+}
+
+func TestArchiveWithOpenTasksAlertsAndDeprecates(t *testing.T) {
+	fake := &fakeOperator{
+		list: ConversationList{Conversations: []ConversationSummary{{Conversation: "done", Title: "Done"}}},
+		tasks: TaskList{Tasks: []TaskDetail{
+			{ID: 1, State: "done"}, {ID: 2, State: "deprecated"}, {ID: 3, State: "blocked"},
+		}},
+	}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	m, command := press(t, m, "a")
+	m = drive(t, m, command)
+	if !m.taskAlert.open || !m.taskAlert.archive || m.taskAlert.count != 1 || len(fake.archives) != 0 {
+		t.Fatalf("archive with an open task did not alert: alert=%+v archives=%+v", m.taskAlert, fake.archives)
+	}
+	if content := ansi.Strip(m.View().Content); !strings.Contains(content, "1 task is still open") {
+		t.Fatalf("alert does not name the open task:\n%s", content)
+	}
+	m, command = press(t, m, "esc")
+	m = drive(t, m, command)
+	if m.taskAlert.open || len(fake.archives) != 0 {
+		t.Fatalf("esc archived the chat: %+v", fake.archives)
+	}
+
+	m, command = press(t, m, "a")
+	m = drive(t, m, command)
+	next, command := m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	drive(t, next.(model), command)
+	want := ArchiveRequest{Directory: "/work", Conversation: "done", Archived: true, DeprecateTasks: true}
+	if len(fake.archives) != 1 || fake.archives[0] != want {
+		t.Fatalf("archives = %+v, want %+v", fake.archives, want)
+	}
+}

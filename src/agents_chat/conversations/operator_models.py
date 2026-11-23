@@ -24,7 +24,7 @@ RoundName = Literal["sealed", "critique"]
 SearchQuery = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 UsageSource = Literal["estimated", "reported", "plugin"]
 BudgetStatus = Literal["ok", "warning", "exhausted"]
-TaskState = Literal["open", "blocked", "done"]
+TaskState = Literal["open", "blocked", "done", "deprecated"]
 
 
 class OperatorRequest(BaseModel):
@@ -139,10 +139,14 @@ class PostMessage(ConversationRequest, models.Submission):
 
 
 class CloseConversation(ConversationRequest):
-    """Close the conversation and record an optional summary as the human's message."""
+    """Close the conversation and record an optional summary as the human's message.
+
+    With deprecate_tasks, every unfinished task ends as deprecated in the same step.
+    """
 
     action: Literal["operator_close"]
     summary: models.Body | None = None
+    deprecate_tasks: bool = False
 
 
 class ReopenConversation(ConversationRequest):
@@ -153,10 +157,14 @@ class ReopenConversation(ConversationRequest):
 
 
 class ArchiveConversation(ConversationRequest):
-    """Move a closed conversation to the archive, or back to the active list."""
+    """Move a closed conversation to the archive, or back to the active list.
+
+    With deprecate_tasks, every unfinished task ends as deprecated in the same step.
+    """
 
     action: Literal["operator_archive"]
     archived: bool
+    deprecate_tasks: bool = False
 
 
 class SearchConversations(WorkspaceRequest):

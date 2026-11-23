@@ -12,7 +12,18 @@ from agents_chat.conversations.tables import member, message
 RESPONSE_KINDS = ("accept", "decline")
 # Only the core writes this kind, when it moves a retired member's tasks; clients cannot post it.
 REASSIGN_KIND = "reassign"
-TASK_EVENT_KINDS = ("task", "handoff", "done", "blocker", "resume", REASSIGN_KIND, *RESPONSE_KINDS)
+# Only the core writes this kind, when the human drops the unfinished tasks of a conversation.
+DEPRECATE_KIND = "deprecate"
+TASK_EVENT_KINDS = (
+    "task",
+    "handoff",
+    "done",
+    "blocker",
+    "resume",
+    REASSIGN_KIND,
+    DEPRECATE_KIND,
+    *RESPONSE_KINDS,
+)
 TASK_TITLE_LENGTH = 120
 
 
@@ -35,6 +46,7 @@ class Task:
     owner: int
     blocked: bool = False
     done: bool = False
+    deprecated: bool = False
     handoff: int | None = None
     due: int | None = None
 
@@ -48,7 +60,8 @@ def due_time(event: RowMapping) -> int | None:
 
 def is_overdue(task: Task, now: int) -> bool:
     """Recognize an unfinished task whose due time has passed."""
-    return not task.done and task.due is not None and task.due < now
+    ended = task.done or task.deprecated
+    return not ended and task.due is not None and task.due < now
 
 
 def validate_due_minutes(kind: str, due_minutes: int | None) -> None:
@@ -82,6 +95,22 @@ def _apply_reassign(task: Task | None, offers: dict[int, Task], event: RowMappin
     if task.handoff is not None:
         offers.pop(task.handoff, None)
         task.handoff = None
+
+
+def _finish(task: Task, offers: dict[int, Task]) -> None:
+    """End a task and drop its pending handoff offer."""
+    task.done = True
+    if task.handoff is not None:
+        offers.pop(task.handoff)
+        task.handoff = None
+
+
+def _apply_deprecate(task: Task | None, offers: dict[int, Task]) -> None:
+    """End an unfinished task as deprecated. A finished task keeps its state."""
+    if task is None or task.done:
+        return
+    task.deprecated = True
+    _finish(task, offers)
 
 
 def _can_modify_task(
@@ -120,6 +149,9 @@ def apply_event(
     if kind == REASSIGN_KIND:
         _apply_reassign(task, offers, event)
         return
+    if kind == DEPRECATE_KIND:
+        _apply_deprecate(task, offers)
+        return
     if task is None or task.done or not _can_modify_task(task, event, leader_ids, inactive_owners):
         return
     if kind == "handoff":
@@ -128,10 +160,7 @@ def apply_event(
     elif kind in ("blocker", "resume"):
         task.blocked = kind == "blocker"
     elif kind == "done":
-        task.done = True
-        if task.handoff is not None:
-            offers.pop(task.handoff)
-            task.handoff = None
+        _finish(task, offers)
 
 
 def _room_recovery_sets(connection: Connection, room_id: str) -> tuple[set[int], set[int]]:
@@ -348,6 +377,31 @@ def open_tasks(
     return by_owner
 
 
+def deprecate_open_tasks(connection: Connection, actor: RowMapping) -> list[int]:
+    """End every unfinished task of the actor's conversation as deprecated.
+
+    Each task gets one deprecate message from the actor, so its timeline shows who dropped it.
+
+    Returns:
+        The IDs of the deprecated tasks, oldest first.
+    """
+    unfinished = sorted(
+        task_id for task_id, task in read_tasks(connection, actor["room"]).items() if not task.done
+    )
+    for task_id in unfinished:
+        connection.execute(
+            insert(message).values(
+                room=actor["room"],
+                author=actor["id"],
+                reply_to=task_id,
+                kind=DEPRECATE_KIND,
+                body=f"Task #{task_id} is deprecated. Stop work on it.",
+                created=int(time.time()),
+            )
+        )
+    return unfinished
+
+
 def _task_event_payload(row: RowMapping) -> dict[str, object]:
     """Format one message row as a task timeline event."""
     payload: dict[str, object] = {
@@ -367,6 +421,8 @@ def _task_event_payload(row: RowMapping) -> dict[str, object]:
 
 def _task_state_label(task: Task) -> str:
     """Return the external state name of one task."""
+    if task.deprecated:
+        return "deprecated"
     if task.done:
         return "done"
     if task.blocked:

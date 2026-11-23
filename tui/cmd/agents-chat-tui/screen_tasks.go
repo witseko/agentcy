@@ -48,7 +48,7 @@ func (m model) openTaskCount() int {
 	if m.chat.tab == tabTasks && m.chat.tasks.loaded {
 		count := 0
 		for _, task := range m.chat.tasks.items {
-			if task.State != "done" {
+			if !taskFinished(task.State) {
 				count++
 			}
 		}
@@ -96,9 +96,9 @@ func (m model) openTaskInTab(taskID int64) (tea.Model, tea.Cmd) {
 	m.chat.tasks.detailScroll = 0
 	for _, task := range m.chat.tasks.items {
 		if task.ID == taskID {
-			if task.State == "done" && m.chat.tasks.filter == filterOpen {
+			if taskFinished(task.State) && m.chat.tasks.filter == filterOpen {
 				m.chat.tasks.filter = filterAll
-			} else if task.State != "done" && m.chat.tasks.filter == filterDone {
+			} else if !taskFinished(task.State) && m.chat.tasks.filter == filterDone {
 				m.chat.tasks.filter = filterAll
 			}
 			break
@@ -142,11 +142,11 @@ func (m model) filteredTasks() []TaskDetail {
 	for _, task := range m.chat.tasks.items {
 		switch m.chat.tasks.filter {
 		case filterOpen:
-			if task.State != "done" {
+			if !taskFinished(task.State) {
 				out = append(out, task)
 			}
 		case filterDone:
-			if task.State == "done" {
+			if taskFinished(task.State) {
 				out = append(out, task)
 			}
 		default:
@@ -160,7 +160,7 @@ func (m model) filteredTasks() []TaskDetail {
 func (m model) taskCounts() (int, int, int) {
 	open, done := 0, 0
 	for _, task := range m.chat.tasks.items {
-		if task.State == "done" {
+		if taskFinished(task.State) {
 			done++
 		} else {
 			open++
@@ -379,6 +379,8 @@ func (m model) taskRowLine(task TaskDetail, selected bool, width int) string {
 // taskStatePill returns a fixed-width styled state label for the task list.
 func taskStatePill(task TaskDetail) string {
 	switch {
+	case task.State == "deprecated":
+		return dimStyle.Render("deprec.")
 	case task.State == "done":
 		return okStyle.Render("done   ")
 	case task.State == "blocked":
@@ -398,6 +400,8 @@ func (m model) taskDetailLines(task TaskDetail, width int) []string {
 	switch task.State {
 	case "done":
 		stateBadge = badge("DONE", colorOK)
+	case "deprecated":
+		stateBadge = badge("DEPRECATED", colorDim)
 	case "blocked":
 		stateBadge = badge("BLOCKED", colorWarn)
 	default:

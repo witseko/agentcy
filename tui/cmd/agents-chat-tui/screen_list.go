@@ -79,12 +79,16 @@ func (m model) archiveSelected() (tea.Model, tea.Cmd) {
 	if item.Open {
 		return m.showError("Close the chat before archiving it."), nil
 	}
-	return m, m.archive(item.Conversation, !m.list.archived)
+	return m.requestArchive(item.Conversation, !m.list.archived)
 }
 
-// archive moves a conversation to the archive or back to the active list.
-func (m model) archive(conversation string, archived bool) tea.Cmd {
-	request := ArchiveRequest{Directory: m.directory, Conversation: conversation, Archived: archived}
+// archive moves a conversation to the archive or back to the active list. With
+// deprecateTasks, the core ends the unfinished tasks as deprecated in the same step.
+func (m model) archive(conversation string, archived bool, deprecateTasks bool) tea.Cmd {
+	request := ArchiveRequest{
+		Directory: m.directory, Conversation: conversation,
+		Archived: archived, DeprecateTasks: deprecateTasks,
+	}
 	client := m.client
 	return func() tea.Msg {
 		result, err := client.Archive(request)

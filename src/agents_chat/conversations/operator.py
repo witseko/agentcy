@@ -367,6 +367,8 @@ def archive(connection: Connection, request: operator_models.ArchiveConversation
     human = human_actor(connection, request.conversation)
     if request.archived and human["open"]:
         raise ValueError("Close the conversation before archiving it")
+    if request.deprecate_tasks:
+        tasks.deprecate_open_tasks(connection, writing_actor(connection, request.conversation))
     connection.execute(
         update(room).where(room.c.id == request.conversation).values(archived=int(request.archived))
     )
@@ -441,6 +443,8 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
         return repository.post_in_round(connection, human, request, int(time.time()))
     if isinstance(request, operator_models.CloseConversation):
         human = writing_actor(connection, request.conversation)
+        if request.deprecate_tasks:
+            tasks.deprecate_open_tasks(connection, human)
         return repository.close(connection, human, request.summary)
     if isinstance(request, operator_models.ReopenConversation):
         human = writing_actor(connection, request.conversation)

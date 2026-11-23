@@ -152,6 +152,8 @@ type CloseRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Summary      string `json:"summary,omitempty"`
+	// DeprecateTasks ends every unfinished task as deprecated in the same step.
+	DeprecateTasks bool `json:"deprecate_tasks,omitempty"`
 }
 
 // ReopenRequest reopens a closed conversation with an optional note.
@@ -166,6 +168,8 @@ type ArchiveRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Archived     bool   `json:"archived"`
+	// DeprecateTasks ends every unfinished task as deprecated in the same step.
+	DeprecateTasks bool `json:"deprecate_tasks,omitempty"`
 }
 
 // SearchRequest finds words in every brief and published message of the workspace.

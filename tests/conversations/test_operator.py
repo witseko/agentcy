@@ -1064,3 +1064,115 @@ def test_operator_tasks_rejects_unknown_conversation(conversation_db: Connection
     """Listing tasks for an unknown conversation fails with UNKNOWN_CONVERSATION."""
     with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
         list_tasks(conversation_db, token_hex(12))
+
+
+def assign_task(connection: Connection, lead: dict, submission_id: str, to: str) -> int:
+    """Assign one task as the lead and return its ID."""
+    return repository.apply(
+        connection,
+        models.Post(
+            workspace=connection.info["workspace"],
+            token=lead["token"],
+            submission_id=submission_id,
+            body=f"Task {submission_id}",
+            kind="task",
+            due_minutes=30,
+            to=to,
+        ),
+    )["message_id"]
+
+
+def task_states(connection: Connection, conversation: str) -> dict[int, str]:
+    """Map each task ID of a conversation to its state."""
+    return {task["id"]: task["state"] for task in list_tasks(connection, conversation)}
+
+
+def test_close_with_deprecate_tasks_ends_only_the_unfinished_tasks(
+    conversation_db: Connection,
+) -> None:
+    """A close with deprecate_tasks leaves no open task and keeps a finished task done."""
+    workspace = conversation_db.info["workspace"]
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    worker = join(conversation_db, created["invitations"][1]["code"])
+    finished = assign_task(conversation_db, lead, "finished", "Worker")
+    unfinished = assign_task(conversation_db, lead, "unfinished", "Worker")
+    repository.apply(
+        conversation_db,
+        models.Post(
+            workspace=workspace,
+            token=worker["token"],
+            submission_id="finished-done",
+            body="Done.",
+            kind="done",
+            reply_to=finished,
+        ),
+    )
+
+    run(
+        conversation_db,
+        actions.CloseConversation,
+        action="operator_close",
+        conversation=conversation,
+        deprecate_tasks=True,
+    )
+
+    assert task_states(conversation_db, conversation) == {
+        finished: "done",
+        unfinished: "deprecated",
+    }
+    view = show(conversation_db, conversation)
+    assert view["status"]["open"] is False
+    assert "open_tasks" not in view["status"]["members"]["Worker"]
+    events = list_tasks(conversation_db, conversation)[0]["events"]
+    assert events[-1]["kind"] == "deprecate"
+    assert events[-1]["author"] == HUMAN_LABEL
+
+
+def test_close_without_deprecate_tasks_keeps_the_tasks_open(conversation_db: Connection) -> None:
+    """A plain close does not change task states."""
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    task = assign_task(conversation_db, lead, "kept", "Worker")
+
+    close(conversation_db, conversation)
+
+    assert task_states(conversation_db, conversation) == {task: "open"}
+
+
+def test_archive_with_deprecate_tasks_ends_the_tasks_of_a_closed_conversation(
+    conversation_db: Connection,
+) -> None:
+    """An archive with deprecate_tasks deprecates the tasks that a close left open."""
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    lead = join(conversation_db, created["invitations"][0]["code"])
+    task = assign_task(conversation_db, lead, "left-open", "Worker")
+    close(conversation_db, conversation)
+
+    result = run(
+        conversation_db,
+        actions.ArchiveConversation,
+        action="operator_archive",
+        conversation=conversation,
+        archived=True,
+        deprecate_tasks=True,
+    )
+
+    assert result == {"archived": True}
+    assert task_states(conversation_db, conversation) == {task: "deprecated"}
+
+
+def test_members_cannot_post_a_deprecate_message(conversation_db: Connection) -> None:
+    """Only the core writes the deprecate kind, so a member's post with it is invalid."""
+    with pytest.raises(ValueError, match="kind"):
+        models.Post(
+            workspace=conversation_db.info["workspace"],
+            token="t" * 43,
+            submission_id="forged",
+            body="Drop it.",
+            kind="deprecate",
+            reply_to=1,
+        )
