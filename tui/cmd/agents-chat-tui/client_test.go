@@ -302,3 +302,17 @@ func TestGoTypesMatchTheProtocolExamples(t *testing.T) {
 		t.Errorf("examples cover %d of %d actions", len(seen), len(exampleTypes))
 	}
 }
+
+// TestSchemaRejectionSuggestsCoreRestart checks that a stale core's schema error tells the user how to recover.
+func TestSchemaRejectionSuggestsCoreRestart(t *testing.T) {
+	var result ReopenedConversation
+	err := decodeResponse([]byte(`{"error": "Invalid bridge arguments"}`+"\n"), &result)
+	want := "Invalid bridge arguments. " + coreVersionHelp
+	if err == nil || err.Error() != want {
+		t.Fatalf("decodeResponse() error = %v, want %q", err, want)
+	}
+	err = decodeResponse([]byte(`{"error": "Conversation is closed"}`+"\n"), &result)
+	if err == nil || err.Error() != "Conversation is closed" {
+		t.Fatalf("decodeResponse() error = %v, want the core text unchanged", err)
+	}
+}
