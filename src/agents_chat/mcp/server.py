@@ -523,6 +523,9 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "Use one conversation and brief per team task. Invite chats via join codes, "
             "open_invite, or launch_participant (see list_plugins); retire unneeded peers with "
             "retire_participant. "
+            "If your client runs in a VM or a hosted sandbox, do not create a conversation: "
+            "that bridge is separate from the bridge on your user's computer, so local chats "
+            "cannot join it. Tell your user to start the conversation from a local chat. "
             "Leads: assign complementary tasks (kind='task' with 'to'), take a substantive part "
             "yourself, route blockers to a peer who can help, balance work across models using "
             "'team' and 'token_balance', and return one evidence-backed conclusion. Leave the "
@@ -561,6 +564,8 @@ def serve(workspace: str, directory: Path | None = None) -> None:
         """Start as lead. Invite workers by name or use {name, role: 'co-lead'}.
 
         Give the team one brief. Assign complementary tasks and take a part yourself.
+        Do not call this from a VM or a hosted sandbox: chats on your user's computer
+        cannot join a conversation created there.
         For an existing chat, give it the returned join_prompt with CODE replaced by its code.
         Set open_invite=True to also create a reusable room-level join code that works for
         everyone who joins (invitees may be omitted when open_invite=True).
