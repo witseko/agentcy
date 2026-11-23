@@ -165,6 +165,8 @@ type model struct {
 	sidebarCols int
 	teamCols    int
 	dragging    divider
+	// archivedCollapsed hides the archived members of the team panel under their header.
+	archivedCollapsed bool
 	// hover is the id of the clickable part under the pointer, or "".
 	hover string
 	// invitations holds the join codes this UI session received, by conversation and

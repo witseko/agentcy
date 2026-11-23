@@ -704,6 +704,8 @@ func (m model) teamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.makeLeadSelected()
 	case "d":
 		return m.retireSelected()
+	case "a":
+		return m.toggleArchived(), nil
 	case "i":
 		m.chat.input.SetValue("/invite ")
 		m.chat.input.CursorEnd()
@@ -1314,12 +1316,30 @@ func (m model) onInvited(msg invitedMsg) (tea.Model, tea.Cmd) {
 // slotNames returns the member names other than the human in team order.
 func (m model) slotNames() []string {
 	var names []string
-	for _, name := range sortedMembers(m.chat.view.Status.Members) {
+	for _, name := range m.visibleMembers() {
 		if m.chat.view.Status.Members[name].Role != "human" {
 			names = append(names, name)
 		}
 	}
 	return names
+}
+
+// visibleMembers returns the members the team panel draws, in team order. Archived members
+// are left out while the ARCHIVED section is collapsed.
+func (m model) visibleMembers() []string {
+	active, archived := partitionMembers(m.chat.view.Status.Members)
+	if m.archivedCollapsed {
+		return active
+	}
+	return append(active, archived...)
+}
+
+// toggleArchived collapses or expands the ARCHIVED section and keeps the selected member.
+func (m model) toggleArchived() model {
+	selected := m.selectedMember()
+	m.archivedCollapsed = !m.archivedCollapsed
+	m.restoreSelection(selected)
+	return m
 }
 
 // selectedMember returns the member selected in the team panel, or "" when there is none.
@@ -1352,12 +1372,6 @@ func partitionMembers(members map[string]MemberStatus) ([]string, []string) {
 	return active, archived
 }
 
-// sortedMembers orders active members by role then name, followed by archived members.
-func sortedMembers(members map[string]MemberStatus) []string {
-	active, archived := partitionMembers(members)
-	return append(active, archived...)
-}
-
 // mainHelp returns the key hints for the bottom bar of the main screen.
 func (m model) mainHelp() []hint {
 	mouse := hint{"ctrl+o", m.mouseHint()}
@@ -1372,7 +1386,7 @@ func (m model) mainHelp() []hint {
 		return []hint{{"⏎", "retire member"}, {"esc", "cancel"}}
 	case m.chat.focus == focusTeam:
 		return []hint{{"↑↓", "member"}, {"c", "copy prompt"}, {"r", "new code"}, {"i", "invite"},
-			{"l", "launch"}, {"m", "make lead"}, {"d", "retire"}, {"x", "close chat"}, {"tab", "chat list"}}
+			{"l", "launch"}, {"m", "make lead"}, {"d", "retire"}, {"a", m.archivedHint()}, {"x", "close chat"}, {"tab", "chat list"}}
 	case m.chat.focus == focusList:
 		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), hint{"tab", "message"}, mouse)...)
 	case m.chat.tab == tabTasks:
@@ -1381,6 +1395,14 @@ func (m model) mainHelp() []hint {
 	}
 	return []hint{{"⏎", "send"}, {"ctrl+t", "tasks"}, {"tab", "team"}, {"↑↓", "scroll"}, {"ctrl+p", "join prompts"},
 		{"ctrl+x", "close chat"}, mouse}
+}
+
+// archivedHint names what the a key does to the ARCHIVED section of the team panel.
+func (m model) archivedHint() string {
+	if m.archivedCollapsed {
+		return "show archived"
+	}
+	return "hide archived"
 }
 
 // listHints returns the search, archive and view hints of the chat list.
@@ -1870,14 +1892,11 @@ func (m model) memberBlock(name string, member MemberStatus, selected string, wi
 	if member.State == "retired" {
 		styledName = dimStyle.Render(label)
 	}
-	roleText := member.Role
+	block := []string{glyph + " " + styledName + " " + dimStyle.Render(member.Role)}
 	if providerModel := memberProviderModel(name, member); providerModel != "" {
-		roleText += " · " + providerModel
+		block = append(block, "  "+dimStyle.Render(ansi.Truncate(providerModel, max(width-3, 1), "…")))
 	}
-	block := []string{
-		glyph + " " + styledName + " " + dimStyle.Render(roleText),
-		"  " + dimStyle.Render(detail),
-	}
+	block = append(block, "  "+dimStyle.Render(detail))
 	if usageLine := memberUsageLine(member.Usage); usageLine != "" {
 		block = append(block, "  "+usageLine)
 	}
@@ -1925,18 +1944,36 @@ func (m model) memberTasks(label string, member MemberStatus, width int) []strin
 	return tasks
 }
 
-// teamView draws active members, an ARCHIVED section for retired members, and open tasks.
+// archivedHoverID is the hover id of the ARCHIVED section header in the team panel.
+const archivedHoverID = "team-archived"
+
+// archivedHeader draws the clickable ARCHIVED section header with its collapse marker.
+func (m model) archivedHeader(count int, width int) string {
+	title := "▾ ARCHIVED"
+	if m.archivedCollapsed {
+		title = fmt.Sprintf("▸ ARCHIVED (%d)", count)
+	}
+	if m.hover == archivedHoverID {
+		return fill(dimStyle.Render("▎")+headStyle.Render(title), width, colorBand)
+	}
+	return " " + headStyle.Render(title)
+}
+
+// teamView draws active members, a collapsible ARCHIVED section for retired members, and
+// open tasks.
 func (m model) teamView(width int, height int) []string {
 	members := m.chat.view.Status.Members
 	active, archived := partitionMembers(members)
 	lines := []string{" " + headStyle.Render("TEAM"), ""}
 	selected := m.selectedMember()
 	var tasks []string
-	appendGroup := func(names []string) {
+	appendGroup := func(names []string, drawMembers bool) {
 		for _, name := range names {
 			member := members[name]
-			lines = append(lines, m.memberBlock(name, member, selected, width)...)
-			lines = append(lines, "")
+			if drawMembers {
+				lines = append(lines, m.memberBlock(name, member, selected, width)...)
+				lines = append(lines, "")
+			}
 			label := cleanLine(name)
 			if member.Role == "human" {
 				label = "You"
@@ -1944,10 +1981,10 @@ func (m model) teamView(width int, height int) []string {
 			tasks = append(tasks, m.memberTasks(label, member, width)...)
 		}
 	}
-	appendGroup(active)
+	appendGroup(active, true)
 	if len(archived) > 0 {
-		lines = append(lines, " "+headStyle.Render("ARCHIVED"), "")
-		appendGroup(archived)
+		lines = append(lines, m.archivedHeader(len(archived), width), "")
+		appendGroup(archived, !m.archivedCollapsed)
 	}
 	var footer []string
 	if balance := m.chat.view.Status.TokenBalance; balance != nil && !balance.Balanced {
@@ -1982,6 +2019,13 @@ type teamRow struct {
 
 // teamRows returns where teamView draws each member, so a click can find the member.
 func (m model) teamRows() []teamRow {
+	rows, _ := m.teamLayout()
+	return rows
+}
+
+// teamLayout returns where teamView draws each member and the row of the ARCHIVED section
+// header, or -1 when no member is archived.
+func (m model) teamLayout() ([]teamRow, int) {
 	members := m.chat.view.Status.Members
 	chatOpen := !m.chat.loaded || m.chat.view.Status.Open
 	active, archived := partitionMembers(members)
@@ -1991,6 +2035,9 @@ func (m model) teamRows() []teamRow {
 		for _, name := range names {
 			member := members[name]
 			size := 2
+			if memberProviderModel(name, member) != "" {
+				size++
+			}
 			if member.Usage != nil {
 				size++
 			}
@@ -2004,11 +2051,15 @@ func (m model) teamRows() []teamRow {
 		}
 	}
 	addGroup(active)
-	if len(archived) > 0 {
+	if len(archived) == 0 {
+		return rows, -1
+	}
+	headerRow := top
+	if !m.archivedCollapsed {
 		top += 2
 		addGroup(archived)
 	}
-	return rows
+	return rows, headerRow
 }
 
 // teamTaskRow places one open task line in the team panel footer.
@@ -2030,8 +2081,9 @@ func (m model) teamTaskRows(height int) []teamTaskRow {
 	if len(taskIDs) == 0 {
 		return nil
 	}
-	memberLines := 2
-	for _, row := range m.teamRows() {
+	teamRows, archivedHeaderRow := m.teamLayout()
+	memberLines := max(2, archivedHeaderRow+2)
+	for _, row := range teamRows {
 		memberLines = max(memberLines, row.top+row.size+1)
 	}
 	footerLen := 1 + len(taskIDs)
