@@ -3,7 +3,7 @@
   "$defs": {
     "ArchiveConversation": {
       "additionalProperties": false,
-      "description": "Move a closed conversation to the archive, or back to the active list.",
+      "description": "Move a closed conversation to the archive, or back to the active list.\n\nWith deprecate_tasks, every unfinished task ends as deprecated in the same step.",
       "properties": {
         "version": {
           "const": 1,
@@ -35,6 +35,11 @@
         "archived": {
           "title": "Archived",
           "type": "boolean"
+        },
+        "deprecate_tasks": {
+          "default": false,
+          "title": "Deprecate Tasks",
+          "type": "boolean"
         }
       },
       "required": [
@@ -65,7 +70,7 @@
     },
     "CloseConversation": {
       "additionalProperties": false,
-      "description": "Close the conversation and record an optional summary as the human's message.",
+      "description": "Close the conversation and record an optional summary as the human's message.\n\nWith deprecate_tasks, every unfinished task ends as deprecated in the same step.",
       "properties": {
         "version": {
           "const": 1,
@@ -107,6 +112,11 @@
           ],
           "default": null,
           "title": "Summary"
+        },
+        "deprecate_tasks": {
+          "default": false,
+          "title": "Deprecate Tasks",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1943,7 +1953,8 @@
           "enum": [
             "open",
             "blocked",
-            "done"
+            "done",
+            "deprecated"
           ],
           "title": "State",
           "type": "string"

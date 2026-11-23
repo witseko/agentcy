@@ -66,6 +66,9 @@ func (m model) regionAt(x int) region {
 // onClick routes a left or right click to the window, form or main screen part under it.
 // Row 0 is the top bar, so body rows start at 1.
 func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
+	if m.taskAlert.open {
+		return m, nil
+	}
 	if mouse.Button == tea.MouseRight {
 		return m.onRightClick(mouse)
 	}

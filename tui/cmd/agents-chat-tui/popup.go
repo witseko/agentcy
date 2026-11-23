@@ -106,6 +106,9 @@ func (m model) drawConfirm(body []string) []string {
 	for _, line := range wrapLines(description, width-4, "") {
 		lines = append(lines, textStyle.Render(line))
 	}
+	if m.chat.closing && m.chat.deprecateOnClose {
+		lines = append(lines, "", warnStyle.Render("The open tasks become deprecated."))
+	}
 	if m.chat.closing {
 		lines = append(lines, "", dimStyle.Render("Summary ")+m.chat.summary.View())
 	}
