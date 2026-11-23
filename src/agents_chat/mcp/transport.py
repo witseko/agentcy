@@ -21,7 +21,7 @@ CORE_VERSION_HELP = (
     "the installed core. Join codes and conversations are kept."
 )
 IDEMPOTENT_ACTIONS = frozenset(
-    {"read", "status", "plugins", "post", "close", "release", "report_usage"}
+    {"read", "status", "plugins", "post", "close", "reopen", "release", "report_usage"}
 )
 
 

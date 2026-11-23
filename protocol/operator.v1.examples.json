@@ -340,5 +340,17 @@
         }
       ]
     }
+  },
+  {
+    "action": "operator_reopen",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_reopen",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "note": "Reopened to continue the review."
+    },
+    "result": {"reopened": true}
   }
 ]

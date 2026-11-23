@@ -54,6 +54,7 @@ type Operator interface {
 	SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error)
 	Post(request PostRequest) (PostedMessage, error)
 	Close(request CloseRequest) (ClosedConversation, error)
+	Reopen(request ReopenRequest) (ReopenedConversation, error)
 	Archive(request ArchiveRequest) (ArchivedConversation, error)
 	Search(request SearchRequest) (SearchResults, error)
 }
@@ -144,6 +145,13 @@ type CloseRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Summary      string `json:"summary,omitempty"`
+}
+
+// ReopenRequest reopens a closed conversation with an optional note.
+type ReopenRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Note         string `json:"note,omitempty"`
 }
 
 // ArchiveRequest moves a closed conversation to the archive, or back to the active list.
@@ -366,6 +374,11 @@ type ClosedConversation struct {
 	Closed bool `json:"closed"`
 }
 
+// ReopenedConversation confirms that the conversation is open again.
+type ReopenedConversation struct {
+	Reopened bool `json:"reopened"`
+}
+
 // ArchivedConversation reports whether the conversation is now in the archive.
 type ArchivedConversation struct {
 	Archived bool `json:"archived"`
@@ -513,6 +526,13 @@ func (c *Client) Post(request PostRequest) (PostedMessage, error) {
 func (c *Client) Close(request CloseRequest) (ClosedConversation, error) {
 	var result ClosedConversation
 	err := c.call("operator_close", request, &result)
+	return result, err
+}
+
+// Reopen reopens a closed conversation.
+func (c *Client) Reopen(request ReopenRequest) (ReopenedConversation, error) {
+	var result ReopenedConversation
+	err := c.call("operator_reopen", request, &result)
 	return result, err
 }
 

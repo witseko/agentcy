@@ -145,6 +145,13 @@ class CloseConversation(ConversationRequest):
     summary: models.Body | None = None
 
 
+class ReopenConversation(ConversationRequest):
+    """Reopen a closed conversation and record an optional note as the human's message."""
+
+    action: Literal["operator_reopen"]
+    note: models.Body | None = None
+
+
 class ArchiveConversation(ConversationRequest):
     """Move a closed conversation to the archive, or back to the active list."""
 
@@ -199,6 +206,7 @@ OperatorAction = (
     | SetParticipantRole
     | PostMessage
     | CloseConversation
+    | ReopenConversation
     | ArchiveConversation
     | SearchConversations
     | ListPlugins
@@ -380,6 +388,12 @@ class ClosedConversation(Result):
     closed: Literal[True]
 
 
+class ReopenedConversation(Result):
+    """Confirm that the conversation is open again."""
+
+    reopened: Literal[True]
+
+
 class ArchivedConversation(Result):
     """Report whether the conversation is now in the archive."""
 
@@ -470,6 +484,7 @@ CONTRACT: dict[type[OperatorRequest], type[Result]] = {
     SetParticipantRole: ParticipantRoleChanged,
     PostMessage: PostedMessage,
     CloseConversation: ClosedConversation,
+    ReopenConversation: ReopenedConversation,
     ArchiveConversation: ArchivedConversation,
     SearchConversations: SearchResults,
     ListPlugins: PluginList,

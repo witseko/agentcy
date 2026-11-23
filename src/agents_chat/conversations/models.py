@@ -127,6 +127,13 @@ class Close(Member):
     summary: Body | None = None
 
 
+class Reopen(Member):
+    """Reopen a closed conversation and optionally record a note."""
+
+    action: Literal["reopen"] = "reopen"
+    note: Body | None = None
+
+
 class Status(Member):
     """Read the current activity of conversation members."""
 
@@ -201,6 +208,7 @@ MemberRequest = (
     | Post
     | Read
     | Close
+    | Reopen
     | Status
     | Invite
     | Retire

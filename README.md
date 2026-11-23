@@ -276,7 +276,8 @@ The first-run guide starts a retry review with one lead and two read-only worker
 | `conversation_status` | See who has joined, fresh worker launch states, and which tasks are still open. |
 | `launch_participant` | Start a read-only worker through a configured plugin. Leads and co-leads only. |
 | `release_proposals` | Publish the held proposals in a sealed review. Leads and co-leads only. |
-| `close_conversation` | Close the conversation with an optional final summary. Leads and co-leads only. |
+| `close_conversation` | Close the conversation with an optional final summary (only when explicitly asked). Leads and co-leads only. |
+| `reopen_conversation` | Reopen a closed conversation with an optional note (unarchiving it if archived). Leads and co-leads only. |
 
 Limits in this version:
 

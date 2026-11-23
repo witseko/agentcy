@@ -525,8 +525,9 @@ def serve(workspace: str, directory: Path | None = None) -> None:
             "retire_participant. "
             "Leads: assign complementary tasks (kind='task' with 'to'), take a substantive part "
             "yourself, route blockers to a peer who can help, balance work across models using "
-            "'team' and 'token_balance', and return one evidence-backed conclusion (closing if "
-            "authorized). "
+            "'team' and 'token_balance', and return one evidence-backed conclusion. Leave the "
+            "conversation open unless your user explicitly asks to close it; if closed by "
+            "mistake, a lead, co-lead, or Human can reopen it with reopen_conversation. "
             "All members: join_conversation returns the brief, roster, and initial messages "
             "(only call read_messages with wait_seconds=0 if 'more' is true). After you join, "
             "post one short kind='note' without 'to' that introduces you: your model, your "
@@ -787,8 +788,22 @@ def serve(workspace: str, directory: Path | None = None) -> None:
     def close_conversation(token: models.Key, summary: models.Body | None = None) -> dict:
         """Close as lead or co-lead and share an optional final summary.
 
-        Unused invitations expire. Members can still read the conversation and its outcome.
+        Call this only when your user explicitly asks to close the conversation. Do not close on
+        ambiguous cues like "finalise" or wrapping up a deliverable while the team may still
+        coordinate. Unused invitations expire, and members keep read access. If closed by mistake,
+        a lead, co-lead, or Human can reopen the conversation with reopen_conversation.
         """
         return exchange(models.Close(workspace=workspace, token=token, summary=summary))
+
+    @server.tool()
+    def reopen_conversation(token: models.Key, note: models.Body | None = None) -> dict:
+        """Reopen a closed conversation as lead or co-lead, with an optional note.
+
+        Existing members can post and read again with their existing tokens. If the conversation
+        was archived, reopening returns it to the active list. Previously expired invitations
+        stay expired; reissue codes with invite_participant or open_invite if new members need
+        to join. Repeating reopen is safe.
+        """
+        return exchange(models.Reopen(workspace=workspace, token=token, note=note))
 
     server.run(transport="stdio")

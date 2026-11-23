@@ -216,6 +216,53 @@ async def complete_conversation(home: Path, workspace: Path) -> None:
                 "Invalid or expired invitation",
                 code=created["invitations"]["Late"],
             )
+            await assert_tool_error(
+                reconnected,
+                "reopen_conversation",
+                "Only a lead or co-lead can reopen the conversation",
+                token=worker_token,
+            )
+            assert await call(
+                lead,
+                "reopen_conversation",
+                token=lead_token,
+                note="Reopened for one more check.",
+            ) == {"reopened": True}
+            # Repeating reopen is idempotent and must not duplicate the note.
+            assert await call(
+                lead,
+                "reopen_conversation",
+                token=lead_token,
+                note="Duplicate note should be ignored.",
+            ) == {"reopened": True}
+            # Previously expired unused invitations remain expired after reopen.
+            await assert_tool_error(
+                reconnected,
+                "join_conversation",
+                "Invalid or expired invitation",
+                code=created["invitations"]["Late"],
+            )
+            resumed = await call(
+                reconnected,
+                "post_message",
+                token=worker_token,
+                submission_id="after-reopen",
+                body="Back online after reopen.",
+            )
+            after_reopen = await call(
+                lead, "read_messages", token=lead_token, after=closed["cursor"]
+            )
+            assert [message["body"] for message in after_reopen["messages"]] == [
+                "Back online after reopen.",
+            ]
+            assert after_reopen["cursor"] == resumed["message_id"]
+            worker_seen = await call(
+                reconnected, "read_messages", token=worker_token, after=closed["cursor"]
+            )
+            assert [message["body"] for message in worker_seen["messages"]] == [
+                "Reopened for one more check.",
+            ]
+            assert await call(lead, "close_conversation", token=lead_token) == {"closed": True}
 
 
 def test_conversation_lifecycle(bridge_home: Path) -> None:

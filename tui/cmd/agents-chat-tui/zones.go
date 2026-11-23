@@ -275,6 +275,8 @@ func (m model) clickZone(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "task-jump":
 		return m.jumpToSelectedTask()
+	case "reopen":
+		return m.reopenChat(m.chat.id, "")
 	case "archive":
 		return m, m.archive(m.chat.id, !m.chat.view.Archived)
 	case "prompts":

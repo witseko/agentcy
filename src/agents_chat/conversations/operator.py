@@ -440,4 +440,7 @@ def apply(connection: Connection, workspace: str, request: operator_models.Opera
     if isinstance(request, operator_models.CloseConversation):
         human = writing_actor(connection, request.conversation)
         return repository.close(connection, human, request.summary)
+    if isinstance(request, operator_models.ReopenConversation):
+        human = writing_actor(connection, request.conversation)
+        return repository.reopen(connection, human, request.note)
     raise TypeError("Unknown operator action")

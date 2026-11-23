@@ -493,6 +493,10 @@ func (m model) listItemMenuItems(item ConversationSummary) []contextItem {
 		},
 	}
 	if !item.Open {
+		items = append(items, contextItem{
+			id: "list:reopen", label: "Reopen chat",
+			action: func(m model) (tea.Model, tea.Cmd) { return m.reopenChat(item.Conversation, "") },
+		})
 		label := "Archive chat"
 		targetArchived := true
 		if m.list.archived {
@@ -1041,6 +1045,10 @@ func (m model) chatConversationMenuItems() []contextItem {
 			action: func(m model) (tea.Model, tea.Cmd) { return m.startClosing() },
 		})
 	} else {
+		items = append(items, contextItem{
+			id: "chat:reopen", label: "Reopen chat",
+			action: func(m model) (tea.Model, tea.Cmd) { return m.reopenChat(m.chat.id, "") },
+		})
 		label := "Archive chat"
 		targetArchived := true
 		if m.chat.view.Archived {

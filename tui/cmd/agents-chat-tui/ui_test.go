@@ -34,6 +34,7 @@ type fakeOperator struct {
 	budgets     []SetMemberBudgetRequest
 	posts       []PostRequest
 	closes      []CloseRequest
+	reopens     []ReopenRequest
 	invites     []InviteRequest
 	openInvites []OpenInviteRequest
 	shows       []ShowRequest
@@ -130,6 +131,11 @@ func (f *fakeOperator) Post(request PostRequest) (PostedMessage, error) {
 func (f *fakeOperator) Close(request CloseRequest) (ClosedConversation, error) {
 	f.closes = append(f.closes, request)
 	return ClosedConversation{Closed: true}, nil
+}
+
+func (f *fakeOperator) Reopen(request ReopenRequest) (ReopenedConversation, error) {
+	f.reopens = append(f.reopens, request)
+	return ReopenedConversation{Reopened: true}, nil
 }
 
 // press sends a named key, such as "enter", "tab" or "ctrl+x".
@@ -1866,5 +1872,44 @@ func TestProviderModelContextAndEndedLaunchStatesInTeamPanel(t *testing.T) {
 		if !strings.Contains(panel, want) {
 			t.Fatalf("team panel missing %q:\n%s", want, panel)
 		}
+	}
+}
+
+func TestReopenClosedChatViaButtonAndSlashCommand(t *testing.T) {
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Demo prep",
+			Archived:     true,
+			Status: ConversationStatus{
+				Open: false,
+				Members: map[string]MemberStatus{
+					"Lead":  {Role: "lead", State: "replied"},
+					"Human": {Role: "human", State: "human"},
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	buttons, _ := m.headerButtons()
+	plainButtons := ansi.Strip(buttons)
+	if !strings.Contains(plainButtons, "Reopen") || !strings.Contains(plainButtons, "Unarchive") {
+		t.Fatalf("closed archived header buttons = %q", plainButtons)
+	}
+
+	next, cmd = m.clickZone("reopen")
+	m = drive(t, next.(model), cmd)
+	if len(fake.reopens) != 1 || fake.reopens[0].Conversation != testConversation || fake.reopens[0].Note != "" {
+		t.Fatalf("reopen button requests = %+v", fake.reopens)
+	}
+
+	m = typeText(t, m, "/reopen Need one more check")
+	next, cmd = press(t, m, "enter")
+	m = drive(t, next.(model), cmd)
+	if len(fake.reopens) != 2 || fake.reopens[1].Note != "Need one more check" {
+		t.Fatalf("/reopen requests = %+v", fake.reopens)
 	}
 }

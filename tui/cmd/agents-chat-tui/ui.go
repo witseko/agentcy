@@ -119,6 +119,10 @@ type (
 	}
 	postedMsg   struct{ err error }
 	closedMsg   struct{ err error }
+	reopenedMsg struct {
+		conversation string
+		err          error
+	}
 	archivedMsg struct {
 		conversation string
 		archived     bool
@@ -249,6 +253,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onPosted(msg)
 	case closedMsg:
 		return m.onClosed(msg)
+	case reopenedMsg:
+		return m.onReopened(msg)
 	case archivedMsg:
 		return m.onArchived(msg)
 	case searchedMsg:
