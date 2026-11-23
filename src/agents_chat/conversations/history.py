@@ -7,7 +7,6 @@ from agents_chat.conversations.tables import message, room
 
 LIST_LIMIT = 100
 PAGE_SIZE = repository.PAGE_SIZE
-TITLE_LENGTH = repository.TITLE_LENGTH
 # An open conversation gets the same error as a missing one, so its existence stays private.
 UNKNOWN_CLOSED_CONVERSATION = "Unknown closed conversation in this workspace"
 
@@ -25,7 +24,7 @@ def list_closed(connection: Connection, archived: bool | None = None) -> dict:
     )
     query = select(
         room.c.id,
-        func.substr(room.c.brief, 1, TITLE_LENGTH + 1).label("brief_start"),
+        repository.title_source(),
         room.c.created,
         room.c.archived,
         messages.label("messages"),
@@ -43,7 +42,7 @@ def list_closed(connection: Connection, archived: bool | None = None) -> dict:
         "conversations": [
             {
                 "conversation": row["id"],
-                "title": repository.session_title(row["brief_start"]),
+                "title": repository.session_title(row["title_source"]),
                 "created": row["created"],
                 "archived": bool(row["archived"]),
                 "messages": row["messages"],

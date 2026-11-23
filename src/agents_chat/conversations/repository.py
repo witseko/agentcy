@@ -25,7 +25,7 @@ EVENT_KIND = "event"
 RETIRED_ERROR = "You have been retired from this conversation"
 PROGRESS_KINDS = ("done", "blocker", "resume")
 PAGE_SIZE = 16
-TITLE_LENGTH = 80
+TITLE_LENGTH = models.TITLE_LENGTH
 INVITE_LIFETIME_SECONDS = 3600
 JOIN_CODE_PATTERN = re.compile(r"([A-Za-z0-9_-]{22})\.([0-9a-f]{12})")
 JOIN_WORKSPACE_HELP = "Set both clients to the same --workspace and reconnect."
@@ -53,6 +53,12 @@ ASSIGNABLE_ROLES = {
     Role.LEAD.label: Role.LEAD,
     Role.CO_LEAD.label: Role.CO_LEAD,
 }
+
+
+def title_source() -> ColumnElement[str]:
+    """Select the custom title, or the start of the brief for a chat that has none."""
+    brief_start = func.substr(room.c.brief, 1, TITLE_LENGTH + 1)
+    return func.coalesce(room.c.title, brief_start).label("title_source")
 
 
 def session_title(brief: str) -> str:

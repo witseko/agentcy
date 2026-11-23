@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, select, update
 
-from agents_chat.conversations import models, operator, repository
+from agents_chat.conversations import history, models, operator, repository
 from agents_chat.conversations import operator_models as actions
 from agents_chat.conversations.roles import HUMAN_LABEL, Role
 from agents_chat.conversations.tables import member, room
@@ -587,6 +587,61 @@ def test_reopen_restores_closed_and_archived_conversations(conversation_db: Conn
 
     with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
         reopen(conversation_db, token_hex(12))
+
+
+def rename(connection: Connection, conversation: str, title: str | None) -> dict:
+    """Rename a conversation as the human, or clear its custom title with None."""
+    return run(
+        connection,
+        actions.RenameConversation,
+        action="operator_rename",
+        conversation=conversation,
+        title=title,
+    )
+
+
+def test_rename_sets_the_title_everywhere_and_clears_it(conversation_db: Connection) -> None:
+    """A custom title shows in the list, the view, search hits and the closed list."""
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    other = create(conversation_db, brief="Other brief")["conversation"]
+
+    assert show(conversation_db, conversation)["title"] == "Review retries"
+    assert rename(conversation_db, conversation, "  Retry audit  ") == {"title": "Retry audit"}
+
+    listed = run(conversation_db, actions.ListConversations, action="operator_list")
+    titles = {item["conversation"]: item["title"] for item in listed["conversations"]}
+    assert titles == {conversation: "Retry audit", other: "Other brief"}
+    view = show(conversation_db, conversation)
+    assert view["title"] == "Retry audit"
+    assert view["brief"] == "Review retries\nCite the tests."
+    assert [hit["title"] for hit in search(conversation_db, "retries")] == ["Retry audit"]
+
+    # A closed and archived chat can still be renamed, and other chats read the new title.
+    close(conversation_db, conversation)
+    archive(conversation_db, conversation)
+    assert rename(conversation_db, conversation, "Archived audit") == {"title": "Archived audit"}
+    closed = history.list_closed(conversation_db)
+    assert [item["title"] for item in closed["conversations"]] == ["Archived audit"]
+
+    assert rename(conversation_db, conversation, None) == {"title": "Review retries"}
+    assert show(conversation_db, conversation)["title"] == "Review retries"
+
+
+@pytest.mark.parametrize("title", ["", "   ", "x" * 81, "two\nlines", "bell\x07", "escape\x1b[2J"])
+def test_rename_rejects_an_invalid_title(conversation_db: Connection, title: str) -> None:
+    """A title is one non-empty line of at most 80 characters without control characters."""
+    conversation = create(conversation_db)["conversation"]
+    with pytest.raises(ValueError):
+        rename(conversation_db, conversation, title)
+    assert show(conversation_db, conversation)["title"] == "Review retries"
+
+
+def test_rename_rejects_an_unknown_conversation(conversation_db: Connection) -> None:
+    """A conversation ID that the workspace does not hold gets the unknown-conversation error."""
+    create(conversation_db)
+    with pytest.raises(ValueError, match=operator.UNKNOWN_CONVERSATION):
+        rename(conversation_db, token_hex(12), "Title")
 
 
 def test_archive_moves_a_closed_chat_between_lists(conversation_db: Connection) -> None:

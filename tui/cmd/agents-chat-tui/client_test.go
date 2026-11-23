@@ -222,6 +222,7 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_close":             {reflect.TypeFor[CloseRequest](), reflect.TypeFor[ClosedConversation]()},
 	"operator_reopen":            {reflect.TypeFor[ReopenRequest](), reflect.TypeFor[ReopenedConversation]()},
 	"operator_archive":           {reflect.TypeFor[ArchiveRequest](), reflect.TypeFor[ArchivedConversation]()},
+	"operator_rename":            {reflect.TypeFor[RenameRequest](), reflect.TypeFor[RenamedConversation]()},
 	"operator_search":            {reflect.TypeFor[SearchRequest](), reflect.TypeFor[SearchResults]()},
 }
 

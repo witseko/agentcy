@@ -20,7 +20,7 @@ func (m model) homeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "n":
 		return m.openForm()
-	case "/", "a", "v":
+	case "/", "a", "v", "e":
 		return m.listAction(msg.String())
 	case "r":
 		return m.inform("Refreshing."), m.loadList()
@@ -46,7 +46,7 @@ func (m model) listNavigate(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// listAction runs the search, archive and view keys that work wherever the chat list has
+// listAction runs the search, archive, rename and view keys that work wherever the chat list has
 // focus.
 func (m model) listAction(key string) (tea.Model, tea.Cmd) {
 	switch key {
@@ -54,6 +54,8 @@ func (m model) listAction(key string) (tea.Model, tea.Cmd) {
 		return m.openSearch()
 	case "a":
 		return m.archiveSelected()
+	case "e":
+		return m.renameSelected()
 	case "v":
 		return m.showArchive(!m.list.archived)
 	}

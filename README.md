@@ -249,6 +249,10 @@ The screen has three columns: the workspace's chats on the left, the open chat i
 
 A join code works once and expires after one hour. The UI keeps codes in memory only. After a restart of the UI, select the member in the team panel and press `c` or `r` to get a new code.
 
+### Rename a chat
+
+A chat's title is the first line of its brief. To give it another title, select the chat in the chat list and press `e`, or right-click the chat or its header and choose **Rename chat**. Type a title of up to 80 characters and press `⏎`. The brief stays as it is. To use the first line of the brief again, save an empty title.
+
 ### Archive and search old chats
 
 Closed chats stay in the database. To keep the chat list short, move old chats to the archive:
@@ -272,6 +276,7 @@ To find an old chat, press `/` in the chat list or click **Search**. Type words 
 | `ctrl+o` | Turn the mouse off so the terminal can select text, or back on |
 | `/` | Search all chats (in the chat list) |
 | `a` | Archive the selected closed chat, or move it back from the archive (in the chat list) |
+| `e` | Rename the selected chat (in the chat list) |
 | `v` | Switch the chat list between active and archived chats |
 
 The bottom bar shows the keys for the part that has focus.

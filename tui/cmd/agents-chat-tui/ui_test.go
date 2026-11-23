@@ -20,6 +20,7 @@ type fakeOperator struct {
 	results     SearchResults
 	lists       []ListRequest
 	archives    []ArchiveRequest
+	renames     []RenameRequest
 	searches    []SearchRequest
 	view        ConversationView
 	showFunc    func(ShowRequest) (ConversationView, error)
@@ -54,6 +55,14 @@ func (f *fakeOperator) List(request ListRequest) (ConversationList, error) {
 func (f *fakeOperator) Archive(request ArchiveRequest) (ArchivedConversation, error) {
 	f.archives = append(f.archives, request)
 	return ArchivedConversation{Archived: request.Archived}, nil
+}
+
+func (f *fakeOperator) Rename(request RenameRequest) (RenamedConversation, error) {
+	f.renames = append(f.renames, request)
+	if request.Title == nil {
+		return RenamedConversation{Title: "Title from the brief"}, nil
+	}
+	return RenamedConversation{Title: *request.Title}, nil
 }
 
 func (f *fakeOperator) Search(request SearchRequest) (SearchResults, error) {
@@ -697,6 +706,66 @@ func TestArrowsMoveBetweenFormRows(t *testing.T) {
 	}
 	if m.form.brief.Value() != "Check retries" {
 		t.Fatalf("brief = %q", m.form.brief.Value())
+	}
+}
+
+func TestRenameKeySendsTheEditedTitleAndUpdatesTheList(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
+		{Conversation: "open", Title: "Open", Open: true}, {Conversation: "done", Title: "Done"},
+	}}}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "e")
+	if !m.rename.open || m.rename.input.Value() != "Done" {
+		t.Fatalf("rename dialog open %v with %q", m.rename.open, m.rename.input.Value())
+	}
+	if !strings.Contains(m.View().Content, "Rename this chat") {
+		t.Fatal("the rename dialog is not drawn")
+	}
+	// Keys go to the title field, so n and q neither open the form nor quit.
+	m = typeText(t, m, " nq")
+	if m.screen != screenHome || m.rename.input.Value() != "Done nq" {
+		t.Fatalf("screen %v, title %q", m.screen, m.rename.input.Value())
+	}
+	fake.list.Conversations[1].Title = "Done nq"
+	m, command := press(t, m, "enter")
+	m = drive(t, m, command)
+
+	if len(fake.renames) != 1 || fake.renames[0].Conversation != "done" ||
+		fake.renames[0].Title == nil || *fake.renames[0].Title != "Done nq" {
+		t.Fatalf("renames = %+v", fake.renames)
+	}
+	if m.rename.open || m.list.items[1].Title != "Done nq" || !strings.Contains(m.popup.text, "renamed") {
+		t.Fatalf("open %v, items %+v, popup %q", m.rename.open, m.list.items, m.popup.text)
+	}
+}
+
+func TestRenameEscCancelsAndAnEmptyTitleClearsIt(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
+		{Conversation: "done", Title: "Done"},
+	}}}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	m, _ = press(t, m, "e")
+	m = typeText(t, m, "x")
+	m, command := press(t, m, "esc")
+	m = drive(t, m, command)
+	if m.rename.open || len(fake.renames) != 0 {
+		t.Fatalf("esc left the dialog open %v or renamed: %+v", m.rename.open, fake.renames)
+	}
+
+	m, _ = press(t, m, "e")
+	m.rename.input.SetValue("   ")
+	m, command = press(t, m, "enter")
+	m = drive(t, m, command)
+	if len(fake.renames) != 1 || fake.renames[0].Title != nil {
+		t.Fatalf("renames = %+v, want one request with a nil title", fake.renames)
+	}
+	if m.list.items[0].Title != "Title from the brief" {
+		t.Fatalf("title = %q", m.list.items[0].Title)
 	}
 }
 
