@@ -1,0 +1,10 @@
+# How the narrator says words the voice gets wrong: written<TAB>spoken.
+# Whole words only; the longest written form wins. Captions keep the written form.
+# spoken is how to say it ("tee mux") or ipa:SOUNDS in the International Phonetic Alphabet.
+agentcy	agent see
+Agentcy	Agent see
+MCP	M C P
+TUI	T U I
+ZCode	Z Code
+GLM	G L M
+tmux	tee mux

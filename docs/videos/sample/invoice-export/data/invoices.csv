@@ -1,0 +1,5 @@
+number,customer,issued,amount,currency
+INV-1001,Northwind Bakery,2026-11-03,1840.00,EUR
+INV-1002,Bluebell Dental Clinic,2026-11-05,960.50,EUR
+INV-1003,Harbor Street Books,2026-11-09,312.75,EUR
+INV-1004,Fernhill Climbing Gym,2026-11-12,2275.00,EUR
