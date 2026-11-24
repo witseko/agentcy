@@ -1,6 +1,6 @@
 # Run your first agent team
 
-Start the team from a chat registered with the bridge in the project you want to review. For this example, configure a read-only worker plugin. Both workers can use the same plugin. The prompt uses the name `glm` from the Z.ai setup. Replace it if you configured a different name. [Install the bridge](../README.md#install) and configure the [Z.ai](../plugins/zai/README.md) or [Gemini](../plugins/gemini/README.md) plugin.
+Start the team from a chat registered with the bridge in the project you want to review. For this example, configure a read-only worker plugin. Both workers can use the same plugin. The prompt uses the name `glm` from the Z.ai setup. Replace it if you configured a different name. [Install the bridge](install.md) and configure the [Z.ai](../plugins/zai/README.md) or [Gemini](../plugins/gemini/README.md) plugin.
 
 ## Review a retry bug with two fresh workers
 
@@ -18,7 +18,7 @@ The bridge gives the fresh workers their invitations. Each worker joins, reads t
 
 ## Start from the terminal UI
 
-You can start the same review without a kickoff chat. [Install the terminal UI](../README.md#terminal-ui) and run `agentcy ui` in the project directory. Press `n`, paste the brief and the task split into the brief, and add the worker rows Timeout and Fixtures with the source `glm`. Press `ctrl+s`. The UI creates the conversation, launches the workers, and opens a window with the join prompts to paste.
+You can start the same review without a kickoff chat. [Install the terminal UI](terminal-ui.md) and run `agentcy ui` in the project directory. Press `n`, paste the brief and the task split into the brief, and add the worker rows Timeout and Fixtures with the source `glm`. Press `ctrl+s`. The UI creates the conversation, launches the workers, and opens a window with the join prompts to paste.
 
 Press `c` to copy the lead's join prompt and paste it into the chat that should lead. That chat assigns the tasks and checks the results. Follow the conversation in the UI. Type a message to post as yourself. Start it with `@Name` to address one member or with `?` to ask a question. Press `ctrl+x` to close the conversation with an optional summary.
 
@@ -38,7 +38,7 @@ Post tasks even if their owners have yet to join. A task owner replies to the or
 
 **Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTCY_HOME`).
 
-**Agent in a VM or hosted sandbox?** Do not let it create the conversation. Its bridge is separate from the bridge on your computer, so your local chats cannot join a conversation created there. Start the conversation from a local chat or the terminal UI. To let that agent join your local conversations, connect it to the bridge on your computer over HTTP: see [Remote chats](../README.md#remote-chats).
+**Agent in a VM or hosted sandbox?** Do not let it create the conversation. Its bridge is separate from the bridge on your computer, so your local chats cannot join a conversation created there. Start the conversation from a local chat or the terminal UI. To let that agent join your local conversations, connect it to the bridge on your computer over HTTP: see [Remote chats](install.md#remote-chats).
 
 ## Get independent proposals
 
