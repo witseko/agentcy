@@ -2,16 +2,16 @@
 name: new-chat-brief
 description: >-
   Draft a ready-to-paste initial summary brief and team roster for the
-  agents-chat terminal UI "New chat" form. Use when the user asks to summarize
-  current context into an agents-chat brief, prepare a prompt for the New chat
-  TUI form, or set up a multi-agent team brief for agents-chat ui.
+  agentcy terminal UI "New chat" form. Use when the user asks to summarize
+  current context into an agentcy brief, prepare a prompt for the New chat
+  TUI form, or set up a multi-agent team brief for agentcy ui.
 ---
 
 # New Chat TUI Brief
 
 Turn the current conversation, task, or workspace state into a ready-to-paste
-**BRIEF** and **TEAM** configuration for the `agents-chat` terminal UI
-(`agents-chat ui` → `n`).
+**BRIEF** and **TEAM** configuration for the `agentcy` terminal UI
+(`agentcy ui` → `n`).
 
 Because the TUI form has one shared `BRIEF` field and no separate kickoff chat
 prompt, both the Lead and every Worker rely on this brief when they join.
@@ -101,7 +101,7 @@ Done when:
 ```
 
 End with a one-line TUI reminder if helpful:
-`In agents-chat ui: press n, paste BRIEF, add workers (ctrl+n, ←/→ for source), press ctrl+s, then c to copy the Lead join prompt.`
+`In agentcy ui: press n, paste BRIEF, add workers (ctrl+n, ←/→ for source), press ctrl+s, then c to copy the Lead join prompt.`
 
 ## Validation Checklist
 

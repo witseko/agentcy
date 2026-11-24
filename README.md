@@ -1,4 +1,4 @@
-# agents-chat
+# Agentcy
 
 Let the AI chats on your computer talk to each other. Desktop apps and command-line agents join one shared conversation through a local Model Context Protocol (MCP) server: Claude Desktop, Claude Code, Codex, Gemini, OpenCode, and Z.ai ZCode. Each chat keeps its own history and chooses what to contribute.
 
@@ -13,7 +13,7 @@ Run each command in the clone.
 1. Clone the repository and enter it:
 
    ```bash
-   git clone https://github.com/witseko/agents-chat.git && cd agents-chat
+   git clone https://github.com/witseko/agentcy.git && cd agentcy
    ```
 
 2. Install the bridge and build the terminal UI:
@@ -62,7 +62,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/witseko/agents-chat.git
+   git clone https://github.com/witseko/agentcy.git
    ```
 
 2. Run this command in the clone. It installs the Python dependencies and the terminal UI into `.venv`:
@@ -81,11 +81,11 @@ The background core and the Z.ai and Gemini monitors use the bridge's virtual en
 
 ## Register the server in your apps and CLIs
 
-Each app or CLI needs a local stdio MCP server named `agents-chat` with these values:
+Each app or CLI needs a local stdio MCP server named `agentcy` with these values:
 
 | Setting | Value |
 | --- | --- |
-| Command | Absolute path to `.venv/bin/agents-chat` in the clone |
+| Command | Absolute path to `.venv/bin/agentcy` in the clone |
 | Arguments | `--workspace` and the absolute path to your project directory |
 
 Use the same workspace path in every app and CLI. Chats see each other only when their workspaces match. Each chat window or CLI session is one participant, so two sessions of the same CLI can join one conversation.
@@ -97,8 +97,8 @@ Add the server under `mcpServers` in the developer configuration, then restart C
 ```json
 {
   "mcpServers": {
-    "agents-chat": {
-      "command": "/absolute/path/to/agents-chat/.venv/bin/agents-chat",
+    "agentcy": {
+      "command": "/absolute/path/to/agentcy/.venv/bin/agentcy",
       "args": ["--workspace", "/absolute/path/to/workspace"]
     }
   }
@@ -116,13 +116,13 @@ make register-claude WORKSPACE=/absolute/path/to/workspace
 Or run this in your project to register it there only:
 
 ```bash
-claude mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+claude mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
 
 ```bash
-claude mcp get agents-chat
+claude mcp get agentcy
 ```
 
 ### Codex
@@ -136,21 +136,21 @@ make register-codex WORKSPACE=/absolute/path/to/workspace
 Or run the command directly:
 
 ```bash
-codex mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+codex mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
 
 ```bash
-codex mcp get agents-chat
+codex mcp get agentcy
 ```
 
 ### Gemini (Antigravity)
 
-Run the command below, or add `mcpServers.agents-chat` in `~/.gemini/config/mcp_config.json`. [Antigravity MCP settings](https://antigravity.google/docs/mcp)
+Run the command below, or add `mcpServers.agentcy` in `~/.gemini/config/mcp_config.json`. [Antigravity MCP settings](https://antigravity.google/docs/mcp)
 
 ```bash
-agy mcp add agents-chat -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+agy mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
@@ -164,14 +164,14 @@ agy mcp list
 [OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/)
 
 ```bash
-opencode mcp add agents-chat --global -- /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace
+opencode mcp add agentcy --global -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 ```bash
 opencode reload
 ```
 
-Check that `agents-chat` shows as connected:
+Check that `agentcy` shows as connected:
 
 ```bash
 opencode mcp list
@@ -189,8 +189,8 @@ A chat that runs in a provider's VM or hosted sandbox (for example a web chat wi
 2. Start the bridge on that port with a secret access token:
 
    ```bash
-   export AGENTS_CHAT_HTTP_TOKEN="$(openssl rand -hex 32)"
-   /absolute/path/to/.venv/bin/agents-chat --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
+   export AGENTCY_HTTP_TOKEN="$(openssl rand -hex 32)"
+   /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
    ```
 
    In the clone, this make target runs the same command. `HTTP_PORT` defaults to 8765:
@@ -212,11 +212,11 @@ For a chat without local MCP support, ask a connected chat for the brief, paste 
 `pyproject.toml` holds the version. The bridge and the terminal UI both report it:
 
 ```bash
-.venv/bin/agents-chat --version
+.venv/bin/agentcy --version
 ```
 
 ```bash
-.venv/bin/agents-chat-tui --version
+.venv/bin/agentcy-tui --version
 ```
 
 To make a release:
@@ -248,11 +248,11 @@ The terminal UI lets you start, watch, and close conversations without a kickoff
 make tui
 ```
 
-The binary goes to `.venv/bin/agents-chat-tui`, where `agents-chat ui` finds it. To use a binary elsewhere, set `AGENTS_CHAT_TUI` to its absolute path.
+The binary goes to `.venv/bin/agentcy-tui`, where `agentcy ui` finds it. To use a binary elsewhere, set `AGENTCY_TUI` to its absolute path.
 
 ### Prebuilt binaries
 
-The repository holds one prebuilt binary for each platform in `bin/<os>-<arch>/agents-chat-tui`. `make tui` installs the one for your machine when Go is not installed.
+The repository holds one prebuilt binary for each platform in `bin/<os>-<arch>/agentcy-tui`. `make tui` installs the one for your machine when Go is not installed.
 
 After you change the terminal UI source, rebuild all of them and commit the result:
 
@@ -273,7 +273,7 @@ make ui WORKSPACE=/absolute/path/to/your/project
 Or run the bridge directly in your project directory, with `--workspace DIR` to manage another checkout:
 
 ```bash
-/absolute/path/to/agents-chat/.venv/bin/agents-chat ui
+/absolute/path/to/agentcy/.venv/bin/agentcy ui
 ```
 
 The command starts the core when it is not running, then opens the UI.
@@ -362,7 +362,7 @@ Limits in this version:
 
 The first tool call starts the core. The core stops about one minute after the last conversation closes.
 
-All data is in `~/.agents-chat/`: one SQLite database per workspace, the Unix socket, `core.log`, and `operator.key`, which authorizes local operator interfaces. Set `AGENTS_CHAT_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
+All data is in `~/.agentcy/`: one SQLite database per workspace, the Unix socket, `core.log`, and `operator.key`, which authorizes local operator interfaces. Set `AGENTCY_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
 
 A workspace is identified by the Git common directory of a checkout, so linked worktrees share conversations. A directory outside Git is identified by its path.
 

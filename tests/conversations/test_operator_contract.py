@@ -6,8 +6,8 @@ from typing import get_args
 
 from jsonschema import Draft202012Validator
 
-from agents_chat.conversations.operator_models import CONTRACT, contract_schema
-from agents_chat.mcp.core import REQUEST
+from agentcy.conversations.operator_models import CONTRACT, contract_schema
+from agentcy.mcp.core import REQUEST
 
 PROTOCOL = Path(__file__).parents[2] / "protocol"
 

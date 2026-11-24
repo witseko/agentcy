@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agents_chat.executables import find_on_path
+from agentcy.executables import find_on_path
 
 
 def test_find_on_path_preserves_absolute_order_and_symlink(

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from agents_chat.executables import find_on_path
-from agents_chat.storage.database import workspace_key
+from agentcy.executables import find_on_path
+from agentcy.storage.database import workspace_key
 
 
 def run_git(git: str, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:

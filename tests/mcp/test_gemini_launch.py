@@ -9,7 +9,7 @@ from types import ModuleType
 
 import pytest
 
-from agents_chat.mcp.plugin_contract import RunResult
+from agentcy.mcp.plugin_contract import RunResult
 
 PLUGIN_SCRIPT = Path(__file__).resolve().parents[2] / "plugins/gemini/server.py"
 ASSIGNMENT_ID = "d" * 32
@@ -21,7 +21,7 @@ def gemini_plugin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModuleType
     """Load the standalone plugin with an isolated private bridge directory."""
     bridge = tmp_path / "bridge"
     bridge.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(bridge))
+    monkeypatch.setenv("AGENTCY_HOME", str(bridge))
     spec = spec_from_file_location("gemini_plugin", PLUGIN_SCRIPT)
     assert spec is not None and spec.loader is not None
     plugin = module_from_spec(spec)
@@ -55,14 +55,14 @@ def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
         assert env["PATH"] == str(bin_directory)
         home = Path(env["HOME"])
         mcp_config = home / ".gemini" / "config" / "mcp_config.json"
-        server = json.loads(mcp_config.read_text(encoding="utf-8"))["mcpServers"]["agentschat"]
+        server = json.loads(mcp_config.read_text(encoding="utf-8"))["mcpServers"]["agentcy"]
         assert server == {
             "command": sys.executable,
             "args": [
                 "-E",
                 "-P",
                 "-m",
-                "agents_chat.mcp.fresh_server",
+                "agentcy.mcp.fresh_server",
                 str(checkout),
             ],
         }
@@ -72,7 +72,7 @@ def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
         assert settings["allowNonWorkspaceAccess"] is False
         assert settings["enableTerminalSandbox"] is True
         assert settings["permissions"] == {
-            "allow": ["read_file(*)", "mcp(agentschat/*)"],
+            "allow": ["read_file(*)", "mcp(agentcy/*)"],
             "deny": ["write_file(*)", "command(*)"],
         }
 

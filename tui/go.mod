@@ -1,4 +1,4 @@
-module github.com/witseko/agents-chat/tui
+module github.com/witseko/agentcy/tui
 
 go 1.26.0
 

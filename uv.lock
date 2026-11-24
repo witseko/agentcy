@@ -9,7 +9,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agents-chat"
+name = "agentcy"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [

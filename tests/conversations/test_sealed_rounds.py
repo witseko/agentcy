@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
-from agents_chat.mcp.server import guidance
+from agentcy.conversations import models, repository
+from agentcy.mcp.server import guidance
 
 
 def create_round(connection: Connection, invitees: list[str]) -> dict:

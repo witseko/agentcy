@@ -13,15 +13,15 @@ from typing import Any
 import pytest
 from sqlalchemy import select, update
 
-from agents_chat.conversations import models
-from agents_chat.conversations.assignment_tables import assignment
-from agents_chat.mcp import assignment_worker, fresh_server, plugin_client, server
-from agents_chat.mcp.assignment_worker import AssignmentWorker, Dispatch
-from agents_chat.mcp.concurrency import Notifications, transaction
-from agents_chat.mcp.core import Core
-from agents_chat.mcp.plugin_contract import RunResult, Start
-from agents_chat.mcp.plugin_settings import Plugin
-from agents_chat.storage.database import workspace_key
+from agentcy.conversations import models
+from agentcy.conversations.assignment_tables import assignment
+from agentcy.mcp import assignment_worker, fresh_server, plugin_client, server
+from agentcy.mcp.assignment_worker import AssignmentWorker, Dispatch
+from agentcy.mcp.concurrency import Notifications, transaction
+from agentcy.mcp.core import Core
+from agentcy.mcp.plugin_contract import RunResult, Start
+from agentcy.mcp.plugin_settings import Plugin
+from agentcy.storage.database import workspace_key
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "fake_run_plugin.py"
 
@@ -65,7 +65,7 @@ def bridge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Bridge:
         encoding="utf-8",
     )
     config.chmod(0o600)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     directory = tmp_path / "workspace"
     directory.mkdir()
     workspace = workspace_key(directory)
@@ -582,8 +582,8 @@ def test_active_launch_protects_its_join_code(team: Team) -> None:
 
 def test_round_release_cancels_round_worker(team: Team) -> None:
     """End a fresh run assigned to a sealed round when the lead starts critique."""
-    from agents_chat.conversations import rounds
-    from agents_chat.conversations.tables import room
+    from agentcy.conversations import rounds
+    from agentcy.conversations.tables import room
 
     with transaction(team.workspace) as connection:
         connection.execute(

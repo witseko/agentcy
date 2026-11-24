@@ -7,8 +7,8 @@ from secrets import token_hex
 
 import pytest
 
-from agents_chat.conversations import models, repository
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, repository
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 
 @pytest.mark.parametrize("version", [2, 3, 4])
@@ -16,9 +16,9 @@ def test_upgrade_legacy_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
 ) -> None:
     """Read existing participant status and messages after adding message metadata."""
-    directory = tmp_path / "agents-chat"
+    directory = tmp_path / "agentcy"
     directory.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(directory))
+    monkeypatch.setenv("AGENTCY_HOME", str(directory))
     workspace = token_hex(32)
     token = token_hex(32)
     with closing(sqlite3.connect(directory / f"{workspace}.sqlite3")) as previous:

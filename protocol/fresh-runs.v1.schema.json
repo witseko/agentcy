@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "agents-chat fresh-run MCP contract v1",
+  "title": "agentcy fresh-run MCP contract v1",
   "$defs": {
     "capabilities_result": {
       "additionalProperties": false,

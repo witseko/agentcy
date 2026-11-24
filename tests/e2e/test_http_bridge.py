@@ -52,7 +52,7 @@ def http_bridge(bridge_home: Path) -> Iterator[str]:  # noqa: F811 - pytest fixt
     workspace = bridge_home / "workspace"
     workspace.mkdir()
     port = free_port()
-    command = Path(sysconfig.get_path("scripts")) / "agents-chat"
+    command = Path(sysconfig.get_path("scripts")) / "agentcy"
     log_path = bridge_home / "http.log"
     with log_path.open("w") as log:
         # The test starts the project's own CLI with a fixed argument list and no shell.
@@ -68,8 +68,8 @@ def http_bridge(bridge_home: Path) -> Iterator[str]:  # noqa: F811 - pytest fixt
             ],
             cwd=workspace,
             env={
-                "AGENTS_CHAT_HOME": str(bridge_home),
-                "AGENTS_CHAT_HTTP_TOKEN": ACCESS_TOKEN,
+                "AGENTCY_HOME": str(bridge_home),
+                "AGENTCY_HTTP_TOKEN": ACCESS_TOKEN,
                 "PATH": os.defpath,
             },
             stdin=subprocess.DEVNULL,

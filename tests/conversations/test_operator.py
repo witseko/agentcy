@@ -8,12 +8,12 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, select, update
 
-from agents_chat.conversations import history, models, operator, repository
-from agents_chat.conversations import operator_models as actions
-from agents_chat.conversations.roles import HUMAN_LABEL, Role
-from agents_chat.conversations.tables import member, room
-from agents_chat.mcp.concurrency import Notifications
-from agents_chat.mcp.core import Core
+from agentcy.conversations import history, models, operator, repository
+from agentcy.conversations import operator_models as actions
+from agentcy.conversations.roles import HUMAN_LABEL, Role
+from agentcy.conversations.tables import member, room
+from agentcy.mcp.concurrency import Notifications
+from agentcy.mcp.core import Core
 
 DIRECTORY = "/work/repository"
 ENVELOPE = {"version": 1, "key": "test-operator-key", "directory": DIRECTORY}
@@ -466,7 +466,7 @@ def test_listing_without_a_store_creates_none(
     """Listing a checkout that has no conversations leaves the data directory empty."""
     home = tmp_path / "bridge"
     home.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(home))
+    monkeypatch.setenv("AGENTCY_HOME", str(home))
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     core = Core.__new__(Core)

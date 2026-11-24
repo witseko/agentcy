@@ -1,7 +1,7 @@
 """Test token budget percentage math and lead rebalancing recommendations."""
 
-from agents_chat.tokens.balancer import build_member_usage, evaluate_balance
-from agents_chat.tokens.settings import ModelBudget, TokenSettings
+from agentcy.tokens.balancer import build_member_usage, evaluate_balance
+from agentcy.tokens.settings import ModelBudget, TokenSettings
 
 
 def test_unequal_starting_budgets_balance_by_remaining_percentage() -> None:

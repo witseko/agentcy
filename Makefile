@@ -1,13 +1,13 @@
-# Set up agents-chat from a clone: Python dependencies, the terminal UI, and app registration.
+# Set up agentcy from a clone: Python dependencies, the terminal UI, and app registration.
 
-BRIDGE := $(CURDIR)/.venv/bin/agents-chat
-TUI_BINARY := $(CURDIR)/.venv/bin/agents-chat-tui
+BRIDGE := $(CURDIR)/.venv/bin/agentcy
+TUI_BINARY := $(CURDIR)/.venv/bin/agentcy-tui
 # The release version. pyproject.toml holds it; `make release VERSION=x.y.z` changes it.
 VERSION ?= $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
 # The platforms with a committed terminal UI binary in bin/<os>-<arch>/.
 PLATFORMS := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64
 HOST_PLATFORM := $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-PREBUILT_TUI := bin/$(HOST_PLATFORM)/agents-chat-tui
+PREBUILT_TUI := bin/$(HOST_PLATFORM)/agentcy-tui
 # These flags make the build reproducible: the same source, version, and Go release give the
 # same bytes on every machine, so CI can compare the committed binaries with a fresh build.
 GO_BUILD_FLAGS = -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$(VERSION)"
@@ -35,7 +35,7 @@ tui: ## Install the terminal UI into .venv/bin: built with Go, else the prebuilt
 	@test -d .venv/bin || { echo "Run make deps first."; exit 1; }
 	@if command -v go >/dev/null; then \
 		echo "Building the terminal UI $(VERSION) from source"; \
-		cd tui && go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./cmd/agents-chat-tui; \
+		cd tui && go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./cmd/agentcy-tui; \
 	elif test -f "$(PREBUILT_TUI)"; then \
 		echo "Installing the prebuilt terminal UI for $(HOST_PLATFORM)"; \
 		install -m 755 "$(PREBUILT_TUI)" "$(TUI_BINARY)"; \
@@ -46,9 +46,9 @@ tui: ## Install the terminal UI into .venv/bin: built with Go, else the prebuilt
 tui-binaries: ## Rebuild the committed terminal UI binaries in bin/ for every platform
 	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
 	@for platform in $(PLATFORMS); do \
-		echo "Building bin/$$platform/agents-chat-tui $(VERSION)"; \
+		echo "Building bin/$$platform/agentcy-tui $(VERSION)"; \
 		( cd tui && CGO_ENABLED=0 GOOS=$${platform%-*} GOARCH=$${platform#*-} \
-			go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/bin/$$platform/agents-chat-tui" ./cmd/agents-chat-tui ) || exit 1; \
+			go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/bin/$$platform/agentcy-tui" ./cmd/agentcy-tui ) || exit 1; \
 	done
 
 release: ## Prepare release VERSION=x.y.z: set the version and rebuild the binaries
@@ -65,10 +65,10 @@ check-workspace:
 	@test -d "$(WORKSPACE_PATH)" || { echo "Not a directory: $(WORKSPACE_PATH)"; exit 1; }
 
 register-claude: check-workspace ## Register the server in Claude Code for all projects
-	claude mcp add --scope user agents-chat -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
+	claude mcp add --scope user agentcy -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
 
 register-codex: check-workspace ## Register the server in Codex
-	codex mcp add agents-chat -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
+	codex mcp add agentcy -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
 
 ui: ## Open the terminal UI for WORKSPACE (default: the current folder)
 	"$(BRIDGE)" ui $(if $(WORKSPACE),--workspace "$(WORKSPACE_PATH)")

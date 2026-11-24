@@ -5,9 +5,9 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, select
 
-from agents_chat.conversations import models, repository, tasks
-from agents_chat.conversations.tables import room
-from agents_chat.mcp import server
+from agentcy.conversations import models, repository, tasks
+from agentcy.conversations.tables import room
+from agentcy.mcp import server
 
 
 @pytest.fixture

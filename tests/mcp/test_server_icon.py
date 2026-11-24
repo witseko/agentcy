@@ -1,4 +1,4 @@
-"""Check the icon advertised by the Agents Chat stdio server."""
+"""Check the icon advertised by the Agentcy stdio server."""
 
 import asyncio
 import struct
@@ -17,7 +17,7 @@ async def initialize(workspace: Path) -> InitializeResult:
         command=sys.executable,
         args=[
             "-c",
-            "from agents_chat.tools.cli import main; main()",
+            "from agentcy.tools.cli import main; main()",
             "--workspace",
             str(workspace),
         ],
@@ -30,7 +30,7 @@ def test_stdio_server_advertises_png_icon(tmp_path: Path) -> None:
     """Provide a self-contained 64-pixel icon and base instructions during initialization."""
     result = asyncio.run(initialize(tmp_path))
     server = result.serverInfo
-    assert server.name == "agents-chat"
+    assert server.name == "agentcy"
     assert result.instructions is not None
     assert "report brief progress updates to the lead periodically" in result.instructions
     assert "post one short kind='note' without 'to' that introduces you" in result.instructions

@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from agents_chat.mcp import plugin_client
-from agents_chat.mcp.plugin_contract import RunResult, Start
-from agents_chat.mcp.plugin_settings import Plugin
+from agentcy.mcp import plugin_client
+from agentcy.mcp.plugin_contract import RunResult, Start
+from agentcy.mcp.plugin_settings import Plugin
 
 PROJECT = Path(__file__).parents[2]
 
@@ -43,7 +43,7 @@ def test_plugin_declares_capabilities_and_rejects_unusable_credentials(
     """Exercise the real executable contract without accepting a provider run."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     monkeypatch.delenv(env_key, raising=False)
     plugin = Plugin(
         command=[sys.executable, str(PROJECT / script)],

@@ -12,9 +12,9 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from agents_chat.executables import absolute_search_path, find_on_path
-from agents_chat.mcp.fresh_server import FRESH_WORKER_PROMPT
-from agents_chat.mcp.plugin_contract import (
+from agentcy.executables import absolute_search_path, find_on_path
+from agentcy.mcp.fresh_server import FRESH_WORKER_PROMPT
+from agentcy.mcp.plugin_contract import (
     AssignmentId,
     Capabilities,
     CostCap,
@@ -23,10 +23,10 @@ from agents_chat.mcp.plugin_contract import (
     Timeout,
     TokenCap,
 )
-from agents_chat.storage.database import data_dir
+from agentcy.storage.database import data_dir
 
-MCP = FastMCP("agents-chat-zai")
-JOIN_VARIABLE = "AGENTS_CHAT_FRESH_JOIN_CODE"
+MCP = FastMCP("agentcy-zai")
+JOIN_VARIABLE = "AGENTCY_FRESH_JOIN_CODE"
 PROMPT = FRESH_WORKER_PROMPT
 ACTIVE = {"starting", "running"}
 STATE_INTERVAL = 0.5
@@ -95,7 +95,7 @@ def platform_sandbox() -> bool:
 
 def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str, str]:
     """Keep OpenCode isolated from the user's project settings and shared server."""
-    allowed_tools = ["read", "glob", "grep", "agentschat_*"]
+    allowed_tools = ["read", "glob", "grep", "agentcy_*"]
     settings = {
         "update": "disable",
         "providers": {
@@ -107,14 +107,14 @@ def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str,
         ],
         "mcp": {
             "servers": {
-                "agentschat": {
+                "agentcy": {
                     "type": "local",
                     "command": [
                         sys.executable,
                         "-E",
                         "-P",
                         "-m",
-                        "agents_chat.mcp.fresh_server",
+                        "agentcy.mcp.fresh_server",
                         str(workspace),
                     ],
                     "codemode": False,
@@ -134,7 +134,7 @@ def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str,
     return {
         **environment,
         "PATH": absolute_search_path(),
-        "AGENTS_CHAT_HOME": str(data_dir()),
+        "AGENTCY_HOME": str(data_dir()),
         "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
         "XDG_CONFIG_HOME": str(runtime / "config"),

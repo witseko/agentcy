@@ -30,15 +30,15 @@ FOLLOW_UP = "The lead confirmed the result against the brief."
 def bridge_home() -> Iterator[Path]:
     """Run and reap a test-owned core in a short, private Unix socket directory."""
     # A pytest base temp directory can exceed the Unix socket path limit on macOS.
-    with TemporaryDirectory(prefix="agents-chat-e2e-", dir="/tmp") as directory:
+    with TemporaryDirectory(prefix="agentcy-e2e-", dir="/tmp") as directory:
         home = Path(directory)
         socket_path = home / "core.sock"
         log_path = home / "core.log"
         with log_path.open("w") as log:
             core = subprocess.Popen(
-                [sys.executable, "-I", "-m", "agents_chat.mcp.core"],
+                [sys.executable, "-I", "-m", "agentcy.mcp.core"],
                 cwd=home,
-                env={"AGENTS_CHAT_HOME": directory, "PATH": os.defpath},
+                env={"AGENTCY_HOME": directory, "PATH": os.defpath},
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -62,11 +62,11 @@ def bridge_home() -> Iterator[Path]:
 @asynccontextmanager
 async def connect(home: Path, workspace: Path) -> AsyncIterator[ClientSession]:
     """Start and initialize one installed CLI shim through the MCP SDK."""
-    command = Path(sysconfig.get_path("scripts")) / "agents-chat"
+    command = Path(sysconfig.get_path("scripts")) / "agentcy"
     parameters = StdioServerParameters(
         command=str(command),
         args=["--workspace", str(workspace)],
-        env={"AGENTS_CHAT_HOME": str(home), "PATH": os.defpath},
+        env={"AGENTCY_HOME": str(home), "PATH": os.defpath},
         cwd=workspace,
     )
     async with (

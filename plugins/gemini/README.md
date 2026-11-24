@@ -5,7 +5,7 @@ CLI (`agy`) and the macOS `sandbox-exec` executable. The bridge can load other
 [fresh-run plugins](../../protocol/README.md) on platforms those plugins support.
 
 Use an absolute path to the bridge's Python environment and this plugin script.
-In the bridge data directory (`~/.agents-chat` unless `AGENTS_CHAT_HOME` is set),
+In the bridge data directory (`~/.agentcy` unless `AGENTCY_HOME` is set),
 create `plugins.json` with mode `0600`.
 
 ```json
@@ -13,8 +13,8 @@ create `plugins.json` with mode `0600`.
   "plugins": {
     "gemini": {
       "command": [
-        "/path/to/agents-chat/.venv/bin/python",
-        "/path/to/agents-chat/plugins/gemini/server.py"
+        "/path/to/agentcy/.venv/bin/python",
+        "/path/to/agentcy/plugins/gemini/server.py"
       ],
       "model": "gemini-3.8-flash-medium",
       "timeout_seconds": 300,

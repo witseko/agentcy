@@ -1,4 +1,4 @@
-# agents-chat
+# agentcy
 
 MCP conversations and project memory for agents working in different desktop apps and CLIs.
 
@@ -22,11 +22,11 @@ Use the Model Context Protocol (MCP) for both public interfaces. A desktop app o
 | Area | Responsibility |
 | --- | --- |
 | `protocol/` | Versioned, language-neutral contracts for the chat-facing tools, the plugin interface, and the operator protocol: JSON schemas, example exchanges, and compatibility fixtures. |
-| `src/agents_chat/conversations/` | Participants, invitations, messages, assignments, handoffs, rounds, and orchestration, with its own tables and queries. |
-| `src/agents_chat/memory/` | Scoped Markdown discovery, evidence, proposals, publication, and conflict handling, with its own tables and queries. |
-| `src/agents_chat/storage/` | Database engine, shared metadata, migrations, and file permissions. |
-| `src/agents_chat/mcp/` | Tools exposed to chats, the stdio shim, and the client used to call plugins. |
-| `src/agents_chat/tools/` | Command-line entry points: the stdio shim and `agents-chat ui`, which starts the terminal UI. |
+| `src/agentcy/conversations/` | Participants, invitations, messages, assignments, handoffs, rounds, and orchestration, with its own tables and queries. |
+| `src/agentcy/memory/` | Scoped Markdown discovery, evidence, proposals, publication, and conflict handling, with its own tables and queries. |
+| `src/agentcy/storage/` | Database engine, shared metadata, migrations, and file permissions. |
+| `src/agentcy/mcp/` | Tools exposed to chats, the stdio shim, and the client used to call plugins. |
+| `src/agentcy/tools/` | Command-line entry points: the stdio shim and `agentcy ui`, which starts the terminal UI. |
 | `tui/` | Terminal UI for the human, written in Go, on the operator protocol. |
 | `plugins/` | Independently installable Claude, Codex, and Z.ai MCP servers. |
 | `tests/` | Core behavior, cross-process integration, and reusable plugin conformance tests. |
@@ -37,9 +37,9 @@ Chats launch local MCP servers over stdio and stop them when the chat closes, wh
 
 ### HTTP transport
 
-A chat that runs in a provider's VM or hosted sandbox cannot launch the stdio shim on the user's computer. For such a chat the user runs `agents-chat --workspace DIR --http PORT`. This process serves the same tools over MCP Streamable HTTP at `/mcp` and forwards to the same core, so the workspace key comes from the directory on the user's computer and join codes work across local and remote chats.
+A chat that runs in a provider's VM or hosted sandbox cannot launch the stdio shim on the user's computer. For such a chat the user runs `agentcy --workspace DIR --http PORT`. This process serves the same tools over MCP Streamable HTTP at `/mcp` and forwards to the same core, so the workspace key comes from the directory on the user's computer and join codes work across local and remote chats.
 
-The process listens on the loopback interface only. The user exposes it through a tunnel with TLS and passes the tunnel's host name with `--http-public-host`. The process rejects every other Host header. Every request must carry `Authorization: Bearer` with the access token from `AGENTS_CHAT_HTTP_TOKEN`, a secret of at least 32 characters. The process compares it in constant time, answers 401 without it, never logs it, and removes it from its environment before it starts the core. The access token admits a caller to the tools of one workspace, which include starting fresh runs. Participant tokens keep their function inside a conversation.
+The process listens on the loopback interface only. The user exposes it through a tunnel with TLS and passes the tunnel's host name with `--http-public-host`. The process rejects every other Host header. Every request must carry `Authorization: Bearer` with the access token from `AGENTCY_HTTP_TOKEN`, a secret of at least 32 characters. The process compares it in constant time, answers 401 without it, never logs it, and removes it from its environment before it starts the core. The access token admits a caller to the tools of one workspace, which include starting fresh runs. Participant tokens keep their function inside a conversation.
 
 ### Participant identity
 
@@ -77,7 +77,7 @@ Each waiting read returns within the host's tool timeout, checks participant sta
 
 The core serves a versioned operator protocol on its Unix socket for a local interface such as a terminal UI. One request line gets one response line. The protocol lists the active or archived conversations of a checkout's workspace, archives and unarchives closed conversations, renames a conversation, searches briefs and messages, shows a conversation's status and messages, creates a conversation with an invitation and a ready join prompt for every slot, invites, launches a configured plugin into a worker slot, posts notes and questions as the human, closes with an optional summary, and lists plugin names and models. Requests name the checkout by its absolute path, and the core derives the workspace from it. The interface polls `operator_show`; the protocol has no waiting read. [Operator protocol](protocol/README.md#operator-protocol)
 
-The terminal UI in `tui/` is the human's surface on this protocol. `agents-chat ui` starts the core when it is not running and then runs the UI for a checkout. The UI lists the checkout's conversations, creates a conversation with a lead and worker slots, launches plugin worker slots, shows the transcript and member status, posts notes and questions as the human, reissues codes, and closes. It switches the chat list between active and archived conversations, archives or unarchives a closed one, renames a conversation, and searches all conversations; a result opens its conversation at the matching message. It polls `operator_show` about once a second. It shows join codes only in its invite window and keeps them in memory. It strips control characters and escape sequences from model text before it draws it.
+The terminal UI in `tui/` is the human's surface on this protocol. `agentcy ui` starts the core when it is not running and then runs the UI for a checkout. The UI lists the checkout's conversations, creates a conversation with a lead and worker slots, launches plugin worker slots, shows the transcript and member status, posts notes and questions as the human, reissues codes, and closes. It switches the chat list between active and archived conversations, archives or unarchives a closed one, renames a conversation, and searches all conversations; a result opens its conversation at the matching message. It polls `operator_show` about once a second. It shows join codes only in its invite window and keeps them in memory. It strips control characters and escape sequences from model text before it draws it.
 
 The lead is always an interactive chat, such as a desktop app, that joins with the ready join prompt the UI shows. Each worker slot is either a manual chat with its own join prompt or a configured plugin that the UI launches.
 

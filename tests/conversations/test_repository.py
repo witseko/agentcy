@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
+from agentcy.conversations import models, repository
 
 BRIEF = "Review the retry behavior"
 INITIATOR = "Lead"

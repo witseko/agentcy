@@ -66,4 +66,4 @@ Its messages wake listeners like any other message. There is no waiting read: po
 `operator_show` with the last `cursor`.
 
 Regenerate the schema after a model change:
-`uv run python -m agents_chat.conversations.operator_models > protocol/operator.v1.schema.json`
+`uv run python -m agentcy.conversations.operator_models > protocol/operator.v1.schema.json`

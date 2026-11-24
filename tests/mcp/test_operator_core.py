@@ -17,21 +17,21 @@ from typing import Any
 import pytest
 from sqlalchemy import select, update
 
-from agents_chat.conversations import models
-from agents_chat.conversations.assignment_tables import assignment
-from agents_chat.conversations.operator_models import CONTRACT
-from agents_chat.conversations.progress import lead_waiting_on
-from agents_chat.conversations.roles import HUMAN_LABEL
-from agents_chat.mcp import concurrency, server
-from agents_chat.mcp.concurrency import transaction
-from agents_chat.mcp.core import (
+from agentcy.conversations import models
+from agentcy.conversations.assignment_tables import assignment
+from agentcy.conversations.operator_models import CONTRACT
+from agentcy.conversations.progress import lead_waiting_on
+from agentcy.conversations.roles import HUMAN_LABEL
+from agentcy.mcp import concurrency, server
+from agentcy.mcp.concurrency import transaction
+from agentcy.mcp.core import (
     OPERATOR_KEY_ERROR,
     OPERATOR_KEY_FILE,
     REQUEST,
     Core,
     write_operator_key,
 )
-from agents_chat.storage.database import workspace_key
+from agentcy.storage.database import workspace_key
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "fake_run_plugin.py"
 EXAMPLES = Path(__file__).parents[2] / "protocol" / "operator.v1.examples.json"
@@ -75,11 +75,11 @@ def bridge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Bridge]:
         encoding="utf-8",
     )
     config.chmod(0o600)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(home))
+    monkeypatch.setenv("AGENTCY_HOME", str(home))
     directory = tmp_path / "workspace"
     directory.mkdir()
     # A pytest base temp directory can exceed the Unix socket path limit on macOS.
-    with TemporaryDirectory(prefix="agents-chat-operator-", dir="/tmp") as sockets:
+    with TemporaryDirectory(prefix="agentcy-operator-", dir="/tmp") as sockets:
         socket_path = Path(sockets) / "core.sock"
         core = Core(str(socket_path), write_operator_key(home))
         core.worker.ready.set()

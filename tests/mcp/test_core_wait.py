@@ -9,10 +9,10 @@ from threading import Event
 import pytest
 from sqlalchemy import update
 
-from agents_chat.conversations import models
-from agents_chat.conversations.tables import room
-from agents_chat.mcp import concurrency
-from agents_chat.mcp.core import Core
+from agentcy.conversations import models
+from agentcy.conversations.tables import room
+from agentcy.mcp import concurrency
+from agentcy.mcp.core import Core
 
 
 def test_waiting_read_releases_database_and_collects_a_burst(
@@ -21,7 +21,7 @@ def test_waiting_read_releases_database_and_collects_a_burst(
     """Posts from another request wake a listener and settle within its wait budget."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     monkeypatch.setattr(concurrency, "SETTLE_SECONDS", 0.08)
     core = Core.__new__(Core)
     core.notifications = concurrency.Notifications()
@@ -62,7 +62,7 @@ def test_waiting_read_releases_sealed_proposals_on_deadline(
     """Wake a sealed read at its deadline without an incoming bridge request."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     monkeypatch.setattr(concurrency, "SETTLE_SECONDS", 0.05)
     core = Core.__new__(Core)
     core.notifications = concurrency.Notifications()

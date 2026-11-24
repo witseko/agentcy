@@ -38,10 +38,10 @@ jobs:
           mkdir "$RUNNER_TEMP/release"
           for platform in bin/*/; do
             platform="$(basename "$platform")"
-            cp "bin/$platform/agents-chat-tui" "$RUNNER_TEMP/release/agents-chat-tui-$platform"
+            cp "bin/$platform/agentcy-tui" "$RUNNER_TEMP/release/agentcy-tui-$platform"
           done
           cd "$RUNNER_TEMP/release"
-          sha256sum agents-chat-tui-* > SHA256SUMS
+          sha256sum agentcy-tui-* > SHA256SUMS
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}

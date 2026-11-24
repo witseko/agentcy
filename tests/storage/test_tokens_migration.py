@@ -8,14 +8,14 @@ from secrets import token_hex
 import pytest
 from sqlalchemy import inspect
 
-from agents_chat.conversations import models, repository
-from agents_chat.storage.database import SCHEMA_VERSION, database
-from agents_chat.tokens import ledger
+from agentcy.conversations import models, repository
+from agentcy.storage.database import SCHEMA_VERSION, database
+from agentcy.tokens import ledger
 
 
 def test_new_store_has_token_schema(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Create a new store at version eleven with model, token_budget, and participant_usage."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     engine = database(token_hex(32))
     try:
@@ -35,7 +35,7 @@ def test_upgrade_from_version_ten_enables_token_usage(
     undo_version_eleven: Callable[[sqlite3.Connection], None],
 ) -> None:
     """Upgrading a v10 store preserves existing conversations and supports report_usage."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     ledger.clear_ledger_cache()
     workspace = token_hex(32)

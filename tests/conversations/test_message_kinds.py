@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
+from agentcy.conversations import models, repository
 
 
 def create_room(connection: Connection, invitees: models.Slots) -> dict:

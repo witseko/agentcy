@@ -12,9 +12,9 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from agents_chat.executables import absolute_search_path, find_on_path
-from agents_chat.mcp.fresh_server import FRESH_WORKER_PROMPT
-from agents_chat.mcp.plugin_contract import (
+from agentcy.executables import absolute_search_path, find_on_path
+from agentcy.mcp.fresh_server import FRESH_WORKER_PROMPT
+from agentcy.mcp.plugin_contract import (
     AssignmentId,
     Capabilities,
     CostCap,
@@ -23,10 +23,10 @@ from agents_chat.mcp.plugin_contract import (
     Timeout,
     TokenCap,
 )
-from agents_chat.storage.database import data_dir
+from agentcy.storage.database import data_dir
 
-MCP = FastMCP("agents-chat-gemini")
-JOIN_VARIABLE = "AGENTS_CHAT_FRESH_JOIN_CODE"
+MCP = FastMCP("agentcy-gemini")
+JOIN_VARIABLE = "AGENTCY_FRESH_JOIN_CODE"
 PROMPT = FRESH_WORKER_PROMPT
 ACTIVE = {"starting", "running"}
 STATE_INTERVAL = 0.5
@@ -101,13 +101,13 @@ def prepare_environment(workspace: Path, runtime: Path) -> dict[str, str]:
         json.dumps(
             {
                 "mcpServers": {
-                    "agentschat": {
+                    "agentcy": {
                         "command": sys.executable,
                         "args": [
                             "-E",
                             "-P",
                             "-m",
-                            "agents_chat.mcp.fresh_server",
+                            "agentcy.mcp.fresh_server",
                             str(workspace),
                         ],
                     },
@@ -122,7 +122,7 @@ def prepare_environment(workspace: Path, runtime: Path) -> dict[str, str]:
         "enableTerminalSandbox": True,
         "disableSlashCommands": True,
         "permissions": {
-            "allow": ["read_file(*)", "mcp(agentschat/*)"],
+            "allow": ["read_file(*)", "mcp(agentcy/*)"],
             "deny": ["write_file(*)", "command(*)"],
         },
     }
@@ -137,7 +137,7 @@ def prepare_environment(workspace: Path, runtime: Path) -> dict[str, str]:
     return {
         **environment,
         "PATH": absolute_search_path(),
-        "AGENTS_CHAT_HOME": str(data_dir()),
+        "AGENTCY_HOME": str(data_dir()),
         "HOME": str(runtime),
         "XDG_CONFIG_HOME": str(runtime / "config"),
         "XDG_STATE_HOME": str(runtime / "state"),

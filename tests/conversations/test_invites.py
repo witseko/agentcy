@@ -9,9 +9,9 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection, update
 
-from agents_chat.conversations import models, repository
-from agents_chat.conversations.tables import member
-from agents_chat.storage.database import database, workspace_key
+from agentcy.conversations import models, repository
+from agentcy.conversations.tables import member
+from agentcy.storage.database import database, workspace_key
 
 
 def apply(connection: Connection, action: str, **fields: Any) -> dict:
@@ -36,7 +36,7 @@ def test_join_reports_when_clients_use_different_workspaces(
     """Identify a mismatched workspace so the worker can join with the same code."""
     bridge = tmp_path / "bridge"
     bridge.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(bridge))
+    monkeypatch.setenv("AGENTCY_HOME", str(bridge))
     workspaces = [tmp_path / "lead", tmp_path / "worker"]
     for directory in workspaces:
         directory.mkdir()

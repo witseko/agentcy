@@ -2353,7 +2353,7 @@
       "type": "object"
     }
   },
-  "title": "agents-chat operator protocol v1",
+  "title": "agentcy operator protocol v1",
   "oneOf": [
     {
       "$ref": "#/$defs/ListConversations"

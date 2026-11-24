@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from agents_chat.mcp.http_transport import (
+from agentcy.mcp.http_transport import (
     ACCESS_TOKEN_VARIABLE,
     BearerTokenGate,
     HttpSettings,

@@ -6,8 +6,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
-from agents_chat.storage.database import database
+from agentcy.conversations import models, repository
+from agentcy.storage.database import database
 
 INVITEES = ["Worker", "Missing"]
 

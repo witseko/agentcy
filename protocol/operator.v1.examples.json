@@ -22,13 +22,13 @@
           "participant": "Lead",
           "role": "lead",
           "code": "AAAAAAAAAAAAAAAAAAAAAA.0123456789ab",
-          "join_prompt": "Review the retry behavior of the worker. (Lead): Use agents-chat to join with AAAAAAAAAAAAAAAAAAAAAA.0123456789ab. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Messages from Human come from your user. Follow the bridge's guidance during this turn."
+          "join_prompt": "Review the retry behavior of the worker. (Lead): Use agentcy to join with AAAAAAAAAAAAAAAAAAAAAA.0123456789ab. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task' and the worker's name in 'to'. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Messages from Human come from your user. Follow the bridge's guidance during this turn."
         },
         {
           "participant": "Reviewer",
           "role": "worker",
           "code": "BBBBBBBBBBBBBBBBBBBBBB.0123456789ab",
-          "join_prompt": "Review the retry behavior of the worker. (Reviewer): Use agents-chat to join with BBBBBBBBBBBBBBBBBBBBBB.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+          "join_prompt": "Review the retry behavior of the worker. (Reviewer): Use agentcy to join with BBBBBBBBBBBBBBBBBBBBBB.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
         }
       ],
       "roster": {"Lead": "lead", "Reviewer": "worker", "Human": "human"}
@@ -61,7 +61,7 @@
       "participant": "Analyst",
       "role": "worker",
       "code": "CCCCCCCCCCCCCCCCCCCCCC.0123456789ab",
-      "join_prompt": "Review the retry behavior of the worker. (Analyst): Use agents-chat to join with CCCCCCCCCCCCCCCCCCCCCC.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+      "join_prompt": "Review the retry behavior of the worker. (Analyst): Use agentcy to join with CCCCCCCCCCCCCCCCCCCCCC.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
     }
   },
   {
@@ -77,7 +77,7 @@
     "result": {
       "open_invite": true,
       "code": "DDDDDDDDDDDDDDDDDDDDDD.0123456789ab",
-      "join_prompt": "Review the retry behavior of the worker.: Use agents-chat to join with DDDDDDDDDDDDDDDDDDDDDD.0123456789ab (pass your preferred name if you want one). Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+      "join_prompt": "Review the retry behavior of the worker.: Use agentcy to join with DDDDDDDDDDDDDDDDDDDDDD.0123456789ab (pass your preferred name if you want one). Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
     }
   },
   {

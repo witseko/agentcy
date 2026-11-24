@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import history, models, operator, operator_models, repository
+from agentcy.conversations import history, models, operator, operator_models, repository
 
 DIRECTORY = "/work/repository"
 

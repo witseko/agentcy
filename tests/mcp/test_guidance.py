@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
-from agents_chat.mcp import server
+from agentcy.conversations import models, repository
+from agentcy.mcp import server
 
 
 @pytest.mark.parametrize(
@@ -570,7 +570,7 @@ def test_retired_member_gets_stop_guidance_and_lead_does_not_wait_on_retired() -
 
 def test_assignment_worker_cancels_retired_participant_run() -> None:
     """Retiring a slot with an active fresh run marks it for cancellation."""
-    from agents_chat.mcp.assignment_worker import AssignmentWorker
+    from agentcy.mcp.assignment_worker import AssignmentWorker
 
     row = {
         "open": 1,

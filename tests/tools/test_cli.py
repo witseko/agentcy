@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from agents_chat.mcp import server
-from agents_chat.mcp.http_transport import HttpSettings
-from agents_chat.storage.database import workspace_key
-from agents_chat.tools import cli
+from agentcy.mcp import server
+from agentcy.mcp.http_transport import HttpSettings
+from agentcy.storage.database import workspace_key
+from agentcy.tools import cli
 
 
 class FakeConnection:
@@ -29,7 +29,7 @@ def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the bridge at a private data directory and an empty interpreter folder."""
     home = tmp_path / "home"
     home.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(home))
+    monkeypatch.setenv("AGENTCY_HOME", str(home))
     interpreter = tmp_path / "venv" / "bin"
     interpreter.mkdir(parents=True)
     monkeypatch.setattr(cli.sys, "executable", str(interpreter / "python"))
@@ -38,7 +38,7 @@ def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def fake_binary(directory: Path) -> Path:
     """Create an executable file that stands in for the UI binary."""
-    binary = directory / "agents-chat-tui"
+    binary = directory / "agentcy-tui"
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(0o700)
     return binary
@@ -52,7 +52,7 @@ def test_ui_execs_the_binary_with_the_absolute_workspace(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.chdir(workspace)
-    monkeypatch.setenv("AGENTS_CHAT_TUI", str(binary))
+    monkeypatch.setenv("AGENTCY_TUI", str(binary))
     probe = FakeConnection()
     monkeypatch.setattr(cli, "core_connection", lambda: probe)
     calls = []
@@ -67,9 +67,9 @@ def test_ui_execs_the_binary_with_the_absolute_workspace(
 def test_ui_finds_the_binary_on_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
-    """Without AGENTS_CHAT_TUI the binary comes from an absolute PATH entry."""
+    """Without AGENTCY_TUI the binary comes from an absolute PATH entry."""
     binary = fake_binary(tmp_path)
-    monkeypatch.delenv("AGENTS_CHAT_TUI", raising=False)
+    monkeypatch.delenv("AGENTCY_TUI", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(cli, "core_connection", FakeConnection)
     calls = []
@@ -88,7 +88,7 @@ def test_ui_prefers_the_binary_next_to_the_interpreter(
     on_path = tmp_path / "path"
     on_path.mkdir()
     fake_binary(on_path)
-    monkeypatch.delenv("AGENTS_CHAT_TUI", raising=False)
+    monkeypatch.delenv("AGENTCY_TUI", raising=False)
     monkeypatch.setenv("PATH", str(on_path))
     monkeypatch.setattr(cli, "core_connection", FakeConnection)
     calls = []
@@ -103,7 +103,7 @@ def test_missing_binary_says_how_to_build_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
     """A missing binary stops before the core starts, with build instructions."""
-    monkeypatch.delenv("AGENTS_CHAT_TUI", raising=False)
+    monkeypatch.delenv("AGENTCY_TUI", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
 
     def unexpected() -> None:
@@ -115,14 +115,14 @@ def test_missing_binary_says_how_to_build_it(
         cli.main(["ui", "--workspace", str(tmp_path)])
 
     assert "make setup" in str(stopped.value)
-    assert "AGENTS_CHAT_TUI" in str(stopped.value)
+    assert "AGENTCY_TUI" in str(stopped.value)
 
 
 def test_relative_tui_override_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
-    """AGENTS_CHAT_TUI must name an absolute executable path."""
-    monkeypatch.setenv("AGENTS_CHAT_TUI", "agents-chat-tui")
+    """AGENTCY_TUI must name an absolute executable path."""
+    monkeypatch.setenv("AGENTCY_TUI", "agentcy-tui")
 
     with pytest.raises(SystemExit, match="absolute path"):
         cli.main(["ui", "--workspace", str(tmp_path)])
@@ -131,7 +131,7 @@ def test_relative_tui_override_is_rejected(
 def test_workspace_flag_still_starts_the_shim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
-    """Host registrations keep using `agents-chat --workspace DIR`."""
+    """Host registrations keep using `agentcy --workspace DIR`."""
     calls = []
     monkeypatch.setattr(server, "serve", lambda key, directory: calls.append((key, directory)))
 
@@ -142,7 +142,7 @@ def test_workspace_flag_still_starts_the_shim(
 
 def test_cli_import_leaves_the_mcp_server_unloaded() -> None:
     """The UI path does not import the MCP server module."""
-    check = "import sys, agents_chat.tools.cli; sys.exit('agents_chat.mcp.server' in sys.modules)"
+    check = "import sys, agentcy.tools.cli; sys.exit('agentcy.mcp.server' in sys.modules)"
     # The test's own interpreter runs a fixed script with no shell.
     result = subprocess.run([sys.executable, "-I", "-c", check], check=False)  # noqa: S603
     assert result.returncode == 0
@@ -155,20 +155,20 @@ def test_http_flag_needs_an_access_token(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The bridge refuses to listen on HTTP without a secret in the environment."""
-    monkeypatch.delenv("AGENTS_CHAT_HTTP_TOKEN", raising=False)
+    monkeypatch.delenv("AGENTCY_HTTP_TOKEN", raising=False)
     monkeypatch.setattr(server, "serve", lambda *arguments: pytest.fail("bridge started"))
 
     with pytest.raises(SystemExit):
         cli.main(["--workspace", str(tmp_path), "--http", "8765"])
 
-    assert "AGENTS_CHAT_HTTP_TOKEN" in capsys.readouterr().err
+    assert "AGENTCY_HTTP_TOKEN" in capsys.readouterr().err
 
 
 def test_http_flag_starts_the_bridge_with_http_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, private_home: Path
 ) -> None:
     """`--http PORT` passes the port, the token, and the tunnel host name to the server."""
-    monkeypatch.setenv("AGENTS_CHAT_HTTP_TOKEN", "t" * 32)
+    monkeypatch.setenv("AGENTCY_HTTP_TOKEN", "t" * 32)
     calls = []
     monkeypatch.setattr(server, "serve", lambda *arguments: calls.append(arguments))
 
@@ -196,4 +196,4 @@ def test_version_flag_prints_the_installed_version(capsys: pytest.CaptureFixture
         cli.main(["--version"])
 
     assert stopped.value.code == 0
-    assert capsys.readouterr().out == f"agents-chat {version('agents-chat')}\n"
+    assert capsys.readouterr().out == f"agentcy {version('agentcy')}\n"

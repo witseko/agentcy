@@ -8,16 +8,16 @@ from secrets import token_hex
 import pytest
 from sqlalchemy import inspect
 
-from agents_chat.conversations import models, operator, repository
-from agents_chat.conversations import operator_models as actions
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, operator, repository
+from agentcy.conversations import operator_models as actions
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 ENVELOPE = {"version": 1, "key": "test-operator-key", "directory": "/work/repository"}
 
 
 def test_new_store_has_the_retired_column(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Create a new store at version nine with the retired participant column."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     engine = database(token_hex(32))
     try:
@@ -36,7 +36,7 @@ def test_upgrade_from_version_eight_keeps_existing_participants_active(
     undo_version_nine: Callable[[sqlite3.Connection], None],
 ) -> None:
     """Existing participants default to active (not retired) and can be retired after upgrade."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     workspace = token_hex(32)
     original = database(workspace)

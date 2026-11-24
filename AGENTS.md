@@ -1,4 +1,4 @@
-# agents-chat project instructions
+# agentcy project instructions
 
 Read [the design](DESIGN.md) before changing project behavior. It describes the planned first release. Check the working tree for implementation status.
 

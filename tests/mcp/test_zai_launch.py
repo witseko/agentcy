@@ -9,7 +9,7 @@ from types import ModuleType
 
 import pytest
 
-from agents_chat.mcp.plugin_contract import RunResult
+from agentcy.mcp.plugin_contract import RunResult
 
 PLUGIN_SCRIPT = Path(__file__).resolve().parents[2] / "plugins/zai/server.py"
 ASSIGNMENT_ID = "e" * 32
@@ -21,7 +21,7 @@ def zai_plugin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModuleType:
     """Load the standalone plugin with an isolated private bridge directory."""
     bridge = tmp_path / "bridge"
     bridge.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(bridge))
+    monkeypatch.setenv("AGENTCY_HOME", str(bridge))
     spec = spec_from_file_location("zai_plugin", PLUGIN_SCRIPT)
     assert spec is not None and spec.loader is not None
     plugin = module_from_spec(spec)
@@ -53,13 +53,13 @@ def test_launch_preserves_installed_opencode_symlink_in_workspace(
         assert not options.get("shell")
         assert env["PATH"] == str(bin_directory)
         config = Path(env["XDG_CONFIG_HOME"]) / "opencode" / "opencode.json"
-        server = json.loads(config.read_text(encoding="utf-8"))["mcp"]["servers"]["agentschat"]
+        server = json.loads(config.read_text(encoding="utf-8"))["mcp"]["servers"]["agentcy"]
         assert server["command"] == [
             sys.executable,
             "-E",
             "-P",
             "-m",
-            "agents_chat.mcp.fresh_server",
+            "agentcy.mcp.fresh_server",
             str(checkout),
         ]
 

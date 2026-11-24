@@ -8,13 +8,13 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, operator, operator_models, repository
-from agents_chat.storage.database import data_dir, database
-from agents_chat.tokens import ledger
+from agentcy.conversations import models, operator, operator_models, repository
+from agentcy.storage.database import data_dir, database
+from agentcy.tokens import ledger
 
 
 def write_tokens_json(payload: dict) -> Path:
-    """Write private ~/.agents-chat/tokens.json inside the active test home."""
+    """Write private ~/.agentcy/tokens.json inside the active test home."""
     path = data_dir() / "tokens.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     path.chmod(0o600)
@@ -289,12 +289,12 @@ def test_waiting_read_records_estimated_tokens_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Waiting reads record read tokens once on delivery and never on non-waking timeouts."""
-    from agents_chat.mcp import concurrency
-    from agents_chat.tokens import estimator
+    from agentcy.mcp import concurrency
+    from agentcy.tokens import estimator
 
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     monkeypatch.setattr(concurrency, "SETTLE_SECONDS", 0.05)
     ledger.clear_ledger_cache()
     workspace = token_hex(32)

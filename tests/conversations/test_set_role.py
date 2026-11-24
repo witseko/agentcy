@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, operator, operator_models, repository
+from agentcy.conversations import models, operator, operator_models, repository
 
 ENVELOPE = {"version": 1, "key": "test-operator-key", "directory": "/work"}
 

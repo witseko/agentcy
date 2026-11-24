@@ -9,8 +9,8 @@ from unittest.mock import Mock, sentinel
 
 import pytest
 
-from agents_chat.conversations import models
-from agents_chat.mcp import transport
+from agentcy.conversations import models
+from agentcy.mcp import transport
 
 
 def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -20,7 +20,7 @@ def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_pa
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.chdir(workspace)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(home))
+    monkeypatch.setenv("AGENTCY_HOME", str(home))
     monkeypatch.setenv("PYTHONPATH", ".")
     connect = Mock(side_effect=[FileNotFoundError, FileNotFoundError, sentinel.connection])
     start = Mock(return_value=Mock(poll=Mock(return_value=None)))
@@ -30,7 +30,7 @@ def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_pa
         assert transport.core_connection() is sentinel.connection
     start.assert_called_once()
     command = start.call_args.args[0]
-    assert command == [sys.executable, "-I", "-m", "agents_chat.mcp.core"]
+    assert command == [sys.executable, "-I", "-m", "agentcy.mcp.core"]
     probe = subprocess.run(  # noqa: S603 - current interpreter with fixed probe code
         [*command[:2], "-c", "import sys\nprint(sys.flags.no_user_site, *sys.path, sep='\\n')"],
         cwd=workspace,
@@ -51,7 +51,7 @@ def test_exchange_retries_once_on_transient_disconnect_for_idempotent_calls(
     """Retry idempotent calls once on transient socket resets, but never retry create."""
     from secrets import token_urlsafe
 
-    from agents_chat.conversations import models
+    from agentcy.conversations import models
 
     calls = 0
 
@@ -105,5 +105,5 @@ def test_core_rejecting_a_valid_request_reports_a_version_mismatch(
     request = models.Join(workspace="a" * 64, code="abcdefghijklmnopqrstuv.0123456789ab")
     with pytest.raises(ValueError, match="Invalid bridge arguments") as error:
         transport.exchange(request)
-    assert "Stop the process running agents_chat.mcp.core" in str(error.value)
+    assert "Stop the process running agentcy.mcp.core" in str(error.value)
     assert request.code not in str(error.value)

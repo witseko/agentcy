@@ -8,13 +8,13 @@ from secrets import token_hex
 import pytest
 from sqlalchemy import inspect
 
-from agents_chat.conversations import models, operator, repository
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, operator, repository
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 
 def open_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     """Point the bridge at a private data directory and return a new workspace key."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     return token_hex(32)
 

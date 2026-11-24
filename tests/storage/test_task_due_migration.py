@@ -7,8 +7,8 @@ from secrets import token_hex
 
 import pytest
 
-from agents_chat.conversations import models, repository
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, repository
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 
 def test_upgrade_from_version_eleven_keeps_old_tasks_and_accepts_due_times(
@@ -17,7 +17,7 @@ def test_upgrade_from_version_eleven_keeps_old_tasks_and_accepts_due_times(
     undo_version_twelve: Callable[[sqlite3.Connection], None],
 ) -> None:
     """A task stored before the upgrade stays open without a due time, and new tasks get one."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     workspace = token_hex(32)
     original = database(workspace)

@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from agents_chat.tokens.settings import read_settings
+from agentcy.tokens.settings import read_settings
 
 
 def write_tokens_config(root: Path, payload: dict | str, mode: int = 0o600) -> Path:
-    """Write ~/.agents-chat/tokens.json with explicit permissions."""
+    """Write ~/.agentcy/tokens.json with explicit permissions."""
     path = root / "tokens.json"
     text = payload if isinstance(payload, str) else json.dumps(payload)
     path.write_text(text, encoding="utf-8")
@@ -21,7 +21,7 @@ def test_missing_tokens_config_returns_none(tmp_path: Path, monkeypatch: pytest.
     """Return None cleanly when the user has not configured tokens.json."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
 
     assert read_settings() is None
 
@@ -32,7 +32,7 @@ def test_valid_tokens_config_resolves_models_case_insensitively(
     """Load private model budgets, defaults, and rolling windows."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     write_tokens_config(
         root,
         {
@@ -68,7 +68,7 @@ def test_rejects_world_readable_or_symlink_tokens_config(
     """Enforce owner-only regular file permissions on tokens.json."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     write_tokens_config(root, {"default_initial_tokens": 100_000}, mode=0o644)
 
     with pytest.raises(ValueError, match="private file"):
@@ -90,7 +90,7 @@ def test_rejects_invalid_thresholds_or_unknown_fields(
     """Reject out-of-range values and extra fields without leaking input."""
     root = tmp_path / "bridge"
     root.mkdir(mode=0o700)
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(root))
+    monkeypatch.setenv("AGENTCY_HOME", str(root))
     write_tokens_config(root, {"warn_percent": 150})
 
     with pytest.raises(ValueError, match="Invalid token configuration"):

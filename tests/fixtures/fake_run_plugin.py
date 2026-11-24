@@ -5,7 +5,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from agents_chat.mcp.plugin_contract import (
+from agentcy.mcp.plugin_contract import (
     AssignmentId,
     Capabilities,
     CostCap,
@@ -13,7 +13,7 @@ from agents_chat.mcp.plugin_contract import (
     Timeout,
     TokenCap,
 )
-from agents_chat.storage.database import data_dir
+from agentcy.storage.database import data_dir
 
 MCP = FastMCP("fake-fresh-runs")
 

@@ -9,8 +9,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from agents_chat.conversations import models, repository
-from agents_chat.mcp import server
+from agentcy.conversations import models, repository
+from agentcy.mcp import server
 
 SUMMARY = "The retry check passed."
 

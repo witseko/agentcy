@@ -8,15 +8,15 @@ from secrets import token_hex
 import pytest
 from sqlalchemy import inspect
 
-from agents_chat.conversations import models, repository
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, repository
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 
 def test_new_store_has_open_invite_column_and_unique_index(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Create a new store at version ten with the open_invite_hash column and unique index."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     engine = database(token_hex(32))
     try:
@@ -38,7 +38,7 @@ def test_upgrade_from_version_nine_supports_open_invites(
     undo_version_ten: Callable[[sqlite3.Connection], None],
 ) -> None:
     """Existing conversations keep open_invite disabled after upgrade and can enable it."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     workspace = token_hex(32)
     original = database(workspace)

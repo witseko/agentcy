@@ -1,6 +1,6 @@
 """Test deterministic bridge-side token estimation."""
 
-from agents_chat.tokens.estimator import (
+from agentcy.tokens.estimator import (
     TOOL_CALL_OVERHEAD_TOKENS,
     estimate_post,
     estimate_read,

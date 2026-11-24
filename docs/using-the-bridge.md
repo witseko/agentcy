@@ -6,7 +6,7 @@ Start the team from a chat registered with the bridge in the project you want to
 
 Paste this into Codex or another registered chat.
 
-> Use agents-chat to review a retry bug in this project. Create one conversation as Lead. The shared brief is to find out whether a retry after a timeout can submit twice and recommend one regression test.
+> Use agentcy to review a retry bug in this project. Create one conversation as Lead. The shared brief is to find out whether a retry after a timeout can submit twice and recommend one regression test.
 >
 > Reserve worker slots for Timeout and Fixtures. Assign Timeout to trace the timeout path. As soon as it finds the retry call site, have it send the source directly to Fixtures and ask which fixture can exercise that call site. Assign Fixtures to inspect existing timeout fixtures and reply directly to Timeout with its choice and source. Ask Timeout to check that reply against the call site. Both workers should reply `done` to their task IDs with their evidence.
 >
@@ -18,7 +18,7 @@ The bridge gives the fresh workers their invitations. Each worker joins, reads t
 
 ## Start from the terminal UI
 
-You can start the same review without a kickoff chat. [Install the terminal UI](../README.md#terminal-ui) and run `agents-chat ui` in the project directory. Press `n`, paste the brief and the task split into the brief, and add the worker rows Timeout and Fixtures with the source `glm`. Press `ctrl+s`. The UI creates the conversation, launches the workers, and opens a window with the join prompts to paste.
+You can start the same review without a kickoff chat. [Install the terminal UI](../README.md#terminal-ui) and run `agentcy ui` in the project directory. Press `n`, paste the brief and the task split into the brief, and add the worker rows Timeout and Fixtures with the source `glm`. Press `ctrl+s`. The UI creates the conversation, launches the workers, and opens a window with the join prompts to paste.
 
 Press `c` to copy the lead's join prompt and paste it into the chat that should lead. That chat assigns the tasks and checks the results. Follow the conversation in the UI. Type a message to post as yourself. Start it with `@Name` to address one member or with `?` to ask a question. Press `ctrl+x` to close the conversation with an optional summary.
 
@@ -26,7 +26,7 @@ Press `c` to copy the lead's join prompt and paste it into the chat that should 
 
 Use the same brief and tasks. Ask for a join prompt for each worker in place of the plugin launches. Paste the Timeout prompt into one registered chat and the Fixtures prompt into another. Each prompt contains that chat's own code. The code works once and expires after an hour. After joining, keep using the same chat for that participant so its private token stays there.
 
-An existing chat can use the bridge while its app runs a turn. If its turn ends before the team finishes, tell it **“Continue your agents-chat task.”** If you only want to see the latest messages, ask for a **one-time read**.
+An existing chat can use the bridge while its app runs a turn. If its turn ends before the team finishes, tell it **“Continue your agentcy task.”** If you only want to see the latest messages, ask for a **one-time read**.
 
 To share leadership, invite a chat as a `co-lead`. Give each lead a distinct part of the brief. Any lead or co-lead can assign tasks, invite participants, and close the conversation. The lead sets the timeline: each task needs `due_minutes`, the time the lead expects the task to take. The bridge refuses a task without it. Status and the Tasks tab show the due time and mark a task `overdue` when it passes. Use `invite_participant` to add a name or reissue a code for an unused slot.
 
@@ -36,7 +36,7 @@ Use `conversation_status` to see who has joined and which tasks are open. A fres
 
 Post tasks even if their owners have yet to join. A task owner replies to the original task ID with `blocker` to ask for help. The lead can direct a question to a teammate and ask them to send their evidence to the blocked owner. When the owner can continue, only that owner can clear the blocker by replying `resume` to the original task ID. A `done` reply to that ID marks the work complete.
 
-**Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTS_CHAT_HOME`).
+**Workspace mismatch?** Check the `--workspace` setting in both clients. Set both to the same project directory, then reconnect the clients. Retry the original code while it is still unused and unexpired. If both clients already use the same workspace, check that they run under the same local user and use the same bridge data directory (`AGENTCY_HOME`).
 
 **Agent in a VM or hosted sandbox?** Do not let it create the conversation. Its bridge is separate from the bridge on your computer, so your local chats cannot join a conversation created there. Start the conversation from a local chat or the terminal UI. To let that agent join your local conversations, connect it to the bridge on your computer over HTTP: see [Remote chats](../README.md#remote-chats).
 

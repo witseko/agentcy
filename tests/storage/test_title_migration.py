@@ -7,9 +7,9 @@ from secrets import token_hex
 
 import pytest
 
-from agents_chat.conversations import models, operator, repository
-from agents_chat.conversations import operator_models as actions
-from agents_chat.storage.database import SCHEMA_VERSION, database
+from agentcy.conversations import models, operator, repository
+from agentcy.conversations import operator_models as actions
+from agentcy.storage.database import SCHEMA_VERSION, database
 
 
 def test_upgrade_from_version_twelve_enables_rename(
@@ -18,7 +18,7 @@ def test_upgrade_from_version_twelve_enables_rename(
     undo_version_thirteen: Callable[[sqlite3.Connection], None],
 ) -> None:
     """Upgrading a v12 store keeps the title from the brief and accepts a rename."""
-    monkeypatch.setenv("AGENTS_CHAT_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTCY_HOME", str(tmp_path))
     tmp_path.chmod(0o700)
     workspace = token_hex(32)
     original = database(workspace)
