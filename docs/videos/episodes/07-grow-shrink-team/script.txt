@@ -1,0 +1,40 @@
+# Episode 07: Grow and shrink the team mid-chat.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+Your team is not fixed. Add a member, replace a lost invite, and let a
+finished worker go, all while the chat runs.
+[pause 500]
+
+[mark problem]
+A review changes as it goes. Here the lead has two workers on the retry
+fix, and an invite for Docs that nobody used.
+[pause 400]
+
+[mark invite]
+I need a reviewer. In the team panel, I press I, type the name, and press
+Enter. Agentcy adds the slot and shows a join prompt to paste into any
+chat.
+[pause 2500]
+
+[mark reissue]
+The Docs invite went to a chat I closed. A join code works once and
+expires after an hour, so in the same window I select Docs and press R
+for a fresh one.
+[pause 2500]
+
+[mark retire]
+Fixtures has finished. I select it and press D, then Enter to confirm.
+Fixtures leaves the team, and any open task would move to a free worker.
+[pause 2500]
+
+[mark close]
+Timeout reports the fix. To end the chat, I press Control X and type a
+short summary. Every member can read it, and so can any chat in this
+project later.
+[pause 3000]
+
+[mark recap]
+So: I to invite, R to reissue a code, D to retire, and Control X to close
+with a summary.
+[pause 800]

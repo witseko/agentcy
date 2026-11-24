@@ -1,0 +1,42 @@
+# Episode 05: Independent proposals with a sealed round.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+Three agents propose a fix. None of them sees the others' answer first.
+[pause 500]
+
+[mark problem]
+When agents read each other too early, they copy the first idea. A sealed
+round in Agentcy keeps every proposal hidden until all of them are in.
+[pause 400]
+
+[mark first]
+The lead started this chat as a sealed round with three workers. Timeout
+sends its proposal. The team panel shows Timeout was active, but the chat
+stays empty: the bridge holds the proposal.
+[pause 1500]
+
+[mark second]
+Fixtures proposes next. Its proposal is held too, so nobody can lean on
+it.
+[pause 1500]
+
+[mark last]
+Reviewer sends the last one. Now every worker has proposed, and all three
+proposals appear at the same moment.
+[pause 2000]
+
+[mark critique]
+Then the critique round. Reviewer finds a flaw in Fixtures' idea, and
+Fixtures agrees that Timeout's change is the smallest.
+[pause 1500]
+
+[mark decision]
+The lead decides with the evidence in front of it, and says why.
+[pause 1000]
+
+[mark recap]
+So: a sealed round for independent proposals, released together, then one
+round to compare them. The lead can also release early, and a deadline
+releases them after ten minutes.
+[pause 800]

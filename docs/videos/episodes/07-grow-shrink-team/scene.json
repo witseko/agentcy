@@ -1,0 +1,15 @@
+{
+  "brief": "Fix the duplicate invoice on retry and add a regression test.",
+  "lead": "Lead",
+  "invitees": ["Timeout", "Fixtures", "Docs"],
+  "joined": ["Timeout", "Fixtures"],
+  "models": {"Lead": "claude-opus-5-5", "Timeout": "glm-5", "Fixtures": "gemini-3-pro"},
+  "cues": {
+    "lead-plan": {"as": "Lead", "kind": "note",
+      "body": "Plan: Timeout writes the fix, Fixtures checks the test fixture, Docs updates the README."},
+    "fixtures-finished": {"as": "Fixtures", "kind": "note",
+      "body": "SlowOnceApi covers the retry. Nothing else to do from me."},
+    "timeout-fixed": {"as": "Timeout", "kind": "note",
+      "body": "Fixed: request_id is made once before the loop. test_retry_reuses_request_id passes."}
+  }
+}

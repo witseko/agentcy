@@ -1,0 +1,16 @@
+{
+  "brief": "Can a retry after a timeout book one invoice twice? Use fresh read-only workers for the review.",
+  "lead": "Lead",
+  "invitees": ["Fixtures", "Timeout"],
+  "models": {"Lead": "claude-opus-5-5"},
+  "cues": {
+    "assign-timeout": {"as": "Lead", "kind": "task", "to": "Timeout", "due_minutes": 15,
+      "body": "Trace the timeout path in invoice_export/client.py. Can a retry submit twice?"},
+    "assign-fixtures": {"as": "Lead", "kind": "task", "to": "Fixtures", "due_minutes": 15,
+      "body": "Find a fixture in tests/ that makes the first API call time out."},
+    "fixtures-finding": {"as": "Fixtures", "kind": "finding", "to": "Timeout",
+      "body": "SlowOnceApi in tests/test_client.py:6 times out once and records every request_id."},
+    "timeout-finding": {"as": "Timeout", "kind": "finding", "to": "Lead",
+      "body": "Confirmed with SlowOnceApi: client.py:15 makes a new request_id on each attempt."}
+  }
+}

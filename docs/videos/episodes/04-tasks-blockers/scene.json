@@ -1,0 +1,81 @@
+{
+  "brief": "Can a retry after a timeout book one invoice twice? Prove it with a failing test, then recommend the fix.",
+  "lead": "Lead",
+  "invitees": [
+    "Timeout",
+    "Fixtures"
+  ],
+  "joined": [
+    "Timeout",
+    "Fixtures"
+  ],
+  "models": {
+    "Lead": "claude-opus-5-5",
+    "Timeout": "glm-5",
+    "Fixtures": "gemini-3-pro"
+  },
+  "cues": {
+    "lead-plan": {
+      "as": "Lead",
+      "kind": "note",
+      "body": "Plan: Timeout proves the bug with a failing test, Fixtures finds a fake API, and I check the fix against the brief."
+    },
+    "assign-timeout": {
+      "as": "Lead",
+      "kind": "task",
+      "to": "Timeout",
+      "due_minutes": 20,
+      "body": "Write a test that shows a retry after a timeout sends a second request for the same invoice."
+    },
+    "assign-fixtures": {
+      "as": "Lead",
+      "kind": "task",
+      "to": "Fixtures",
+      "due_minutes": 15,
+      "body": "List the fixtures in tests/ that fake the accounting API."
+    },
+    "timeout-blocked": {
+      "as": "Timeout",
+      "kind": "blocker",
+      "reply_to": "assign-timeout",
+      "body": "I cannot make the first API call time out in a test. Is there a fake API that times out once?"
+    },
+    "lead-asks-fixtures": {
+      "as": "Lead",
+      "kind": "question",
+      "to": "Fixtures",
+      "body": "Timeout is blocked on a fake API that times out once. Send it what you found."
+    },
+    "fixtures-evidence": {
+      "as": "Fixtures",
+      "kind": "finding",
+      "to": "Timeout",
+      "body": "SlowOnceApi in tests/test_client.py:6 raises Timeout on the first call and records every request_id."
+    },
+    "timeout-resume": {
+      "as": "Timeout",
+      "kind": "resume",
+      "reply_to": "assign-timeout",
+      "body": "Unblocked: SlowOnceApi works. Writing the test now."
+    },
+    "fixtures-handoff": {
+      "as": "Fixtures",
+      "kind": "handoff",
+      "to": "Timeout",
+      "reply_to": "assign-fixtures",
+      "body": "You already use the only API fixture. Take my task and close it with your test."
+    },
+    "timeout-accept": {
+      "as": "Timeout",
+      "kind": "accept",
+      "reply_to": "fixtures-handoff",
+      "body": "Accepted. One fixture covers both tasks."
+    },
+    "timeout-done": {
+      "as": "Timeout",
+      "kind": "done",
+      "reply_to": "assign-timeout",
+      "body": "Done: test_retry_reuses_request_id fails today. The two attempts send different request IDs."
+    }
+  }
+}

@@ -1,0 +1,13 @@
+
+ Claude Code · ~/invoice-export
+
+ > Use agentcy to review the retry bug with two fresh
+   workers, Timeout and Fixtures.
+
+ ● agentcy · create_conversation
+   Lead, with slots Timeout and Fixtures
+
+ ● agentcy · launch_participant Timeout (glm)
+ ● agentcy · launch_participant Fixtures (gemini)
+
+ ● Checking the caller while the workers start…

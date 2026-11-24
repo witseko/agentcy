@@ -1,0 +1,47 @@
+# Episode 02: One prompt in Claude Code, a whole team.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+One prompt in Claude Code, and a whole agent team reviews your bug.
+[pause 500]
+
+[mark problem]
+On the left is my Claude Code session in the invoice export project. On
+the right is the Agentcy terminal UI for the same project.
+[pause 400]
+
+[mark prompt]
+I ask Claude Code to review the retry bug with two fresh workers, Timeout
+and Fixtures.
+[pause 3000]
+[pause 2500]
+
+[mark create]
+Claude Code becomes the lead. It creates the chat with one brief and a slot
+for each worker.
+[pause 1500]
+
+[mark launch]
+Then it launches both workers through plugins. On the right, each slot goes
+from queued to running, and the workers join.
+[pause 2000]
+
+[mark tasks]
+The lead gives each worker a task, and takes a part itself.
+[pause 1500]
+
+[mark evidence]
+The workers talk to each other directly. Fixtures sends Timeout the fixture
+it needs, and both reply done with their evidence.
+[pause 2500]
+
+[mark answer]
+Back on the left, the lead checks the findings against the brief and
+answers in the same session: yes, one invoice can be booked twice, with
+the fix and the test.
+[pause 1500]
+
+[mark recap]
+So: one prompt, a lead that builds the team, and the answer back where you
+asked.
+[pause 800]

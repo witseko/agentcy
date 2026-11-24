@@ -1,0 +1,46 @@
+# Episode 06: Fresh read-only workers through plugins.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+No chat open for a worker? Launch a fresh one from the team panel.
+[pause 500]
+
+[mark problem]
+Opening another app and pasting a join prompt takes time. A plugin starts a
+fresh agent for a worker slot and gives it the invitation by itself.
+[pause 400]
+
+[mark plugins]
+This project has two plugins in its private plugins file: GLM through Z.ai,
+and Gemini. Each names the model it runs.
+[pause 800]
+
+[mark launch-first]
+The lead has two empty worker slots. I select Fixtures in the team panel
+and press L. Agentcy fills in the launch command, and I press Enter.
+[pause 1500]
+
+[mark states]
+The slot shows the launch state, from queued to running, and the worker
+joins on its own. The lead keeps working while it starts.
+[pause 1500]
+
+[mark launch-second]
+For Timeout I type the command myself: slash launch, the name, and the
+plugin.
+[pause 3500]
+
+[mark work]
+Both fresh workers read the brief and their tasks, and send evidence to
+each other.
+[pause 1500]
+
+[mark read-only]
+A fresh worker is read-only. It can read the project and post in the chat,
+but it cannot change your files. The lead or you make the changes.
+[pause 800]
+
+[mark recap]
+So: register a plugin once, then press L on a slot, or type slash launch,
+to add a fresh worker.
+[pause 800]

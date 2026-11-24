@@ -2,6 +2,7 @@
 
     stand_in.py --workspace DIR --scene SCENE.json --state STATE.json create
     stand_in.py --workspace DIR --scene SCENE.json --state STATE.json join NAME [CODE]
+    stand_in.py --workspace DIR --scene SCENE.json --state STATE.json launch NAME PLUGIN
     stand_in.py --workspace DIR --scene SCENE.json --state STATE.json post CUE
 
 Each call starts the bridge's stdio shim (``agentcy`` next to this Python)
@@ -27,15 +28,18 @@ The scene file is JSON:
     }
 
 ``create`` starts the conversation as ``lead`` and joins everyone in
-``joined``. ``join NAME CODE`` joins with a code from the screen (for a
+``joined``; ``"sealed": true`` makes it a sealed round, where each worker's
+``"kind": "proposal"`` stays hidden until all have proposed. ``join NAME CODE`` joins with a code from the screen (for a
 chat the terminal UI created); without CODE it uses the code ``create``
 stored. ``post CUE`` posts one cue as its participant; ``reply_to`` names an
-earlier cue. The state file keeps participant tokens between calls, so it
+earlier cue, or ``last:NAME`` for the latest message from member NAME (for
+example ``last:Human``, a question typed in the terminal UI during the take). The state file keeps participant tokens between calls, so it
 is created with mode 0600 and belongs in the take's private work folder.
 """
 
 import argparse
 import asyncio
+import fcntl
 import json
 import os
 import sys
@@ -50,6 +54,7 @@ from mcp.types import TextContent
 
 TIMEOUT_SECONDS = 15
 MESSAGE_FIELDS = ("kind", "to", "due_minutes")
+LATEST_PREFIX = "last:"
 
 
 @asynccontextmanager
@@ -98,24 +103,30 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
 async def join(
     session: ClientSession, scene: dict[str, Any], state: dict[str, Any], name: str, code: str
 ) -> None:
-    """Redeem ``code`` as ``name`` and keep the participant token."""
+    """Redeem ``code`` and keep the token under the member name the bridge returns.
+
+    A slot code already names its member, so ``name`` matters only for an open invite.
+    """
     model = scene.get("models", {}).get(name)
     arguments = {"code": code, "name": name} | ({"model": model} if model else {})
     joined = await call(session, "join_conversation", **arguments)
-    state["tokens"][name] = joined["token"]
+    state["tokens"][joined.get("participant", name)] = joined["token"]
 
 
 async def create(session: ClientSession, scene: dict[str, Any], state: dict[str, Any]) -> None:
     """Start the scene's conversation as its lead, then join the listed participants."""
     lead = scene["lead"]
     model = scene.get("models", {}).get(lead)
+    options = {"your_model": model} if model else {}
+    if scene.get("sealed"):
+        options["sealed"] = True
     created = await call(
         session,
         "create_conversation",
         brief=scene["brief"],
         your_name=lead,
         invitees=scene.get("invitees", []),
-        **({"your_model": model} if model else {}),
+        **options,
     )
     state["conversation"] = created["conversation"]
     state["tokens"][lead] = created["token"]
@@ -131,8 +142,23 @@ def check_cue(scene: dict[str, Any], state: dict[str, Any], cue_name: str) -> No
         raise SystemExit(f"The scene has no cue '{cue_name}'.")
     if cue["as"] not in state["tokens"]:
         raise SystemExit(f"{cue['as']} has not joined yet, so it cannot post '{cue_name}'.")
-    if "reply_to" in cue and cue["reply_to"] not in state["messages"]:
-        raise SystemExit(f"Post '{cue['reply_to']}' before '{cue_name}', which replies to it.")
+    reply_to = cue.get("reply_to", "")
+    if reply_to and not reply_to.startswith(LATEST_PREFIX) and reply_to not in state["messages"]:
+        raise SystemExit(f"Post '{reply_to}' before '{cue_name}', which replies to it.")
+
+
+async def latest_message_from(session: ClientSession, token: str, label: str) -> int:
+    """Return the ID of the newest message from member ``label``, reading the whole transcript."""
+    latest, cursor, more = None, 0, True
+    while more:
+        page = await call(session, "read_messages", token=token, after=cursor)
+        for message in page["messages"]:
+            if message.get("label") == label:
+                latest = message["id"]
+        cursor, more = page["cursor"], page.get("more", False)
+    if latest is None:
+        raise SystemExit(f"No message from {label} to reply to.")
+    return latest
 
 
 async def post(session: ClientSession, scene: dict[str, Any], state: dict[str, Any], cue_name: str) -> None:
@@ -140,8 +166,12 @@ async def post(session: ClientSession, scene: dict[str, Any], state: dict[str, A
     cue = scene["cues"][cue_name]
     author = cue["as"]
     arguments = {field: cue[field] for field in MESSAGE_FIELDS if field in cue}
-    if "reply_to" in cue:
-        arguments["reply_to"] = state["messages"][cue["reply_to"]]
+    reply_to = cue.get("reply_to", "")
+    if reply_to.startswith(LATEST_PREFIX):
+        label = reply_to.removeprefix(LATEST_PREFIX)
+        arguments["reply_to"] = await latest_message_from(session, state["tokens"][author], label)
+    elif reply_to:
+        arguments["reply_to"] = state["messages"][reply_to]
     posted = await call(
         session,
         "post_message",
@@ -155,7 +185,19 @@ async def post(session: ClientSession, scene: dict[str, Any], state: dict[str, A
 
 
 async def run(arguments: argparse.Namespace) -> None:
-    """Run one stand-in command and save the updated state."""
+    """Run one stand-in command and save the updated state.
+
+    A lock next to the state file keeps a plugin's join and a step's post
+    from overwriting each other's changes.
+    """
+    lock_path = arguments.state.with_name(arguments.state.name + ".lock")
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        await run_locked(arguments)
+
+
+async def run_locked(arguments: argparse.Namespace) -> None:
+    """Run one stand-in command while holding the state lock."""
     scene = json.loads(arguments.scene.read_text())
     state = load_state(arguments.state)
     code = ""
@@ -171,6 +213,11 @@ async def run(arguments: argparse.Namespace) -> None:
             await create(session, scene, state)
         elif arguments.command == "join":
             await join(session, scene, state, arguments.name, code)
+        elif arguments.command == "launch":
+            await call(
+                session, "launch_participant",
+                token=state["tokens"][scene["lead"]], name=arguments.name, plugin=arguments.plugin,
+            )
         else:
             await post(session, scene, state, arguments.cue)
     save_state(arguments.state, state)
@@ -187,6 +234,9 @@ def main() -> None:
     join_command = commands.add_parser("join", help="join as NAME, with CODE or the stored code")
     join_command.add_argument("name")
     join_command.add_argument("code", nargs="?")
+    launch_command = commands.add_parser("launch", help="as the lead, launch NAME through PLUGIN")
+    launch_command.add_argument("name")
+    launch_command.add_argument("plugin")
     post_command = commands.add_parser("post", help="post one cue")
     post_command.add_argument("cue")
     asyncio.run(run(parser.parse_args()))

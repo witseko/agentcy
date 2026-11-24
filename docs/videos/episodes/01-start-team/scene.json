@@ -1,0 +1,17 @@
+{
+  "brief": "Can a retry after a timeout book one invoice twice? Recommend one test.",
+  "lead": "Lead",
+  "models": {"Lead": "claude-opus-5-5", "Timeout": "glm-5", "Fixtures": "gemini-3-pro"},
+  "cues": {
+    "lead-intro": {"as": "Lead", "kind": "note",
+      "body": "Lead on Claude Desktop. I split the work and check every result against the brief."},
+    "assign-timeout": {"as": "Lead", "kind": "task", "to": "Timeout", "due_minutes": 15,
+      "body": "Trace the timeout path in invoice_export/client.py. Can a retry submit twice?"},
+    "assign-fixtures": {"as": "Lead", "kind": "task", "to": "Fixtures", "due_minutes": 15,
+      "body": "Find a fixture in tests/ that makes the first API call time out."},
+    "timeout-intro": {"as": "Timeout", "kind": "note",
+      "body": "Timeout on GLM. Tracing the retry loop now."},
+    "fixtures-intro": {"as": "Fixtures", "kind": "note",
+      "body": "Fixtures on Gemini. Reading tests/ for a fake API."}
+  }
+}

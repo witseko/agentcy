@@ -10,6 +10,7 @@
 //   swift drive.swift frame ID                  prints "x y width height"
 //   swift drive.swift place PID X Y W H         moves and sizes the app's front window (whole frame)
 //   swift drive.swift move ID X Y               moves the pointer
+//   swift drive.swift park X Y                  moves the pointer to screen point (X, Y), out of the picture
 //   swift drive.swift glide ID X Y [MS]         moves the pointer smoothly (for video)
 //   swift drive.swift click ID X Y              clicks there
 //   swift drive.swift rightclick ID X Y         right-clicks there
@@ -221,6 +222,11 @@ case "place" where args.count == 6:
         fail("usage: drive.swift place PID X Y W H")
     }
     place(pid: pid, x: values[1]!, y: values[2]!, width: values[3]!, height: values[4]!)
+case "park" where args.count == 3:
+    guard let x = Double(args[args.startIndex + 1]), let y = Double(args[args.startIndex + 2]) else {
+        fail("usage: drive.swift park X Y")
+    }
+    move(to: CGPoint(x: x, y: y))
 case "move" where args.count == 4:
     move(to: point(in: window(args[args.startIndex + 1]), args[args.startIndex + 2], args[args.startIndex + 3]))
 case "glide" where args.count == 4 || args.count == 5:

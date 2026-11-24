@@ -1,0 +1,23 @@
+{
+  "brief": "Review the retry in invoice_export/client.py: can a retry after a timeout book one invoice twice? Recommend one regression test.",
+  "lead": "Lead",
+  "invitees": ["Timeout", "Fixtures"],
+  "joined": ["Timeout", "Fixtures"],
+  "models": {"Lead": "claude-opus-5-5", "Timeout": "glm-5", "Fixtures": "gemini-3-pro"},
+  "cues": {
+    "assign-timeout": {"as": "Lead", "kind": "task", "to": "Timeout", "due_minutes": 15,
+      "body": "Trace the timeout path in invoice_export/client.py. Can a retry submit twice?"},
+    "assign-fixtures": {"as": "Lead", "kind": "task", "to": "Fixtures", "due_minutes": 15,
+      "body": "Find a fixture in tests/ that can make the first API call time out."},
+    "timeout-found": {"as": "Timeout", "kind": "finding", "to": "Fixtures",
+      "body": "The retry call site is client.py:17. Which fixture can make that call time out once?"},
+    "lead-ack": {"as": "Lead", "kind": "note", "to": "Human",
+      "body": "Noted: smallest fix, no new dependencies. I will hold the team to it."},
+    "fixtures-ack": {"as": "Fixtures", "kind": "note", "to": "Human",
+      "body": "Will do. SlowOnceApi already times out once, so no new fixture is needed."},
+    "timeout-answer": {"as": "Timeout", "kind": "finding", "to": "Human", "reply_to": "last:Human",
+      "body": "Yes. client.py:15 makes a new request_id on every attempt, so the API sees two requests for one invoice."},
+    "lead-new-task": {"as": "Lead", "kind": "task", "to": "Fixtures", "due_minutes": 10,
+      "body": "Add a regression test: every retry of one invoice must send the same request_id."}
+  }
+}

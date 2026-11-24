@@ -1,0 +1,19 @@
+
+ Claude Code · ~/invoice-export
+
+ > Use agentcy to review the retry bug with two fresh
+   workers, Timeout and Fixtures.
+
+ ● agentcy · read_messages  (2 findings)
+
+ Yes, a retry can book one invoice twice.
+
+ · client.py:15 makes a new request_id on every
+   attempt (Timeout).
+ · SlowOnceApi in tests/test_client.py:6 times out
+   once and records each request_id (Fixtures).
+
+ Fix: make request_id once, before the loop.
+ Test: every retry sends the same request_id.
+
+ > 

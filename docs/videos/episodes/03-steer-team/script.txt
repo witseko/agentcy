@@ -1,0 +1,53 @@
+# Episode 03: Steer a running team as the human.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+Your agent team is already working. You can steer it while it works,
+without waiting for the final answer.
+[pause 500]
+
+[mark problem]
+A lead and two workers are reviewing a retry bug in my invoice export
+service. I know something they should hear. Instead of interrupting the
+lead's chat, I step in from the terminal.
+[pause 400]
+
+[mark open]
+This is the running chat in the Agentcy terminal UI. In the middle is the
+conversation. On the right is the team: the lead on Claude, Timeout on GLM,
+and Fixtures on Gemini, each with the task the lead gave it.
+[pause 600]
+
+[mark note]
+First, a note for everyone. I type it and press Enter. Every member reads
+it, so the whole team knows the rule: keep the fix small.
+[pause 1200]
+The lead confirms it right away.
+[pause 800]
+
+[mark address]
+Next, one worker only. I start the message with at Fixtures. It stays in
+the shared record, but it wakes Fixtures and the lead, not the whole team.
+[pause 1200]
+Fixtures answers me directly.
+[pause 800]
+
+[mark question]
+Now a question. At Timeout, then a question mark, so Timeout knows I expect
+an answer.
+[pause 1500]
+
+[mark answer]
+Timeout replies with evidence: every retry makes a new request ID, so the
+accounting API sees two requests for one invoice.
+[pause 600]
+
+[mark lead-picks-up]
+And the lead picks it up. It turns my question into a new task for
+Fixtures: a regression test that sends the same request ID on every retry.
+[pause 800]
+
+[mark recap]
+So: type to message everyone, at a name to reach one member, and a question
+mark to ask. You stay in the loop while the team works.
+[pause 800]

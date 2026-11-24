@@ -61,6 +61,20 @@ The stand-ins talk to the real bridge through the same stdio shim the apps
 use, so the core, the database and the terminal UI are real; only the
 model text is scripted. A `stand_in` call takes about 2 seconds.
 
+More helpers for `steps.zsh`:
+
+- `stand_in_plugins NAME:MODEL ...` registers stand-in fresh-run plugins
+  (`tools/stand_in_plugin.py`) in the take's private `plugins.json`. A
+  launch through one joins the slot as a stand-in, so launch states are real.
+- `stand_in launch NAME PLUGIN` launches a worker as the stand-in lead.
+- `join_from_clipboard` joins as the member named in the join prompt the
+  terminal UI just copied (press `c` in its join prompts window first). The
+  take saves your clipboard at the start and restores it at the end.
+- `start_agent_beside_tui` shows a stand-in coding agent (the episode's
+  `screens/*.txt`, `tools/stand_in_agent.py`) on the left of a tmux split
+  and the terminal UI on the right. `agent_next` shows the next screen;
+  `tui_pane` and `agent_pane` choose where keys go.
+
 To check the steps, run `PROBE=1 docs/videos/tools/record.zsh ...`: it runs
 them without voice or video and saves a screenshot of the window at each
 mark to `out/EPISODE/probe/`. A run stops when another app comes to the

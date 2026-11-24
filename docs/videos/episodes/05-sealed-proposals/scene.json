@@ -1,0 +1,22 @@
+{
+  "brief": "Propose one fix for the duplicate invoice on retry. Each worker proposes alone first, then we compare.",
+  "lead": "Lead",
+  "sealed": true,
+  "invitees": ["Timeout", "Fixtures", "Reviewer"],
+  "joined": ["Timeout", "Fixtures", "Reviewer"],
+  "models": {"Lead": "claude-opus-5-5", "Timeout": "glm-5", "Fixtures": "gemini-3-pro", "Reviewer": "gpt-5.5-codex"},
+  "cues": {
+    "p-timeout": {"as": "Timeout", "kind": "proposal",
+      "body": "Make request_id once, before the retry loop, and send the same one on every attempt."},
+    "p-fixtures": {"as": "Fixtures", "kind": "proposal",
+      "body": "Keep the loop, but build request_id from the invoice number, so every retry matches."},
+    "p-reviewer": {"as": "Reviewer", "kind": "proposal",
+      "body": "Move retries into the API client and send an idempotency key header."},
+    "c-reviewer": {"as": "Reviewer", "kind": "note", "to": "Fixtures",
+      "body": "An ID built from the invoice number blocks a deliberate resubmit after a correction."},
+    "c-fixtures": {"as": "Fixtures", "kind": "note",
+      "body": "Agreed. Timeout's change is the smallest: one line moves out of the loop."},
+    "decision": {"as": "Lead", "kind": "note",
+      "body": "Decision: Timeout's proposal. It is the smallest change, and the new test checks one request_id across retries."}
+  }
+}

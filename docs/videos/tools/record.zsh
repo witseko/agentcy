@@ -59,7 +59,7 @@ window_x=80
 window_y=80
 window_width=1280
 window_height=720
-window_title=agentcy-video
+window_title=Agentcy
 
 # A short path: the core's Unix socket lives in it.
 work=$(mktemp -d /tmp/agentcy-video-XXXX)
@@ -103,13 +103,29 @@ stop_core() {
     kill "$core" 2>/dev/null || true
   done
 }
+# Put back the clipboard saved when the take started.
+restore_clipboard() {
+  if [[ -f "$work/clipboard" ]]; then
+    pbcopy < "$work/clipboard"
+  fi
+}
+# The take's own tmux server, if a scene started one.
+stop_tmux() {
+  if [[ -d "$work/tmux" ]]; then
+    env -u TMUX TMUX_TMPDIR="$work/tmux" tmux kill-server 2>/dev/null || true
+  fi
+}
 cleanup() {
   stop_recorder
   stop_window
+  stop_tmux
   stop_core
+  restore_clipboard
   rm -rf "$work" "$sample"
 }
 trap cleanup EXIT
+# Steps may copy join prompts; keep the clipboard private and put it back after.
+(umask 077 && pbpaste > "$work/clipboard")
 
 # Copy the sample with one fixed commit, so the workspace and its history
 # look the same in every take.
@@ -119,6 +135,9 @@ git -C "$sample" add -A
 env GIT_AUTHOR_NAME=Sample GIT_AUTHOR_EMAIL=sample@example.com GIT_AUTHOR_DATE=2026-11-02T10:00:00Z \
   GIT_COMMITTER_NAME=Sample GIT_COMMITTER_EMAIL=sample@example.com GIT_COMMITTER_DATE=2026-11-02T10:00:00Z \
   git -C "$sample" -c commit.gpgsign=false commit --quiet -m "invoice export service"
+
+# The stand-in plugin reads these through the core, which passes only listed variables.
+export AGENTCY_VIDEO_SCENE="$episode/scene.json" AGENTCY_VIDEO_STATE="$work/state.json"
 
 swiftc -O "$tools/drive.swift" -o "$work/drive"
 drive="$work/drive"
@@ -130,11 +149,84 @@ stand_in() {
     --state "$work/state.json" "$@"
 }
 
+# Register stand-in fresh-run plugins in the take's private plugins.json,
+# one per NAME:MODEL argument (for example glm:glm-5). A launch through one
+# of them joins the slot as a stand-in, so steps can post its cues.
+stand_in_plugins() {
+  local entries=() spec
+  for spec in "$@"; do
+    entries+=("$(printf '"%s": {"command": ["%s", "%s"], "model": "%s", "environment": ["AGENTCY_VIDEO_SCENE", "AGENTCY_VIDEO_STATE"]}' \
+      "${spec%%:*}" "$python" "$tools/stand_in_plugin.py" "${spec#*:}")")
+  done
+  (umask 077 && printf '{"plugins": {%s}}\n' "${(j:, :)entries}" > "$AGENTCY_HOME/plugins.json")
+}
+
+# Join as the member named in the join prompt the terminal UI just copied
+# (press c in its join prompts window first). The take saved your clipboard
+# when it started, and cleanup puts it back.
+join_from_clipboard() {
+  local prompt name code
+  sleep 0.5
+  prompt=$(pbpaste)
+  # A slot prompt reads "TOPIC (NAME): Use agentcy to join with CODE. ..."
+  name=$(printf '%s' "$prompt" | sed -nE 's/^.*\(([^)]+)\): Use agentcy to join with .*/\1/p' | head -1)
+  code=$(printf '%s' "$prompt" | sed -nE 's/.*join with ([^ ]+)\..*/\1/p' | head -1)
+  if [[ -z "$name" || -z "$code" ]]; then
+    echo "The clipboard holds no slot join prompt." >&2
+    exit 1
+  fi
+  stand_in join "$name" "$code"
+}
+
 # Open the terminal UI for the sample in a Ghostty window with its own
 # config (no user config), placed at the fixed frame.
 start_tui() {
+  write_scene "exec \"$repo/.venv/bin/agentcy\" ui --workspace \"$sample\""
+  open_window 15
+}
+
+# Open a stand-in coding agent on the left (the episode's screens/ folder)
+# and the terminal UI on the right, in a tmux split inside the window.
+# Typing goes to the agent; `agent_next` shows its next screen.
+start_agent_beside_tui() {
+  mkfifo -m 600 "$work/agent.fifo"
+  mkdir -p "$work/tmux"
+  local agent="\"$python\" \"$tools/stand_in_agent.py\" \"$episode/screens\" \"$work/agent.fifo\""
+  local tui="\"$repo/.venv/bin/agentcy\" ui --workspace \"$sample\""
+  write_scene "unset TMUX
+export TMUX_TMPDIR=\"$work/tmux\"
+exec tmux -f /dev/null new-session -s take '$agent' \\; set -g status off \\; split-window -h -l 64% '$tui' \\; select-pane -t 0"
+  open_window 13
+}
+
+# Show the stand-in agent's next screen.
+agent_next() {
+  print > "$work/agent.fifo"
+}
+
+# Send the next keys to the terminal UI pane, or back to the agent pane.
+tui_pane() {
+  env -u TMUX TMUX_TMPDIR="$work/tmux" tmux select-pane -t take:0.1
+}
+agent_pane() {
+  env -u TMUX TMUX_TMPDIR="$work/tmux" tmux select-pane -t take:0.0
+}
+
+# Write the command the window runs, with the take's private bridge.
+write_scene() {
+  cat > "$work/scene.zsh" <<SCENE
+#!/bin/zsh
+export AGENTCY_HOME="$AGENTCY_HOME"
+cd "$sample"
+$1
+SCENE
+  chmod 700 "$work/scene.zsh"
+}
+
+# Start Ghostty with FONT_SIZE and its own config, place it at the fixed frame.
+open_window() {
   cat > "$work/ghostty.conf" <<CONF
-font-size = 15
+font-size = $1
 window-save-state = never
 confirm-close-surface = false
 quit-after-last-window-closed = true
@@ -144,13 +236,6 @@ window-padding-x = 12
 window-padding-y = 8
 shell-integration = none
 CONF
-  cat > "$work/scene.zsh" <<SCENE
-#!/bin/zsh
-export AGENTCY_HOME="$AGENTCY_HOME"
-cd "$sample"
-exec "$repo/.venv/bin/agentcy" ui --workspace "$sample"
-SCENE
-  chmod 700 "$work/scene.zsh"
   "$ghostty" --config-default-files=false --config-file="$work/ghostty.conf" -e "$work/scene.zsh" \
     > "$work/ghostty.log" 2>&1 &
   pid=$!
@@ -217,6 +302,8 @@ start_recording() {
     return
   fi
   read -r x y width height <<< "$("$drive" frame "$id")"
+  # screencapture -v always draws the pointer, so park it below the window.
+  "$drive" park $(( x + width / 2 )) $(( y + height + 30 ))
   local seconds=$(( int(ceil(voice_seconds + lead_in + tail_out)) ))
   # screencapture refuses to replace an earlier take.
   rm -f "$out/screen.mov"

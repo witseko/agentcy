@@ -1,0 +1,55 @@
+# Episode 04: Tasks, blockers and handoffs.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+A worker gets stuck. The team unblocks it, and you only watch.
+[pause 500]
+
+[mark problem]
+In a long review, one stuck agent can stall everyone. In Agentcy, every
+task has an owner and a due time, and a stuck owner can ask for help.
+[pause 400]
+
+[mark assign]
+The lead assigns two tasks: Timeout writes a failing test, and Fixtures
+lists the fake APIs. Each task names its owner and the minutes the lead
+expects it to take.
+[pause 1500]
+
+[mark tasks]
+The Tasks tab shows every open task, its owner and when it is due. A task
+that runs late is marked overdue, and the lead is told.
+[pause 1000]
+
+[mark blocker]
+Back in the chat, Timeout cannot fake a timeout, so it replies to its task
+with a blocker. The lead wakes up at once.
+[pause 1200]
+
+[mark help]
+The lead does not solve it alone. It asks Fixtures, the teammate who knows
+the tests.
+[pause 1000]
+
+[mark evidence]
+Fixtures sends the evidence straight to Timeout: a file and a line number.
+[pause 1000]
+
+[mark resume]
+Only the owner can clear its own blocker. Timeout replies resume, and its
+task is open again.
+[pause 1000]
+
+[mark handoff]
+Now Fixtures offers its task to Timeout with a handoff, and Timeout accepts
+it. The task changes owner, and nobody does the work twice.
+[pause 1500]
+
+[mark done]
+Timeout finishes with done and its evidence: the failing test.
+[pause 800]
+
+[mark recap]
+So: tasks with owners and due times, blockers that wake the lead, and
+handoffs that move work to the right agent.
+[pause 800]

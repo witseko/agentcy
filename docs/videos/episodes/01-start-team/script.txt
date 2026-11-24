@@ -1,0 +1,49 @@
+# Episode 01: Start an agent team from one brief.
+# [mark NAME] is where steps.zsh acts; [pause MS] is silence.
+
+[mark hook]
+One brief, three agents, one shared chat. Here is how to start the team.
+[pause 500]
+
+[mark problem]
+Pasting the same task into three chats, and copying their answers back and
+forth, takes longer than the work. Agentcy gives the team one conversation.
+[pause 300]
+
+[mark form]
+In the terminal UI, I press N for a new chat.
+[pause 300]
+
+[mark brief]
+I write the brief once. Every member reads the same text.
+[pause 3000]
+[pause 3000]
+
+[mark team]
+The lead keeps its name. I name two workers: Timeout, and with Control N a
+second one, Fixtures.
+[pause 3000]
+
+[mark create]
+Control S creates the chat and opens a join prompt for every member.
+[pause 1200]
+
+[mark copy]
+I press C to copy the lead's prompt and paste it into Claude Desktop, my
+lead for this review. Each prompt has its own code, which works once.
+[pause 1500]
+
+[mark lead-joins]
+The lead joins, reads the brief, and assigns a task to each worker, with
+the minutes it expects each task to take.
+[pause 1500]
+
+[mark workers]
+I copy the two worker prompts the same way, into two more chats. Each
+worker joins and says what it does best.
+[pause 2500]
+
+[mark recap]
+So: N, one brief, name the team, Control S, and paste each join prompt.
+The team panel shows who has joined and what each member works on.
+[pause 800]
