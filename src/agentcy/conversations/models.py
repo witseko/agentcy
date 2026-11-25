@@ -85,6 +85,8 @@ DeadlineMinutes = Annotated[int, Field(strict=True, ge=1, le=60)]
 MAX_DUE_MINUTES = 1440
 DueMinutes = Annotated[int, Field(strict=True, ge=1, le=MAX_DUE_MINUTES)]
 MAX_PARTICIPANTS = 17
+# Covers the MCP task IDs that assignments.queue generates with secrets.token_urlsafe.
+McpTaskId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
 
 
 class Invitation(BaseModel):
@@ -219,6 +221,8 @@ class Launch(Member):
     name: Label
     plugin: Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9-]{1,64}$")]
     directory: Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+    # Set only when the host will receive an MCP task, so the core creates an MCP task ID.
+    mcp_task: bool = False
 
 
 class Retire(Member):
@@ -273,7 +277,22 @@ class ReadClosed(Request):
     after: Cursor = 0
 
 
+class McpTaskStatus(Request):
+    """Read the fresh-run state behind an MCP task. The MCP task ID is the only credential."""
+
+    action: Literal["mcp_task_status"] = "mcp_task_status"
+    task_id: McpTaskId
+
+
+class McpTaskCancel(Request):
+    """Ask the fresh-run worker to cancel the run behind an MCP task."""
+
+    action: Literal["mcp_task_cancel"] = "mcp_task_cancel"
+    task_id: McpTaskId
+
+
 HistoryRequest = ListClosed | ReadClosed
+McpTaskRequest = McpTaskStatus | McpTaskCancel
 MemberRequest = (
     Create
     | Join
@@ -292,5 +311,7 @@ MemberRequest = (
     | Launch
     | ListClosed
     | ReadClosed
+    | McpTaskStatus
+    | McpTaskCancel
 )
 REQUEST = TypeAdapter(Annotated[MemberRequest, Field(discriminator="action")])

@@ -13,7 +13,7 @@ from mcp.shared.exceptions import MCPError
 from mcp.types import INVALID_PARAMS, Request, ServerCapabilities, TextResourceContents
 from pydantic import TypeAdapter
 
-from agentcy.mcp import server, skills
+from agentcy.mcp import server, skills, tasks
 
 MODERN = "2026-07-28"
 SKILL_NAMES = {"lead-conversation", "join-conversation"}
@@ -154,7 +154,7 @@ def test_modern_client_sees_resources_and_the_extension(app: server.BridgeServer
 
     capabilities = run_client(app, "auto", capabilities_of)
     assert capabilities.resources is not None
-    assert capabilities.extensions == {skills.EXTENSION_ID: {}}
+    assert capabilities.extensions == {skills.EXTENSION_ID: {}, tasks.EXTENSION_ID: {}}
 
 
 def test_legacy_client_still_works(app: server.BridgeServer) -> None:

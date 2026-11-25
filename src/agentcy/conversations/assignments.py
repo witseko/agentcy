@@ -17,6 +17,8 @@ EVENTS = {
     "cancelled": "had the fresh run cancelled",
     "unknown": "has an uncertain fresh-run state. Check the provider before launching a replacement",
 }
+# One message for an unknown MCP task ID and for one from another workspace, so neither leaks.
+UNKNOWN_MCP_TASK = "Failed to retrieve task: Task not found"
 
 
 def launch_authority(connection: Connection, token: str) -> RowMapping:
@@ -40,8 +42,13 @@ def queue(
     timeout: int,
     *,
     model: str | None = None,
+    mcp_task: bool = False,
 ) -> tuple[dict, str | None, str]:
-    """Persist an approved assignment before handing its code to the dispatch worker."""
+    """Persist an approved assignment before handing its code to the dispatch worker.
+
+    With mcp_task, a new assignment also gets an MCP task ID, which the result carries
+    once under "mcp_task". A repeated launch of an existing assignment gets no MCP task.
+    """
     room_id = participant["room"]
     previous = find_assignment(connection, room_id, name)
     if previous is not None:
@@ -53,6 +60,8 @@ def queue(
     protect_lead_slot(connection, room_id, name)
     code, slot = reserve_worker(connection, participant, workspace, name, model=model)
     assignment_id = secrets.token_hex(16)
+    task_id = secrets.token_urlsafe(32) if mcp_task else None
+    now = int(time.time())
     connection.execute(
         insert(assignment).values(
             id=assignment_id,
@@ -61,11 +70,71 @@ def queue(
             plugin=plugin,
             invite_hash=repository.digest(code),
             state="queued",
-            deadline=int(time.time()) + timeout,
+            deadline=now + timeout,
             round=participant.get("round"),
+            mcp_task_hash=repository.digest(task_id) if task_id else None,
+            created=now,
+            updated=now,
         )
     )
-    return {"assignment_id": assignment_id, "state": "queued"}, code, room_id
+    result = {"assignment_id": assignment_id, "state": "queued"}
+    if task_id:
+        result["mcp_task"] = {
+            "task_id": task_id,
+            **mcp_task_view("queued", name, now, now),
+        }
+    return result, code, room_id
+
+
+def mcp_task_view(launch_state: str, participant: str, created: int, updated: int) -> dict:
+    """Describe the fresh run behind an MCP task, without the MCP task ID."""
+    return {
+        "launch_state": launch_state,
+        "participant": participant,
+        "created": created,
+        "updated": updated,
+    }
+
+
+def find_mcp_task(connection: Connection, task_id: str) -> RowMapping:
+    """Find the assignment whose stored digest matches an MCP task ID.
+
+    Each workspace has its own store, so an MCP task ID from another workspace is unknown here.
+    """
+    row = (
+        connection.execute(
+            select(
+                assignment.c.id,
+                assignment.c.state,
+                assignment.c.created,
+                assignment.c.updated,
+                member.c.label,
+            )
+            .join(member, member.c.id == assignment.c.slot)
+            .where(assignment.c.mcp_task_hash == repository.digest(task_id))
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise ValueError(UNKNOWN_MCP_TASK)
+    return row
+
+
+def mcp_task_status(connection: Connection, task_id: str) -> dict:
+    """Return the launch state and timestamps of the fresh run behind an MCP task."""
+    row = find_mcp_task(connection, task_id)
+    return mcp_task_view(row["state"], row["label"], row["created"], row["updated"])
+
+
+def cancel_mcp_task(connection: Connection, task_id: str) -> dict:
+    """Ask the fresh-run worker to cancel a pending run. A finished run is left as it is."""
+    row = find_mcp_task(connection, task_id)
+    if row["state"] in PENDING_STATES:
+        connection.execute(
+            update(assignment).where(assignment.c.id == row["id"]).values(cancel_requested=1)
+        )
+    return {}
 
 
 def find_assignment(connection: Connection, room_id: str, name: str) -> RowMapping | None:
@@ -173,7 +242,7 @@ def record(
     connection.execute(
         update(assignment)
         .where(assignment.c.id == row["id"])
-        .values(state=state, exit_code=exit_code)
+        .values(state=state, exit_code=exit_code, updated=int(time.time()))
     )
     if state not in PENDING_STATES:
         connection.execute(

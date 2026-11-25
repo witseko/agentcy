@@ -119,10 +119,11 @@ class AssignmentWorker(Thread):
 
     @staticmethod
     def stop_reason(row: RowMapping) -> str | None:
-        """Stop work on close, retirement, round transition, or assignment timeout."""
+        """Stop work on close, retirement, cancel request, round transition, or timeout."""
         if (
             not row["open"]
             or row["retired"]
+            or row["cancel_requested"]
             or (row["round"] and row["round"] != row.get("current_round"))
         ):
             return "cancelled"

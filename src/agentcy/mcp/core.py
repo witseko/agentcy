@@ -125,6 +125,8 @@ class Core(socketserver.ThreadingUnixStreamServer):
             return self.read_history(request)
         if isinstance(request, models.Launch):
             return self.launch(request)
+        if isinstance(request, models.McpTaskRequest):
+            return self.apply_mcp_task(request)
         if isinstance(request, models.Plugins):
             with transaction(request.workspace) as connection:
                 assignments.launch_authority(connection, request.token)
@@ -149,6 +151,15 @@ class Core(socketserver.ThreadingUnixStreamServer):
         with transaction(request.workspace) as connection:
             return history.apply(connection, request)
 
+    def apply_mcp_task(self, request: models.McpTaskRequest) -> dict:
+        """Read or cancel the fresh run behind an MCP task without creating a store."""
+        if not database_exists(request.workspace):
+            raise ValueError(assignments.UNKNOWN_MCP_TASK)
+        with transaction(request.workspace) as connection:
+            if isinstance(request, models.McpTaskCancel):
+                return assignments.cancel_mcp_task(connection, request.task_id)
+            return assignments.mcp_task_status(connection, request.task_id)
+
     def launch(self, request: models.Launch) -> dict:
         """Bind a requested worker to this checkout and queue the committed assignment."""
         with transaction(request.workspace) as connection:
@@ -168,6 +179,7 @@ class Core(socketserver.ThreadingUnixStreamServer):
                 request.plugin,
                 plugin.timeout_seconds,
                 model=plugin.model,
+                mcp_task=request.mcp_task,
             )
         return self.dispatch(request.workspace, directory, plugin, queued)
 

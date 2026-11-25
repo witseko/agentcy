@@ -85,7 +85,7 @@ A host without the extension relies on the server instructions and the tool desc
 
 ### Task-backed fresh runs
 
-When the host declares the MCP Tasks extension (`io.modelcontextprotocol/tasks`), `launch_participant` returns an MCP task backed by the persisted assignment. An MCP task is a protocol object that the host polls for status. The host can also cancel it, and a cancel stops the fresh run.
+When the host declares the MCP Tasks extension (`io.modelcontextprotocol/tasks`), `launch_participant` returns an MCP task for a new fresh run, backed by the persisted assignment. An MCP task is a protocol object that the host polls for status. The host can also cancel it, and a cancel stops the fresh run.
 
 The MCP task ID is an unguessable capability. The core never logs it and status never shows it. It is valid only in its own workspace.
 

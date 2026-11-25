@@ -7,6 +7,7 @@ from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
 
+from mcp.server.mcpserver import Context
 from mcp.types import Icon
 
 from agentcy.conversations import models, rounds
@@ -28,6 +29,7 @@ from agentcy.conversations.roles import Role
 from agentcy.mcp import http_transport
 from agentcy.mcp.http_transport import HttpSettings
 from agentcy.mcp.skills import skills_extension
+from agentcy.mcp.tasks import McpTasksExtension, wants_mcp_task
 from agentcy.mcp.tool_server import BridgeServer
 from agentcy.mcp.transport import exchange
 from agentcy.tokens.settings import ModelName, TokenBudget, TokenCount
@@ -549,7 +551,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
     server = BridgeServer(
         "agentcy",
         version=version("agentcy"),
-        extensions=[skills_extension()],
+        extensions=[skills_extension(), McpTasksExtension(workspace, exchange)],
         icons=[
             Icon(
                 src=f"data:image/png;base64,{b64encode(icon_png).decode('ascii')}",
@@ -790,13 +792,20 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         return await read_member(workspace, token, after, wait_seconds, silent_waits, last_teams)
 
     @server.tool()
-    def launch_participant(token: models.Key, name: models.Label, plugin: str) -> dict:
+    def launch_participant(
+        token: models.Key, name: models.Label, plugin: str, ctx: Context
+    ) -> dict:
         """Queue a read-only fresh worker as a lead using a locally configured plugin."""
         if directory is None:
             raise ValueError("This bridge has no configured checkout")
         return exchange(
             models.Launch(
-                workspace=workspace, token=token, name=name, plugin=plugin, directory=str(directory)
+                workspace=workspace,
+                token=token,
+                name=name,
+                plugin=plugin,
+                directory=str(directory),
+                mcp_task=wants_mcp_task(ctx),
             )
         )
 

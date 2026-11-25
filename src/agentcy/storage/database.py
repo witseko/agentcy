@@ -27,7 +27,7 @@ from agentcy.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agentcy.executables import find_on_path
 from agentcy.tokens.tables import participant_usage
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -49,6 +49,20 @@ def migrate_sealed_rounds(operations: Operations) -> None:
         batch.add_column(Column("proposal_id", String))
         batch.create_foreign_key("submission_proposal_fk", "proposal", ["proposal_id"], ["id"])
         batch.create_check_constraint("submission_target", SUBMISSION_TARGET)
+
+
+def migrate_mcp_tasks(operations: Operations) -> None:
+    """Add the MCP task digest, the cancel request flag, and assignment timestamps."""
+    operations.add_column("assignment", Column("mcp_task_hash", String))
+    operations.add_column(
+        "assignment",
+        Column("cancel_requested", Integer, nullable=False, server_default=text("0")),
+    )
+    operations.add_column("assignment", Column("created", Integer))
+    operations.add_column("assignment", Column("updated", Integer))
+    operations.create_index(
+        "assignment_mcp_task_hash", "assignment", ["mcp_task_hash"], unique=True
+    )
 
 
 def data_dir() -> Path:
@@ -170,3 +184,6 @@ def upgrade(connection: Connection, version: int) -> None:
         operations.add_column("message", Column("due_minutes", Integer))
     if version < 13:
         operations.add_column("conversation", Column("title", String))
+    if 6 <= version < 14:
+        # A store older than version six created the assignment table with these columns above.
+        migrate_mcp_tasks(operations)
