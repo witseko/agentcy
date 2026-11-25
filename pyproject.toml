@@ -1,6 +1,6 @@
 [project]
 name = "agentcy"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local MCP conversation bridge for agent chats in desktop apps and CLIs"
 license = "MIT"
 license-files = ["LICENSE"]
