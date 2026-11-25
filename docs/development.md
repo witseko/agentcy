@@ -51,17 +51,17 @@ Audit the locked third-party runtime and development dependencies.
 )
 ```
 
-## Prebuilt binaries
+## Release binaries
 
-The repository holds one prebuilt binary for each platform in `bin/<os>-<arch>/agentcy-tui`. `make tui` installs the one for your machine when Go is not installed.
+Each GitHub release holds one terminal UI binary for each platform, named `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The repository holds no binaries. `make tui` downloads the one for your machine when Go is not installed.
 
-After you change the terminal UI source, rebuild all of them and commit the result:
+To build all of them locally into `dist/`, which Git ignores:
 
 ```bash
-make tui-binaries
+make release-files
 ```
 
-The build is reproducible: the same source, version, and Go release give the same bytes on every machine. CI rebuilds the binaries with Go 1.27.4 and fails when they differ from the committed ones, so build them with that Go release.
+The build is reproducible: the same source, version, and Go release give the same bytes on every machine. The release workflow builds with Go 1.27.4, so use that Go release to compare a local build with a release binary.
 
 ## Versions and releases
 
@@ -77,7 +77,7 @@ The build is reproducible: the same source, version, and Go release give the sam
 
 To make a release:
 
-1. Set the new version and rebuild the binaries:
+1. Set the new version:
 
    ```bash
    make release VERSION=0.0.2
@@ -90,4 +90,4 @@ To make a release:
    git tag v0.0.2 && git push origin v0.0.2
    ```
 
-The tag starts the release workflow. It checks that the tag matches the version and that the committed binaries match the source. Then it publishes a GitHub release with the four binaries and a `SHA256SUMS` file.
+The tag starts the release workflow. It checks that the tag matches the version and builds the four binaries from the tagged source. Then it publishes a GitHub release with the four binaries and a `SHA256SUMS` file.

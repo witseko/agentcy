@@ -53,7 +53,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 - [Terminal UI](docs/terminal-ui.md): start, rename, archive, and search chats, keys and mouse.
 - [MCP tools](docs/tools.md): the tools each chat gets and the limits.
 - [Local data and security](docs/security.md): where data lives and what to know before you use it.
-- [Development](docs/development.md): tests, security scans, prebuilt binaries, and releases.
+- [Development](docs/development.md): tests, security scans, release binaries, and releases.
 
 ## License
 

@@ -8,7 +8,7 @@ Install the bridge from a clone, then register it in each app or CLI that should
 - Python 3.12 or later.
 - [uv](https://docs.astral.sh/uv/).
 - Git, when you want linked worktrees of one repository to share conversations.
-- Go 1.26 or later, only when you want to build the terminal UI from source. The repository includes a prebuilt binary for macOS and Linux on arm64 and amd64.
+- Go 1.26 or later, only when you want to build the terminal UI from source. Without Go, `make setup` downloads the terminal UI for macOS or Linux on arm64 or amd64 from the GitHub release. This needs network access and `curl`.
 - `make`, which macOS and most Linux systems include.
 
 ## Install
@@ -25,7 +25,7 @@ Install the bridge from a clone, then register it in each app or CLI that should
    make setup
    ```
 
-   With Go installed, it builds the terminal UI from source. Without Go, it installs the prebuilt binary from `bin/`.
+   With Go installed, it builds the terminal UI from source. Without Go, it downloads the terminal UI from the GitHub release that matches the installed version, checks its SHA-256 against the release's `SHA256SUMS` file, and installs it. A clone of a version that has no release yet gets no download. Install Go to build that version.
 
 3. Register the server in each app or CLI (next section).
 

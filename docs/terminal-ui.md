@@ -12,7 +12,7 @@ make tui
 
 The binary goes to `.venv/bin/agentcy-tui`, where `agentcy ui` finds it. To use a binary elsewhere, set `AGENTCY_TUI` to its absolute path.
 
-The repository also holds prebuilt binaries in `bin/`. [Rebuild them](development.md#prebuilt-binaries) after you change the terminal UI source.
+Without Go, `make tui` downloads the binary from the GitHub release that matches the installed version. Each release holds [binaries for macOS and Linux](development.md#release-binaries).
 
 ## Start it
 
