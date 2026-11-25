@@ -94,11 +94,15 @@ class CreateConversation(WorkspaceRequest):
 
 
 class InviteParticipant(ConversationRequest):
-    """Add a slot or reissue the unused code of an existing slot."""
+    """Add a slot, reissue the unused code of an existing slot, or reinvite a member.
+
+    With reinvite, a joined or retired member gets a new code and its previous chat loses access.
+    """
 
     action: Literal["operator_invite"]
     name: models.Label
     role: models.InviteRole | None = None
+    reinvite: bool = False
 
 
 class SetOpenInvite(ConversationRequest):

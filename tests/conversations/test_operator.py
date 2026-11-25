@@ -390,6 +390,27 @@ def test_list_is_newest_first_and_handles_old_rows(conversation_db: Connection) 
     assert listed[2]["joined"] == 1
 
 
+def test_human_reinvites_a_retired_worker(conversation_db: Connection) -> None:
+    """The human can bring back a retired worker with a new code."""
+    created = create(conversation_db)
+    conversation = created["conversation"]
+    join(conversation_db, created["invitations"][1]["code"])
+    fields = {"action": "operator_invite", "conversation": conversation, "name": "Worker"}
+    run(
+        conversation_db,
+        actions.RetireParticipant,
+        action="operator_retire",
+        conversation=conversation,
+        name="Worker",
+    )
+
+    renewed = run(conversation_db, actions.InviteParticipant, reinvite=True, **fields)
+    assert join(conversation_db, renewed["code"])["participant"] == "Worker"
+    view = show(conversation_db, conversation)
+    assert view["status"]["members"]["Worker"]["state"] == "joined"
+    assert "Reinvited Worker as worker." in [message["body"] for message in view["messages"]]
+
+
 def test_invite_adds_and_reissues_with_ready_prompts(conversation_db: Connection) -> None:
     """The human can add a slot and replace its unused code."""
     conversation = create(conversation_db)["conversation"]

@@ -7,7 +7,7 @@ import secrets
 import time
 import unicodedata
 
-from sqlalchemy import Connection, RowMapping, and_, func, insert, literal, or_, select, update
+from sqlalchemy import Connection, Row, RowMapping, and_, func, insert, literal, or_, select, update
 from sqlalchemy.sql import ColumnElement
 
 from agentcy.conversations import models, rounds, tasks
@@ -501,10 +501,13 @@ def invite(
     *,
     model: str | None = None,
     token_budget: int | None = None,
+    reinvite: bool = False,
 ) -> dict:
     """Reserve a slot or replace an unused code within the actor's conversation.
 
     The actor is a lead, a co-lead, or the human. A role of None keeps a reissued slot's role.
+    With reinvite, a joined or retired slot gets a new code: the slot becomes active again
+    and its previous chat loses its token.
     """
     if actor.get("retired"):
         raise ValueError(RETIRED_ERROR)
@@ -525,14 +528,12 @@ def invite(
     ).all()
     folded = name.casefold()
     slot = next((slot for slot in slots if slot.label.casefold() == folded), None)
+    if slot is None and reinvite:
+        raise ValueError("Unknown participant in this conversation")
     if slot is None and len(slots) >= models.MAX_PARTICIPANTS:
         raise ValueError(f"Conversation already has {models.MAX_PARTICIPANTS} participants")
-    if slot is not None and slot.retired:
-        raise ValueError(f"Participant is retired: {slot.label}")
-    if slot is not None and slot.joined:
-        raise ValueError(f"Invitation slot already taken: {slot.label}")
-    if slot is not None and active_assignment(connection, slot.id):
-        raise ValueError(f"Invitation reserved for an active fresh run: {slot.label}")
+    if slot is not None:
+        check_reissue(connection, actor, slot, reinvite)
 
     label = name if slot is None else slot.label
     role = Role.CO_LEAD if requested_role == "co-lead" else Role.WORKER
@@ -556,8 +557,12 @@ def invite(
             updates["model"] = model
         if token_budget is not None:
             updates["token_budget"] = token_budget
+        if reinvite:
+            updates.update(retired=0, token_hash=None, seen=None)
         connection.execute(update(member).where(member.c.id == slot.id).values(**updates))
         event = f"Reissued the invitation for {label} as {role.label}."
+        if reinvite:
+            event = f"Reinvited {label} as {role.label}."
     if role == Role.CO_LEAD:
         connection.execute(
             update(member)
@@ -576,6 +581,20 @@ def invite(
             template=role_join_template(role.label),
         ),
     }
+
+
+def check_reissue(connection: Connection, actor: RowMapping, slot: Row, reinvite: bool) -> None:
+    """Allow a new code for an existing slot only when it cannot cut off a chat by accident."""
+    if reinvite and slot.id == actor["id"]:
+        raise ValueError("You cannot reinvite yourself")
+    if slot.retired and not reinvite:
+        raise ValueError(f"Participant is retired: {slot.label}. Pass reinvite to bring them back")
+    if slot.joined and not reinvite:
+        raise ValueError(
+            f"Invitation slot already taken: {slot.label}. Pass reinvite to replace its chat"
+        )
+    if active_assignment(connection, slot.id):
+        raise ValueError(f"Invitation reserved for an active fresh run: {slot.label}")
 
 
 def _release_if_sealed_complete(connection: Connection, actor: RowMapping, target_id: int) -> None:
@@ -1422,6 +1441,7 @@ def apply(connection: Connection, request: models.Request) -> dict:
             request.role,
             model=request.model,
             token_budget=request.token_budget,
+            reinvite=request.reinvite,
         )
     if isinstance(request, models.Retire):
         return retire(connection, participant, request.name)

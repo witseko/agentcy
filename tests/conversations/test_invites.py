@@ -199,3 +199,57 @@ def test_join_prompt_truncates_multiline_briefs_and_keeps_code_placeholder(
     assert "report brief progress updates to the lead periodically" in team["join_prompt"]
     invitation = apply(conversation_db, "invite", token=team["token"], name="Analyst")
     assert invitation["join_prompt"] == f"{short} - worker (Analyst): {repository.JOIN_PROMPT}"
+
+
+def test_reinvite_replaces_a_joined_chat_and_keeps_its_history(
+    conversation_db: Connection,
+) -> None:
+    """Give a joined slot to a new chat, revoke the old token, and keep the slot's messages."""
+    team = create(conversation_db)
+    old = apply(conversation_db, "join", code=team["invitations"]["Worker"])
+    finding = apply(conversation_db, "post", token=old["token"], body="Evidence", submission_id="1")
+
+    renewed = apply(conversation_db, "invite", token=team["token"], name="worker", reinvite=True)
+    assert renewed["participant"] == "Worker"
+    assert renewed["role"] == "worker"
+    with pytest.raises(ValueError, match="Invalid participant token"):
+        apply(conversation_db, "read", token=old["token"])
+    status = apply(conversation_db, "status", token=team["token"])
+    assert status["members"]["Worker"]["state"] == "invited"
+
+    rejoined = apply(conversation_db, "join", code=renewed["code"])
+    assert rejoined["participant"] == "Worker"
+    read = apply(conversation_db, "read", token=rejoined["token"])
+    bodies = [message["body"] for message in read["messages"]]
+    assert finding["message_id"] in [message["id"] for message in read["messages"]]
+    assert "Reinvited Worker as worker." in bodies
+
+
+def test_reinvite_brings_back_a_retired_member(conversation_db: Connection) -> None:
+    """Make a retired slot active again so its new chat can post."""
+    team = create(conversation_db)
+    old = apply(conversation_db, "join", code=team["invitations"]["Worker"])
+    apply(conversation_db, "retire", token=team["token"], name="Worker")
+    with pytest.raises(ValueError, match="Participant is retired: Worker. Pass reinvite"):
+        apply(conversation_db, "invite", token=team["token"], name="Worker")
+
+    renewed = apply(conversation_db, "invite", token=team["token"], name="Worker", reinvite=True)
+    with pytest.raises(ValueError, match="Invalid participant token"):
+        apply(conversation_db, "read", token=old["token"])
+    rejoined = apply(conversation_db, "join", code=renewed["code"])
+    posted = apply(conversation_db, "post", token=rejoined["token"], body="Back", submission_id="2")
+    assert posted["message_id"]
+    status = apply(conversation_db, "status", token=team["token"])
+    assert status["members"]["Worker"]["state"] == "replied"
+
+
+def test_reinvite_rejects_unknown_names_self_and_workers(conversation_db: Connection) -> None:
+    """Refuse a reinvite that names no slot, the caller itself, or comes from a worker."""
+    team = create(conversation_db)
+    worker = apply(conversation_db, "join", code=team["invitations"]["Worker"])
+    with pytest.raises(ValueError, match="Unknown participant"):
+        apply(conversation_db, "invite", token=team["token"], name="Nobody", reinvite=True)
+    with pytest.raises(ValueError, match="You cannot reinvite yourself"):
+        apply(conversation_db, "invite", token=team["token"], name="Lead", reinvite=True)
+    with pytest.raises(ValueError, match="Only a lead or co-lead"):
+        apply(conversation_db, "invite", token=worker["token"], name="Lead", reinvite=True)

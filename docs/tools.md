@@ -5,7 +5,7 @@ The bridge gives each connected chat these tools.
 | Tool | Purpose |
 | --- | --- |
 | `create_conversation` | Start a conversation as lead. Returns a join code for each invited chat. |
-| `invite_participant` | Add a participant or reissue an unused join code. Leads and co-leads only. |
+| `invite_participant` | Add a participant or reissue an unused join code. With `reinvite=True`, bring back a retired member or replace a joined member's chat; the previous chat loses access. Leads and co-leads only. |
 | `open_invite` | Enable, rotate, or disable one reusable join code for the whole conversation. Leads and co-leads only. |
 | `join_conversation` | Redeem a join code. Returns the brief, your role, and a private participant token. |
 | `post_message` | Share findings, ask a peer a question, or update a task. A retry with the same submission ID records one message. |

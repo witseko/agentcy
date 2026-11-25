@@ -628,7 +628,7 @@
     },
     "InviteParticipant": {
       "additionalProperties": false,
-      "description": "Add a slot or reissue the unused code of an existing slot.",
+      "description": "Add a slot, reissue the unused code of an existing slot, or reinvite a member.\n\nWith reinvite, a joined or retired member gets a new code and its previous chat loses access.",
       "properties": {
         "version": {
           "const": 1,
@@ -678,6 +678,11 @@
           ],
           "default": null,
           "title": "Role"
+        },
+        "reinvite": {
+          "default": false,
+          "title": "Reinvite",
+          "type": "boolean"
         }
       },
       "required": [

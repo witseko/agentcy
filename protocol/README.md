@@ -48,7 +48,7 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_show` | Return the title, brief, member status, and one page of messages: forward after `after`, the latest page with `tail: true`, or an older page before `before`. |
 | `operator_tasks` | List every task in a conversation with its title, full description, current owner, state (`open`, `blocked`, `done`, or `deprecated`), pending handoff target if any, due time (`due`, Unix seconds) and `overdue` flag when the lead's timeline has passed, and chronological timeline of task events and replies. |
 | `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. Set `open_invite: true` to also create a reusable room-level join code (and allow zero preset `invitees`). |
-| `operator_invite` | Add a slot or reissue an unused code. Returns a ready join prompt. |
+| `operator_invite` | Add a slot or reissue an unused code. Set `reinvite: true` to give a joined or retired member a new code: the member becomes active again with its name, history, and tasks, and its previous chat loses its token. Returns a ready join prompt. |
 | `operator_open_invite` | Enable, rotate (`enabled: true`), or disable (`enabled: false`) a reusable room-level join code that works for everyone who joins until closed, rotated, or revoked. |
 | `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
 | `operator_retire` | Retire a participant from an open conversation. Expires unused codes, stops writes, and cancels any active fresh run. Moves unfinished tasks to the least busy available worker (joined, invited, or launched), or to the lead when none is available. Rejects retiring the lead. |

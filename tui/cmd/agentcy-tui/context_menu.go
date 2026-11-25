@@ -630,14 +630,24 @@ func (m model) teamMemberMenuItems(name string, member MemberStatus) []contextIt
 			action: func(m model) (tea.Model, tea.Cmd) { return m.copyMemberPrompt() },
 		})
 	}
+	if isOpen && member.State == "invited" {
+		items = append(items, contextItem{
+			id: "member:reissue", label: "New join code", key: "r",
+			action: func(m model) (tea.Model, tea.Cmd) {
+				return m.inform("Getting a new code for " + displayName + "."), m.invite(name)
+			},
+		})
+	}
+	if isOpen && member.State != "invited" {
+		items = append(items, contextItem{
+			id: "member:reinvite", label: "Reinvite (new code, old chat loses access)", key: "r",
+			action: func(m model) (tea.Model, tea.Cmd) {
+				return m.inform("Reinviting " + displayName + "."), m.reinvite(name)
+			},
+		})
+	}
 	if isOpen && member.State != "retired" {
 		items = append(items,
-			contextItem{
-				id: "member:reissue", label: "New join code", key: "r",
-				action: func(m model) (tea.Model, tea.Cmd) {
-					return m.inform("Getting a new code for " + displayName + "."), m.invite(name)
-				},
-			},
 			contextItem{
 				id: "member:launch", label: "Launch from plugin…", key: "l",
 				action: func(m model) (tea.Model, tea.Cmd) { return m.prefillLaunchFor(name) },
