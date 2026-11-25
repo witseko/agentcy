@@ -19,12 +19,14 @@ from agentcy.mcp import server
         ("lead", "done", False, 1, "All other members are done. Stop listening"),
         ("lead", "replied", False, 1, "Still working: Peer. To keep listening"),
         ("lead", "blocked", False, 1, "tell your user who is blocked: Peer"),
-        ("lead", "joined", False, 7, "Still working: Peer. To keep listening"),
-        ("co-lead", "joined", False, 8, "Stop listening and tell your user"),
+        ("lead", "joined", False, 79, "Still working: Peer. To keep listening"),
+        ("co-lead", "joined", False, 80, "Stop listening and tell your user"),
         ("lead", "invited", False, 1, "join codes are unused: Peer"),
         ("worker", "joined", False, 3, "You have not posted your part"),
-        ("worker", "replied", False, 2, "No new messages. To keep listening"),
-        ("worker", "replied", False, 3, "Stop listening and tell your user"),
+        ("worker", "replied", False, 3, "No new messages. To keep listening"),
+        ("worker", "replied", False, 79, "No new messages. To keep listening"),
+        ("worker", "replied", False, 80, "Stop listening and tell your user"),
+        ("worker", "done", False, 3, "Stop listening and tell your user"),
     ],
 )
 def test_guidance_follows_member_progress(
@@ -399,10 +401,12 @@ def test_lead_uses_member_state_for_a_standalone_blocker(
 
 @pytest.mark.parametrize("reset_by", ["waiting read", "one-time read", "post"])
 def test_silent_waits_reset_after_a_message_or_post(
-    shim: tuple[server.BridgeServer, Counter[str]], reset_by: str
+    shim: tuple[server.BridgeServer, Counter[str]], reset_by: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A worker starts a new series of quiet waits after any message or own post."""
     app, calls = shim
+    # The lead stays active, so the worker uses the active-peer limit; keep the loop short.
+    monkeypatch.setattr(server, "WORKER_ACTIVE_IDLE_WAITS", server.IDLE_WAITS)
     team = tool(
         app, "create_conversation", brief="Review retries", your_name="Lead", invitees=["W"]
     )
@@ -821,8 +825,22 @@ def test_lead_checkin_names_stale_worker_and_worker_sees_peer_blockers() -> None
     assert done_page["peer_blockers"] == [{"name": "Stuck", "tasks": [9]}]
     assert "Stop listening" in done_page["next"]
 
-    # Done worker with an active peer stays listening up to WORKER_ACTIVE_IDLE_WAITS (5).
+    # Done worker with an active peer stays listening up to WORKER_ACTIVE_IDLE_WAITS.
     worker_status["members"]["Lead"]["state"] = "replied"
     active_page = server.finish_wait({"messages": []}, worker_status, {"helper": 3}, "helper")
     assert "Stuck is blocked" in active_page["next"]
     assert "read_messages" in active_page["next"]
+
+
+@pytest.mark.parametrize(("waits", "expected"), [(79, "To keep listening"), (80, "Stop listening")])
+def test_lead_keeps_listening_while_task_owner_works(waits: int, expected: str) -> None:
+    """A lead listens to a working task owner up to the active-peer limit."""
+    status = {
+        "open": True,
+        "members": {
+            "Lead": {"role": "lead", "state": "replied"},
+            "Peer": {"role": "worker", "state": "replied", "open_tasks": [{"id": 4}]},
+        },
+    }
+
+    assert expected in server.guidance(status, "Lead", False, waits)
