@@ -16,7 +16,7 @@ from agentcy.mcp import plugin_client
 from agentcy.mcp.concurrency import Notifications, transaction
 from agentcy.mcp.plugin_contract import Start
 from agentcy.mcp.plugin_settings import Plugin, configured_plugin
-from agentcy.storage.database import data_dir
+from agentcy.storage.database import workspace_keys
 
 LOG = logging.getLogger(__name__)
 POLL_SECONDS = 1
@@ -230,8 +230,7 @@ class AssignmentWorker(Thread):
 
     def scan(self, restart: bool = False) -> None:
         """Visit each private store with pending launches, isolating store failures."""
-        for path in data_dir().glob("*.sqlite3"):
-            workspace = path.stem
+        for workspace in workspace_keys():
             try:
                 with transaction(workspace) as connection:
                     rows = assignments.pending(connection)

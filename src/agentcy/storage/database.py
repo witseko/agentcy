@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -28,6 +29,8 @@ from agentcy.executables import find_on_path
 from agentcy.tokens.tables import participant_usage
 
 SCHEMA_VERSION = 15
+# A workspace key is the SHA-256 hex digest that workspace_key returns.
+WORKSPACE_KEY_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -104,6 +107,15 @@ def workspace_key(workspace: Path) -> str:
 def database_exists(key: str) -> bool:
     """Check for a workspace store without creating one."""
     return (data_dir() / (key + ".sqlite3")).is_file()
+
+
+def workspace_keys() -> list[str]:
+    """List the workspace stores in the data directory, skipping other SQLite files."""
+    return [
+        path.stem
+        for path in data_dir().glob("*.sqlite3")
+        if WORKSPACE_KEY_PATTERN.fullmatch(path.stem)
+    ]
 
 
 @lru_cache(maxsize=64)

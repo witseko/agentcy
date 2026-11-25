@@ -28,7 +28,7 @@ from agentcy.mcp.concurrency import Notifications, transaction, wait_for_read
 from agentcy.mcp.plugin_contract import Start
 from agentcy.mcp.plugin_settings import Plugin, configured_plugin, plugin_names
 from agentcy.mcp.transport import MAX_REQUEST
-from agentcy.storage.database import data_dir, database_exists, workspace_key
+from agentcy.storage.database import data_dir, database_exists, workspace_key, workspace_keys
 
 LOG = logging.getLogger(__name__)
 OPERATOR_KEY_FILE = "operator.key"
@@ -242,8 +242,8 @@ class Core(socketserver.ThreadingUnixStreamServer):
     def handle_timeout(self) -> None:
         """Check persisted conversations, including stores from a previous process."""
         self.idle = True
-        for path in data_dir().glob("*.sqlite3"):
-            with transaction(path.stem) as connection:
+        for workspace in workspace_keys():
+            with transaction(workspace) as connection:
                 if assignments.has_pending(connection) or connection.scalar(
                     select(room.c.id).where(room.c.open == 1).limit(1)
                 ):

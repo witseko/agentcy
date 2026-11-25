@@ -595,3 +595,17 @@ def test_round_release_cancels_round_worker(team: Team) -> None:
     team.core.apply(models.Release(workspace=team.workspace, token=team.lead))
     team.core.worker.scan(restart=True)
     assert state(team) == "cancelled"
+
+
+def test_scans_skip_the_token_ledger(team: Team, caplog: pytest.LogCaptureFixture) -> None:
+    """Scan only workspace stores when the token ledger shares their directory."""
+    from agentcy.tokens import ledger
+
+    ledger.ledger_engine(str(ledger.ledger_path()))
+    launch(team)
+
+    team.core.worker.scan()
+    team.core.handle_timeout()
+
+    assert "Fresh-run reconciliation failed" not in caplog.text
+    assert team.core.idle is False
