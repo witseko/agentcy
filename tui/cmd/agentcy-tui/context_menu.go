@@ -63,11 +63,9 @@ func (m model) closeContextMenu() model {
 
 // copyText copies cleaned text to the clipboard and reports a status notice for label.
 func (m model) copyText(label string, text string) (tea.Model, tea.Cmd) {
-	copyFn := m.clipboard
-	cleaned := clean(text)
-	return m, func() tea.Msg {
-		return textCopiedMsg{label: label, err: copyFn(cleaned)}
-	}
+	return m, m.copyCmd(clean(text), func(err error) tea.Msg {
+		return textCopiedMsg{label: label, err: err}
+	})
 }
 
 // onTextCopied shows the result of a context-menu clipboard copy.

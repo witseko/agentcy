@@ -440,6 +440,61 @@ func TestPromptsCopyTheKnownJoinPrompt(t *testing.T) {
 	}
 }
 
+func TestPromptsCopyThroughTheTerminalWithoutAClipboardTool(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m.clipboard = nil
+
+	m, _ = press(t, m, "ctrl+p")
+	m, command := press(t, m, "r")
+	m = drive(t, m, command)
+	m, command = press(t, m, "c")
+
+	var sent []string
+	for _, msg := range collect(command) {
+		if fmt.Sprintf("%T", msg) == "tea.setClipboardMsg" {
+			sent = append(sent, fmt.Sprint(msg))
+			continue
+		}
+		next, _ := m.Update(msg)
+		m = next.(model)
+	}
+	if len(sent) != 1 || sent[0] != "join NEW" {
+		t.Fatalf("terminal clipboard got %v", sent)
+	}
+	if m.popup.kind == popupError {
+		t.Fatalf("copy showed an error: %+v", m.popup)
+	}
+}
+
+func TestPromptsViewShowsTheWholePromptForSelection(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	m, _ = press(t, m, "ctrl+p")
+	m, command := press(t, m, "r")
+	m = drive(t, m, command)
+	words := strings.Repeat("join with the code ", 20) + "CODE-abc.123"
+	m.invitations[m.chat.id][foldName("Reviewer")] = JoinInvitation{JoinPrompt: words}
+
+	m, _ = press(t, m, "v")
+	view := m.View()
+	if view.MouseMode != tea.MouseModeNone {
+		t.Fatalf("mouse mode = %v, want no capture so the terminal can select", view.MouseMode)
+	}
+	plain := ansi.Strip(view.Content)
+	if strings.Contains(plain, "│") {
+		t.Fatalf("prompt view draws borders:\n%s", plain)
+	}
+	if got := strings.Join(strings.Fields(plain), " "); !strings.Contains(got, strings.TrimSpace(words)) {
+		t.Fatalf("prompt view misses part of the prompt:\n%s", plain)
+	}
+
+	m, _ = press(t, m, "esc")
+	if m.inviteWindow.viewing || !m.inviteWindow.open {
+		t.Fatalf("esc should go back to the invite window: %+v", m.inviteWindow)
+	}
+}
+
 func TestVanishedCoreShowsAStatusAndRetries(t *testing.T) {
 	fake := &fakeOperator{}
 	m := chatModel(t, fake)

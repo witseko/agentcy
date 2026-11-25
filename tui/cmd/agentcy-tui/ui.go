@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -46,10 +44,6 @@ const (
 	statusDurationTicks = 6
 	pollInterval        = time.Second
 	offlineStatus       = "Core not reachable. Retrying every second. Run agentcy ui to start it again."
-)
-
-var (
-	errClipboardUnavailable = errors.New("copying is unavailable on this platform; select the text with the mouse")
 )
 
 // showMode describes which page of the transcript a Show request asked for.
@@ -186,7 +180,7 @@ func newModel(client Operator, directory string) model {
 	return model{
 		client:      client,
 		directory:   directory,
-		clipboard:   copyToClipboard,
+		clipboard:   systemClipboard(),
 		now:         time.Now,
 		width:       80,
 		height:      24,
@@ -446,6 +440,9 @@ func (m model) columnWidths() (int, int, int) {
 
 // View draws a top bar, the active screen and a key bar at the bottom.
 func (m model) View() tea.View {
+	if m.screen == screenChat && m.inviteWindow.open && m.inviteWindow.viewing {
+		return m.promptView()
+	}
 	bodyHeight := max(m.height-2, 1)
 	var body []string
 	var help []hint
@@ -586,16 +583,6 @@ func submissionID() string {
 	random := make([]byte, 16)
 	_, _ = rand.Read(random) // crypto/rand.Read never returns an error.
 	return "ui-" + hex.EncodeToString(random)
-}
-
-// copyToClipboard copies text with pbcopy on macOS. It runs a fixed path without a shell.
-func copyToClipboard(text string) error {
-	if runtime.GOOS != "darwin" {
-		return errClipboardUnavailable
-	}
-	command := exec.Command("/usr/bin/pbcopy")
-	command.Stdin = strings.NewReader(text)
-	return command.Run()
 }
 
 // foldName returns the key under which a participant name is stored.

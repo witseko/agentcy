@@ -19,11 +19,14 @@ type inviteState struct {
 	selected int
 	// copied holds the folded names whose prompt was copied while this chat is open.
 	copied map[string]bool
+	// viewing shows the selected prompt alone, so the terminal can select all of it.
+	viewing bool
 }
 
 // openInvite shows the invite window and selects a slot by name when it is given.
 func (m model) openInvite(name string) model {
 	m.inviteWindow.open = true
+	m.inviteWindow.viewing = false
 	if m.inviteWindow.copied == nil {
 		m.inviteWindow.copied = map[string]bool{}
 	}
@@ -77,10 +80,61 @@ func (m model) knownInvitation(name string) (JoinInvitation, bool) {
 	return invitation, found
 }
 
+// selectedPrompt returns the join prompt of the selected slot when this session knows it.
+func (m model) selectedPrompt() (string, bool) {
+	slots := m.promptSlots()
+	if len(slots) == 0 {
+		return "", false
+	}
+	name := slots[min(m.inviteWindow.selected, len(slots)-1)]
+	if name == openInviteCard {
+		invitation, found := m.knownOpenInvite()
+		return invitation.JoinPrompt, found
+	}
+	invitation, found := m.knownInvitation(name)
+	return invitation.JoinPrompt, found
+}
+
+// promptViewKey handles a key while one prompt shows alone: c copies it, other keys go back.
+func (m model) promptViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "c":
+		prompt, _ := m.selectedPrompt()
+		return m, m.copyCmd(clean(prompt), func(err error) tea.Msg {
+			return textCopiedMsg{label: "the prompt", err: err}
+		})
+	case "esc", "enter", "q", "v":
+		m.inviteWindow.viewing = false
+	}
+	return m, nil
+}
+
+// promptView draws the selected prompt alone, wrapped at spaces and without borders or mouse
+// capture, so a terminal selection copies the whole prompt and nothing else.
+func (m model) promptView() tea.View {
+	prompt, _ := m.selectedPrompt()
+	width := max(m.width-2, 20)
+	lines := []string{"", ansi.Wordwrap(clean(prompt), width, ""), ""}
+	lines = append(lines, dimStyle.Render(fmt.Sprintf("Select the text with your mouse. %s copy · %s back",
+		accentStyle.Render("c"), accentStyle.Render("esc"))))
+	view := tea.NewView(strings.Join(lines, "\n"))
+	view.AltScreen = true
+	return view
+}
+
 // inviteKey handles a key while the invite window shows.
 func (m model) inviteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.inviteWindow.viewing {
+		return m.promptViewKey(msg)
+	}
 	slots := m.promptSlots()
 	switch msg.String() {
+	case "v":
+		if _, found := m.selectedPrompt(); !found {
+			return m.inform("No prompt to show. Press r for a new code."), nil
+		}
+		m.inviteWindow.viewing = true
+		return m, nil
 	case "esc", "enter", "q":
 		m.inviteWindow.open = false
 		return m, nil
@@ -138,9 +192,9 @@ func (m model) copyOpenPrompt() (tea.Model, tea.Cmd) {
 		m.inviteWindow.copied = map[string]bool{}
 	}
 	m.inviteWindow.copied[openInviteCard] = true
-	copyText := m.clipboard
-	prompt := clean(invitation.JoinPrompt)
-	return m, func() tea.Msg { return copiedMsg{name: openInviteCard, err: copyText(prompt)} }
+	return m, m.copyCmd(clean(invitation.JoinPrompt), func(err error) tea.Msg {
+		return copiedMsg{name: openInviteCard, err: err}
+	})
 }
 
 // copyPrompt copies a slot's join prompt to the clipboard and marks it as copied.
@@ -150,9 +204,9 @@ func (m model) copyPrompt(name string) (tea.Model, tea.Cmd) {
 		m.inviteWindow.copied = map[string]bool{}
 	}
 	m.inviteWindow.copied[foldName(name)] = true
-	copyText := m.clipboard
-	prompt := clean(invitation.JoinPrompt)
-	return m, func() tea.Msg { return copiedMsg{name: name, err: copyText(prompt)} }
+	return m, m.copyCmd(clean(invitation.JoinPrompt), func(err error) tea.Msg {
+		return copiedMsg{name: name, err: err}
+	})
 }
 
 // onCopied reports the clipboard result.
@@ -251,7 +305,7 @@ func (m model) inviteLayout(bodyHeight int) (box []string, row int, col int, slo
 		lineSlot = append(lineSlot, -1)
 	}
 	done, _ := m.buttons(button{id: "done", label: "Done", primary: true})
-	lines = append(lines, done+"   "+keyHints("c", "copy next", "r", "new code", "o", "open invite"))
+	lines = append(lines, done+"   "+keyHints("c", "copy next", "v", "view", "r", "new code", "o", "open invite"))
 	lineSlot = append(lineSlot, -1)
 
 	box = []string{accentStyle.Render("┌" + strings.Repeat("─", width-2) + "┐")}

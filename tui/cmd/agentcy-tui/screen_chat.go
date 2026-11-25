@@ -1395,7 +1395,7 @@ func (m model) mainHelp() []hint {
 	case m.screen == screenHome:
 		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), mouse, hint{"q", "quit"})...)
 	case m.inviteWindow.open:
-		return []hint{{"c", "copy and go to next"}, {"↑↓", "select"}, {"r", "new code"}, {"esc", "done"}}
+		return []hint{{"c", "copy and go to next"}, {"v", "view to select"}, {"↑↓", "select"}, {"r", "new code"}, {"esc", "done"}}
 	case m.chat.closing:
 		return []hint{{"⏎", "close the chat"}, {"esc", "cancel"}}
 	case m.chat.retiring != "":
