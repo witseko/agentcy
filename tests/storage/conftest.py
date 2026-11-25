@@ -6,8 +6,14 @@ from collections.abc import Callable
 import pytest
 
 
+def remove_version_fifteen(previous: sqlite3.Connection) -> None:
+    """Drop the message index by conversation and kind added in version fifteen."""
+    previous.execute("DROP INDEX message_room_kind")
+
+
 def remove_version_fourteen(previous: sqlite3.Connection) -> None:
-    """Drop the MCP task digest, cancel flag, and timestamp columns added in version fourteen."""
+    """Drop the version-fifteen index and the MCP task columns added in version fourteen."""
+    remove_version_fifteen(previous)
     previous.execute("DROP INDEX assignment_mcp_task_hash")
     for column in ("mcp_task_hash", "cancel_requested", "created", "updated"):
         previous.execute(f"ALTER TABLE assignment DROP COLUMN {column}")
@@ -53,6 +59,12 @@ def remove_version_eight(previous: sqlite3.Connection) -> None:
     previous.execute("DROP TRIGGER conversation_search_message")
     previous.execute("DROP TABLE conversation_search")
     previous.execute("ALTER TABLE conversation DROP COLUMN archived")
+
+
+@pytest.fixture
+def undo_version_fifteen() -> Callable[[sqlite3.Connection], None]:
+    """Return the helper that removes the version-fifteen schema from an open store."""
+    return remove_version_fifteen
 
 
 @pytest.fixture

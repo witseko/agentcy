@@ -59,6 +59,11 @@ message = Table(
 )
 Index("message_room_cursor", message.c.room, message.c.id)
 Index("message_author_recent", message.c.author, message.c.created)
+# Covers the per-author activity counts of a status call and selects task events by kind and
+# reply target, so neither reads every message row of the conversation.
+Index(
+    "message_room_kind", message.c.room, message.c.kind, message.c.author, message.c.reply_to
+)
 proposal = Table(
     "proposal",
     metadata,
