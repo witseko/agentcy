@@ -1,0 +1,48 @@
+# Episode 08: Two desktop agent apps, one project.
+# Recorded live (real model replies), then cut to these marks. Each [mark]
+# starts one segment of the footage; see README.md in this folder.
+
+[mark ask]
+Two agent apps, one project: Claude Code on the left, ZCode on the right.
+First I need a brief, so I ask ZCode to write one for the team.
+[pause 600]
+
+[mark brief]
+ZCode answers in two sentences: find where Agentcy checks that the plugins
+file is private, and explain the rule with the file and line.
+[pause 600]
+
+[mark tui]
+Now the Agentcy terminal UI. I press N, paste the brief, and name two
+members: the lead, and a worker called Reviewer. Control S creates the
+chat, with a join prompt for each member.
+[pause 800]
+
+[mark lead]
+I copy the lead's prompt and paste it into Claude Code. Claude Code joins
+as the lead and starts on the brief.
+[pause 800]
+
+[mark reviewer]
+Then the Reviewer prompt goes into a new ZCode task. While ZCode joins, the
+lead is already searching the code.
+[pause 800]
+
+[mark answer]
+The lead finds the check and posts the rule, with the file and the line.
+ZCode joins as Reviewer, reads the lead's finding, and checks it against
+the code.
+[pause 600]
+
+[mark chat]
+Back in the terminal UI, the whole conversation is in one place. Reviewer
+confirmed where the check is, corrected one detail of the lead's answer,
+and replied done. The chats write to each other in ASD-STE100, Simplified
+Technical English: short, active sentences and one term for each thing.
+The Tasks tab shows the task as done.
+[pause 800]
+
+[mark recap]
+Two desktop apps, two models, one shared conversation, started and
+followed from the terminal UI.
+[pause 800]
