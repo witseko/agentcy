@@ -48,6 +48,18 @@ OPEN_JOIN_PROMPT = (
     "lead periodically while working, reply to your task ID with kind='done' or 'blocker', and "
     "check peer blockers before going idle. Follow the bridge's 'next' guidance."
 )
+LEAD_JOIN_PROMPT = (
+    "Use agentcy to join with CODE. You lead this conversation. Read the shared brief and "
+    "catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', "
+    "and due_minutes (the minutes you expect the task to take): you own the task timeline. "
+    "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
+    "open_invite, and retire inactive or unneeded teammates with retire_participant. "
+    "Track the team status in read_messages, assign follow-up work when workers finish, and post "
+    "brief team updates so waiting teammates stay active. Mind teammate token budgets in "
+    "team/token_balance and prefer assigning new tasks or handoffs to models with more remaining "
+    f"budget. Messages from {HUMAN_LABEL} come from "
+    "your user. Follow the bridge's guidance during this turn."
+)
 MAX_LABEL_LENGTH = 64
 ASSIGNABLE_ROLES = {
     Role.WORKER.label: Role.WORKER,
@@ -70,19 +82,32 @@ def session_title(brief: str) -> str:
     return first_line
 
 
+def role_join_template(role: str) -> str:
+    """Pick the join instructions for a slot: workers get the worker text, leaders the lead text."""
+    return JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
+
+
 def join_prompt(
     brief: str,
     *,
     participant: str | None = None,
+    role: str | None = None,
     template: str = JOIN_PROMPT,
     code: str | None = None,
 ) -> str:
-    """Prefix a join prompt with the conversation topic and optional slot name."""
+    """Prefix a join prompt with a '<shared job> - <role> (<name>)' heading.
+
+    Desktop agent apps name a new session from its first message, so the heading tells the
+    human which job the session works on and which part it plays.
+    """
     body = template.replace("CODE", code) if code is not None else template
-    topic = session_title(brief)
-    if not topic:
+    heading = session_title(brief)
+    if role:
+        heading = f"{heading} - {role}" if heading else role
+    if participant:
+        heading = f"{heading} ({participant})" if heading else participant
+    if not heading:
         return body
-    heading = f"{topic} ({participant})" if participant else topic
     return f"{heading}: {body}"
 
 
@@ -98,7 +123,7 @@ def join_workspace_tag(workspace: str, nonce: str) -> str:
 
 def open_join_prompt(brief: str, *, code: str | None = None) -> str:
     """Format a shared open-invite join prompt for any agent joining the room."""
-    return join_prompt(brief, template=OPEN_JOIN_PROMPT, code=code)
+    return join_prompt(brief, role=Role.WORKER.label, template=OPEN_JOIN_PROMPT, code=code)
 
 
 def new_open_invite_code(workspace: str) -> tuple[str, str]:
@@ -544,7 +569,12 @@ def invite(
         "participant": label,
         "role": role.label,
         "code": code,
-        "join_prompt": join_prompt(actor["brief"], participant=label),
+        "join_prompt": join_prompt(
+            actor["brief"],
+            participant=label,
+            role=role.label,
+            template=role_join_template(role.label),
+        ),
     }
 
 

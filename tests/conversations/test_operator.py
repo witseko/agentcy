@@ -81,16 +81,16 @@ def test_create_invites_every_slot_and_adds_the_human(conversation_db: Connectio
         assert "CODE" not in item["join_prompt"]
         assert item["code"] in item["join_prompt"]
     assert invitations["Lead"]["join_prompt"] == (
-        "Review retries (Lead): "
-        + operator.LEAD_JOIN_PROMPT.replace("CODE", invitations["Lead"]["code"])
+        "Review retries - co-lead (Lead): "
+        + repository.LEAD_JOIN_PROMPT.replace("CODE", invitations["Lead"]["code"])
     )
     assert invitations["Worker"]["join_prompt"] == (
-        "Review retries (Worker): "
+        "Review retries - worker (Worker): "
         + repository.JOIN_PROMPT.replace("CODE", invitations["Worker"]["code"])
     )
     assert invitations["Partner"]["join_prompt"] == (
-        "Review retries (Partner): "
-        + operator.LEAD_JOIN_PROMPT.replace("CODE", invitations["Partner"]["code"])
+        "Review retries - co-lead (Partner): "
+        + repository.LEAD_JOIN_PROMPT.replace("CODE", invitations["Partner"]["code"])
     )
     assert created["roster"] == {
         "Lead": "co-lead",
@@ -399,12 +399,14 @@ def test_invite_adds_and_reissues_with_ready_prompts(conversation_db: Connection
     assert added["participant"] == reissued["participant"] == "Analyst"
     assert added["code"] != reissued["code"]
     assert reissued["join_prompt"] == (
-        "Review retries (Analyst): " + repository.JOIN_PROMPT.replace("CODE", reissued["code"])
+        "Review retries - worker (Analyst): "
+        + repository.JOIN_PROMPT.replace("CODE", reissued["code"])
     )
     lead_code = run(conversation_db, actions.InviteParticipant, name="Lead", **fields)
     assert lead_code["role"] == "lead"
     assert lead_code["join_prompt"] == (
-        "Review retries (Lead): " + operator.LEAD_JOIN_PROMPT.replace("CODE", lead_code["code"])
+        "Review retries - lead (Lead): "
+        + repository.LEAD_JOIN_PROMPT.replace("CODE", lead_code["code"])
     )
     events = [message["body"] for message in show(conversation_db, conversation)["messages"]]
     assert events[0] == "Invited Analyst as worker."
@@ -774,8 +776,8 @@ def test_ready_prompt_preserves_literal_code_in_brief_and_slot_name(
     invitations = {item["participant"]: item for item in created["invitations"]}
     lead_prompt = invitations["CODE-Lead"]["join_prompt"]
     worker_prompt = invitations["CODE-Reviewer"]["join_prompt"]
-    assert lead_prompt.startswith("Fix CODE formatting (CODE-Lead): ")
-    assert worker_prompt.startswith("Fix CODE formatting (CODE-Reviewer): ")
+    assert lead_prompt.startswith("Fix CODE formatting - lead (CODE-Lead): ")
+    assert worker_prompt.startswith("Fix CODE formatting - worker (CODE-Reviewer): ")
     assert lead_prompt.count(invitations["CODE-Lead"]["code"]) == 1
     assert worker_prompt.count(invitations["CODE-Reviewer"]["code"]) == 1
 
