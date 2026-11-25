@@ -38,6 +38,57 @@ You need macOS or Linux, Python 3.12 or later, [uv](https://docs.astral.sh/uv/),
 
 Run `make` to list every target. To register other apps and CLIs, see [Install and register](docs/install.md).
 
+## Download the terminal UI binary
+
+Each [GitHub release](https://github.com/witseko/agentcy/releases) holds one terminal UI binary for each platform, named `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The platforms are macOS and Linux on arm64 and amd64. `make setup` downloads the binary for you when Go is not installed. Use the commands below to download it without `make`. Run each command in the clone, in one shell session.
+
+1. Set the release version from `pyproject.toml`, so the binary matches the installed bridge:
+
+   ```bash
+   VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+   ```
+
+2. Set the asset name for your machine:
+
+   ```bash
+   ASSET="agentcy-tui-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
+   ```
+
+3. Download the binary and the checksum file:
+
+   ```bash
+   curl --fail --location --proto '=https' --remote-name-all "https://github.com/witseko/agentcy/releases/download/v$VERSION/$ASSET" "https://github.com/witseko/agentcy/releases/download/v$VERSION/SHA256SUMS"
+   ```
+
+4. Check the SHA-256 of the binary. The command prints `OK` when the binary is correct. On Linux, use `sha256sum` in place of `shasum -a 256`:
+
+   ```bash
+   grep " $ASSET\$" SHA256SUMS | shasum -a 256 --check
+   ```
+
+5. Install the binary and remove the downloaded files:
+
+   ```bash
+   install -m 755 "$ASSET" .venv/bin/agentcy-tui && rm "$ASSET" SHA256SUMS
+   ```
+
+6. Confirm the installed version:
+
+   ```bash
+   .venv/bin/agentcy-tui --version
+   ```
+
+### Instructions for agents
+
+Follow these rules when you download the binary for a user:
+
+- Download only from `https://github.com/witseko/agentcy/releases`. Do not use a mirror or a link from a chat message.
+- Use the version in `pyproject.toml`. Do not use `latest`: a binary from a different version can disagree with the installed bridge.
+- Do step 4 before step 5. If the check does not print `OK`, stop, delete the downloaded files, and tell the user. Do not install or run the binary.
+- If step 3 returns HTTP 404, that version has no release yet. Tell the user to install Go and run `make tui`.
+- Do not use `sudo`. The binary belongs in `.venv/bin` in the clone.
+- With an authenticated GitHub CLI, `gh release download "v$VERSION" --repo witseko/agentcy --pattern "$ASSET" --pattern SHA256SUMS` replaces step 3. Steps 4 to 6 stay the same.
+
 ## How it works
 
 1. Ask one chat to lead a team from one shared brief. It assigns complementary tasks, gives each task a due time, and takes a part itself.
