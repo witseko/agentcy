@@ -85,12 +85,17 @@ async def round_trip(lead: Client, worker: Client, mode: str) -> None:
     ]
 
 
-async def server_surface(client: Client) -> tuple[str | None, list[dict[str, Any]]]:
-    """Return the instructions and the tool list as the client sees them."""
+async def server_surface(
+    client: Client,
+) -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return the instructions, the tool list, and the resource list as the client sees them."""
     tools = await client.list_tools()
-    return client.instructions, [
-        tool.model_dump(by_alias=True, mode="json") for tool in tools.tools
-    ]
+    resources = await client.list_resources()
+    return (
+        client.instructions,
+        [tool.model_dump(by_alias=True, mode="json") for tool in tools.tools],
+        [resource.model_dump(by_alias=True, mode="json") for resource in resources.resources],
+    )
 
 
 @pytest.mark.parametrize("mode", ["legacy", "auto"])
@@ -127,11 +132,11 @@ def test_http_round_trip_in_both_protocol_eras(
     asyncio.run(run())
 
 
-def test_both_eras_see_the_same_instructions_and_tools(
+def test_both_eras_see_the_same_instructions_tools_and_resources(
     bridge_home: Path,  # noqa: F811 - pytest fixture argument
     http_bridge: str,  # noqa: F811 - pytest fixture argument
 ) -> None:
-    """A 2026-07-28 client gets the same instructions and tool list as a legacy client."""
+    """A 2026-07-28 client gets the same instructions, tools, and resources as a legacy client."""
 
     async def run() -> None:
         async with (

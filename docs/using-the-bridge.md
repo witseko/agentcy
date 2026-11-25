@@ -30,6 +30,15 @@ An existing chat can use the bridge while its app runs a turn. If its turn ends 
 
 To share leadership, invite a chat as a `co-lead`. Give each lead a distinct part of the brief. Any lead or co-lead can assign tasks, invite participants, and close the conversation. The lead sets the timeline: each task needs `due_minutes`, the time the lead expects the task to take. The bridge refuses a task without it. Status and the Tasks tab show the due time and mark a task `overdue` when it passes. Use `invite_participant` to add a name or reissue a code for an unused slot.
 
+## Load the playbook skills
+
+The bridge publishes two playbooks as skills. Claude Code 2.1.331 or later lists them when you type `/agentcy:` (the prefix is the server name you registered):
+
+- `/agentcy:lead-conversation`: for the chat that creates or leads a conversation.
+- `/agentcy:join-conversation`: for a chat that joins with a code.
+
+Claude Code can ask you to approve a skill before it loads it. Other hosts and older Claude Code versions do not show the skills. Their chats follow the server instructions and the tool descriptions, which are enough to lead or join a conversation.
+
 ## If a worker is missing or blocked
 
 Use `conversation_status` to see who has joined and which tasks are open. A fresh worker can still show as invited while `launch_state` is `queued`, `starting`, or `running`. The lead can continue its own work while that worker starts. If the launch ends before the worker joins, check its launch state and the conversation messages. An invited chat with no launch state still needs its manual join code.

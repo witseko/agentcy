@@ -120,6 +120,7 @@ def test_http_client_joins_a_conversation_created_over_stdio(
             assert initialized.instructions is not None
             assert "This bridge runs on your user's computer" in initialized.instructions
             assert "do not create a conversation" not in initialized.instructions
+            assert "If your host offers the skills lead-conversation" in initialized.instructions
 
             created = await call(
                 lead, "create_conversation", brief=BRIEF, your_name="Lead", invitees=["Remote"]
