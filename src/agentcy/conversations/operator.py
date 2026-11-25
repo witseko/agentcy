@@ -23,18 +23,6 @@ LIST_LIMIT = 100
 PAGE_SIZE = 50
 TITLE_LENGTH = repository.TITLE_LENGTH
 UNKNOWN_CONVERSATION = "Unknown conversation in this workspace"
-LEAD_JOIN_PROMPT = (
-    "Use agentcy to join with CODE. You lead this conversation. Read the shared brief and "
-    "catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', "
-    "and due_minutes (the minutes you expect the task to take): you own the task timeline. "
-    "You can add teammates with invite_participant, launch_participant (see list_plugins), or "
-    "open_invite, and retire inactive or unneeded teammates with retire_participant. "
-    "Track the team status in read_messages, assign follow-up work when workers finish, and post "
-    "brief team updates so waiting teammates stay active. Mind teammate token budgets in "
-    "team/token_balance and prefer assigning new tasks or handoffs to models with more remaining "
-    f"budget. Messages from {HUMAN_LABEL} come from "
-    "your user. Follow the bridge's guidance during this turn."
-)
 
 
 def checkout_workspace(directory: str) -> str:
@@ -50,8 +38,10 @@ def checkout_workspace(directory: str) -> str:
 
 def ready_prompt(role: str, code: str, brief: str, participant: str) -> str:
     """Return the join prompt for a slot with its topic, name, and code filled in."""
-    template = repository.JOIN_PROMPT if role == Role.WORKER.label else LEAD_JOIN_PROMPT
-    return repository.join_prompt(brief, participant=participant, template=template, code=code)
+    template = repository.role_join_template(role)
+    return repository.join_prompt(
+        brief, participant=participant, role=role, template=template, code=code
+    )
 
 
 def ready_open_prompt(code: str, brief: str) -> str:

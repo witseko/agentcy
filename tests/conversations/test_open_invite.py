@@ -42,6 +42,7 @@ def test_open_invite_lets_multiple_agents_join_and_disambiguates_names(
     )
     open_code = created["open_invite"]["code"]
     assert "CODE" in created["open_invite"]["join_prompt"]
+    assert " - worker: Use agentcy" in created["open_invite"]["join_prompt"]
 
     alice = repository.apply(
         connection, models.Join(workspace=workspace, code=open_code, name="Alice")
