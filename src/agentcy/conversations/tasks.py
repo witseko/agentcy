@@ -341,7 +341,10 @@ def read_tasks(connection: Connection, room_id: str, task_id: int | None = None)
     leader_ids, inactive_owners = _room_recovery_sets(connection, room_id)
     tasks: dict[int, Task] = {}
     offers: dict[int, Task] = {}
-    for event in connection.execute(query.order_by(message.c.id)).mappings():
+    # SQLite reads every message of the conversation when the query orders by ID, and only the
+    # task events through the message_room_kind index when it does not.
+    events = sorted(connection.execute(query).mappings(), key=lambda event: event["id"])
+    for event in events:
         apply_event(
             tasks,
             offers,

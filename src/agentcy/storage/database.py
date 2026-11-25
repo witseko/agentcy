@@ -27,7 +27,7 @@ from agentcy.conversations.tables import SUBMISSION_TARGET, metadata, proposal
 from agentcy.executables import find_on_path
 from agentcy.tokens.tables import participant_usage
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def create_table(operations: Operations, table: Table) -> None:
@@ -187,3 +187,7 @@ def upgrade(connection: Connection, version: int) -> None:
     if 6 <= version < 14:
         # A store older than version six created the assignment table with these columns above.
         migrate_mcp_tasks(operations)
+    if version < 15:
+        operations.create_index(
+            "message_room_kind", "message", ["room", "kind", "author", "reply_to"]
+        )

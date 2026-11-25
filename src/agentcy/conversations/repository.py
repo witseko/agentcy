@@ -813,7 +813,7 @@ def record_activity(connection: Connection, participant: RowMapping, now: int) -
         connection.execute(update(member).where(member.c.id == participant["id"]).values(seen=now))
 
 
-def progress_state(row: RowMapping, owned_tasks: list[dict]) -> str:
+def progress_state(row: dict, owned_tasks: list[dict]) -> str:
     """Resolve a joined member's current state from tasks and recent posts."""
     if any(task.get("blocked") for task in owned_tasks):
         return "blocked"
@@ -827,7 +827,7 @@ def progress_state(row: RowMapping, owned_tasks: list[dict]) -> str:
     return "replied"
 
 
-def member_entry(row: RowMapping, owned_tasks: list[dict], now: int) -> dict:
+def member_entry(row: dict, owned_tasks: list[dict], now: int) -> dict:
     """Describe one member's role, membership and launch state, and open tasks."""
     if row["role"] == Role.HUMAN:
         return {"role": Role.HUMAN.label, "state": "human"}
@@ -891,51 +891,38 @@ def enrich_token_status(
     return balancer.evaluate_balance(members, config), total
 
 
+def member_activity(connection: Connection, room_id: str) -> dict[int, dict]:
+    """Summarize each author's posts: their count, the latest one, and the latest progress post.
+
+    Lifecycle events are not posts. Both queries read only the message_room_kind index.
+    """
+    activity = {
+        author: {"count": count, "latest_id": latest_id, "marker": None, "marker_id": None}
+        for author, count, latest_id in connection.execute(
+            select(message.c.author, func.count(), func.max(message.c.id))
+            .where(message.c.room == room_id, message.c.kind.is_distinct_from(EVENT_KIND))
+            .group_by(message.c.author)
+        )
+    }
+    latest_by_kind = connection.execute(
+        select(message.c.author, message.c.kind, func.max(message.c.id))
+        .where(message.c.room == room_id, message.c.kind.in_(PROGRESS_KINDS))
+        .group_by(message.c.author, message.c.kind)
+    )
+    for author, kind, latest_id in latest_by_kind:
+        entry = activity[author]
+        if entry["marker_id"] is None or latest_id > entry["marker_id"]:
+            entry["marker"] = kind
+            entry["marker_id"] = latest_id
+    return activity
+
+
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     """Report activity and message counts for the authenticated participant's team."""
     open_tasks = tasks.open_tasks(connection, participant["room"], now)
-    message_count = (
-        select(func.count())
-        .select_from(message)
-        .where(
-            message.c.author == member.c.id,
-            message.c.room == member.c.room,
-            message.c.kind.is_distinct_from(EVENT_KIND),
-        )
-        .scalar_subquery()
-    )
-    latest_id = (
-        select(func.max(message.c.id))
-        .where(
-            message.c.author == member.c.id,
-            message.c.room == member.c.room,
-            message.c.kind.is_distinct_from(EVENT_KIND),
-        )
-        .scalar_subquery()
-    )
-    progress = (
-        select(message.c.kind)
-        .where(
-            message.c.author == member.c.id,
-            message.c.room == member.c.room,
-            message.c.kind.in_(PROGRESS_KINDS),
-        )
-        .order_by(message.c.id.desc())
-        .limit(1)
-        .scalar_subquery()
-    )
-    progress_id = (
-        select(message.c.id)
-        .where(
-            message.c.author == member.c.id,
-            message.c.room == member.c.room,
-            message.c.kind.in_(PROGRESS_KINDS),
-        )
-        .order_by(message.c.id.desc())
-        .limit(1)
-        .scalar_subquery()
-    )
-    rows = connection.execute(
+    activity = member_activity(connection, participant["room"])
+    silent = {"count": 0, "latest_id": None, "marker": None, "marker_id": None}
+    slots = connection.execute(
         select(
             member.c.id,
             member.c.label,
@@ -943,10 +930,6 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
             member.c.retired,
             member.c.token_hash.is_not(None).label("joined"),
             member.c.seen,
-            message_count.label("count"),
-            latest_id.label("latest_id"),
-            progress.label("marker"),
-            progress_id.label("marker_id"),
             assignment.c.state.label("launch_state"),
         )
         .outerjoin(
@@ -957,7 +940,8 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
         )
         .where(member.c.room == participant["room"])
         .order_by(member.c.id)
-    ).mappings().all()
+    ).mappings()
+    rows = [{**slot, **activity.get(slot["id"], silent)} for slot in slots]
     members = {row["label"]: member_entry(row, open_tasks.get(row["id"], []), now) for row in rows}
     slot_ids = {row["label"]: row["id"] for row in rows}
     balance, total_usage = enrich_token_status(
