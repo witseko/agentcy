@@ -1389,7 +1389,7 @@ func TestTeamPanelShowsArchivedSectionAndPreservesOldParticipants(t *testing.T) 
 	}
 	m := sized(newModel(fake, "/work"), 140, 30)
 	next, cmd := m.openChat(testConversation)
-	m = drive(t, next.(model), cmd)
+	m = drive(t, next.(model), cmd).toggleArchived()
 
 	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
 	teamIndex := strings.Index(panel, "TEAM")
@@ -1543,7 +1543,7 @@ func TestLivePollReflectsAddedArchivedAndLeadChangedParticipants(t *testing.T) {
 	if m.selectedMember() != "Lead" {
 		t.Fatalf("selection drifted after reorder: got %q, want Lead", m.selectedMember())
 	}
-	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	panel := ansi.Strip(strings.Join(m.toggleArchived().teamView(teamWidth, 28), "\n"))
 	scoutPos := strings.Index(panel, "Scout lead")
 	leadPos := strings.Index(panel, "Lead worker")
 	archivedPos := strings.Index(panel, "ARCHIVED")
@@ -2073,7 +2073,7 @@ func TestProviderModelContextAndEndedLaunchStatesInTeamPanel(t *testing.T) {
 	}
 	m := sized(newModel(fake, "/work"), 140, 30)
 	next, cmd := m.openChat(testConversation)
-	m = drive(t, next.(model), cmd)
+	m = drive(t, next.(model), cmd).toggleArchived()
 
 	panel := ansi.Strip(strings.Join(m.teamView(36, 28), "\n"))
 	for _, want := range []string{
@@ -2152,10 +2152,26 @@ func archivedTeamModel(t *testing.T) model {
 	return drive(t, next.(model), cmd)
 }
 
-func TestArchivedSectionCollapsesAndExpandsWithKey(t *testing.T) {
+func TestArchivedSectionStartsCollapsedAndTogglesWithKey(t *testing.T) {
 	m := archivedTeamModel(t)
 	next, _ := m.setChatFocus(focusTeam)
 	m = next.(model)
+	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	if !strings.Contains(panel, "▸ ARCHIVED (1)") {
+		t.Fatalf("section should start collapsed:\n%s", panel)
+	}
+	if strings.Contains(panel, "✕ OldWorker") || slices.Contains(m.slotNames(), "OldWorker") {
+		t.Fatalf("collapsed section still draws the archived member:\n%s", panel)
+	}
+	if !strings.Contains(panel, "#41 OldWorker archived") {
+		t.Fatalf("open task of the archived member should stay visible:\n%s", panel)
+	}
+
+	m, _ = press(t, m, "a")
+	panel = ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
+	if !strings.Contains(panel, "▾ ARCHIVED") || !strings.Contains(panel, "✕ OldWorker") {
+		t.Fatalf("expanded section should draw the archived member:\n%s", panel)
+	}
 	for range len(m.slotNames()) {
 		m, _ = press(t, m, "down")
 	}
@@ -2164,24 +2180,8 @@ func TestArchivedSectionCollapsesAndExpandsWithKey(t *testing.T) {
 	}
 
 	m, _ = press(t, m, "a")
-	panel := ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
-	if !strings.Contains(panel, "▸ ARCHIVED (1)") {
-		t.Fatalf("collapsed header missing:\n%s", panel)
-	}
-	if strings.Contains(panel, "✕ OldWorker") {
-		t.Fatalf("collapsed section still draws the archived member:\n%s", panel)
-	}
-	if !strings.Contains(panel, "#41 OldWorker archived") {
-		t.Fatalf("open task of the archived member should stay visible:\n%s", panel)
-	}
 	if slices.Contains(m.slotNames(), "OldWorker") || m.selectedMember() != "Reviewer" {
 		t.Fatalf("selection should move to a visible member, got %q of %v", m.selectedMember(), m.slotNames())
-	}
-
-	m, _ = press(t, m, "a")
-	panel = ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n"))
-	if !strings.Contains(panel, "▾ ARCHIVED") || !strings.Contains(panel, "✕ OldWorker") {
-		t.Fatalf("expanded section should draw the archived member:\n%s", panel)
 	}
 }
 
@@ -2194,10 +2194,6 @@ func TestClickingArchivedHeaderTogglesSectionAndKeepsTaskRowsAligned(t *testing.
 	listW, centerW, _ := m.columnWidths()
 	teamX := listW + 1 + centerW + 2
 
-	m, _ = click(t, m, teamX, 1+headerRow)
-	if !m.archivedCollapsed {
-		t.Fatal("click on the ARCHIVED header should collapse the section")
-	}
 	lines := strings.Split(ansi.Strip(strings.Join(m.teamView(teamWidth, 28), "\n")), "\n")
 	if !strings.Contains(lines[headerRow], "▸ ARCHIVED (1)") {
 		t.Fatalf("header row %d = %q", headerRow, lines[headerRow])
@@ -2209,7 +2205,12 @@ func TestClickingArchivedHeaderTogglesSectionAndKeepsTaskRowsAligned(t *testing.
 
 	m, _ = click(t, m, teamX, 1+headerRow)
 	if m.archivedCollapsed {
-		t.Fatal("second click should expand the section")
+		t.Fatal("click on the ARCHIVED header should expand the section")
+	}
+
+	m, _ = click(t, m, teamX, 1+headerRow)
+	if !m.archivedCollapsed {
+		t.Fatal("second click should collapse the section")
 	}
 }
 

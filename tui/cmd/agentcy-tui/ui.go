@@ -178,17 +178,18 @@ type model struct {
 // newModel returns the UI on the chat list for one checkout directory.
 func newModel(client Operator, directory string) model {
 	return model{
-		client:      client,
-		directory:   directory,
-		clipboard:   systemClipboard(),
-		now:         time.Now,
-		width:       80,
-		height:      24,
-		sidebarCols: sidebarWidth,
-		teamCols:    teamWidth,
-		search:      newSearch(),
-		invitations: map[string]map[string]JoinInvitation{},
-		openInvites: map[string]OpenInviteInvitation{},
+		client:            client,
+		directory:         directory,
+		clipboard:         systemClipboard(),
+		now:               time.Now,
+		width:             80,
+		height:            24,
+		sidebarCols:       sidebarWidth,
+		teamCols:          teamWidth,
+		archivedCollapsed: true,
+		search:            newSearch(),
+		invitations:       map[string]map[string]JoinInvitation{},
+		openInvites:       map[string]OpenInviteInvitation{},
 	}
 }
 
