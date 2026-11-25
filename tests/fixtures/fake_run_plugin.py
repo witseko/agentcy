@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from agentcy.mcp.plugin_contract import (
     AssignmentId,
@@ -15,7 +15,7 @@ from agentcy.mcp.plugin_contract import (
 )
 from agentcy.storage.database import data_dir
 
-MCP = FastMCP("fake-fresh-runs")
+MCP = MCPServer("fake-fresh-runs")
 
 
 def marker(assignment_id: str) -> Path:

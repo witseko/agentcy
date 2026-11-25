@@ -5,10 +5,9 @@ import os
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-
 from agentcy.conversations import models
 from agentcy.mcp import server
+from agentcy.mcp.tool_server import BridgeServer
 from agentcy.mcp.transport import exchange
 from agentcy.storage.database import workspace_key
 
@@ -30,7 +29,7 @@ FRESH_WORKER_PROMPT = (
 
 def serve(workspace: str, code: str) -> None:
     """Expose only the joined worker's read, status and post operations."""
-    app = FastMCP("agentcy-fresh-worker")
+    app = BridgeServer("agentcy-fresh-worker")
     token = None
     joined: dict = {}
     silent_waits: dict[str, int] = {}

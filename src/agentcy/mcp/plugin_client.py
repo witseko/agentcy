@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import TextIO
 
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession, MCPError, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from agentcy.mcp.plugin_contract import Capabilities, RunResult, Start
@@ -32,9 +32,9 @@ async def invoke(plugin: Plugin, tool: str, arguments: dict, discard: TextIO) ->
     ):
         await session.initialize()
         response = await session.call_tool(tool, arguments)
-        if response.isError or response.structuredContent is None:
+        if response.is_error or response.structured_content is None:
             raise PluginError("Fresh-run plugin operation failed")
-        return response.structuredContent
+        return response.structured_content
 
 
 def call(plugin: Plugin, tool: str, arguments: dict) -> dict:
@@ -44,7 +44,7 @@ def call(plugin: Plugin, tool: str, arguments: dict) -> dict:
             return asyncio.run(
                 asyncio.wait_for(invoke(plugin, tool, arguments, discard), RPC_TIMEOUT)
             )
-    except (ExceptionGroup, OSError, TimeoutError):
+    except (ExceptionGroup, MCPError, OSError, TimeoutError):
         raise PluginError("Fresh-run plugin communication failed") from None
 
 

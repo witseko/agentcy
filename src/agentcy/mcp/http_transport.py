@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 ACCESS_TOKEN_VARIABLE = "AGENTCY_HTTP_TOKEN"  # noqa: S105 - variable name, not a secret
@@ -99,9 +99,12 @@ class BearerTokenGate:
         )
 
 
-def run(server: FastMCP, settings: HttpSettings) -> None:
+def run(server: MCPServer, settings: HttpSettings) -> None:
     """Serve the tools at /mcp on the loopback interface until the process stops."""
     import uvicorn
 
-    app = BearerTokenGate(server.streamable_http_app(), settings.access_token)
+    app = BearerTokenGate(
+        server.streamable_http_app(transport_security=transport_security(settings)),
+        settings.access_token,
+    )
     uvicorn.run(app, host=LOOPBACK_HOST, port=settings.port, log_level="warning")

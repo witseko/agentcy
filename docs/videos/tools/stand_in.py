@@ -44,7 +44,6 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -67,11 +66,10 @@ async def connect(workspace: Path, log: Path):
     parameters = StdioServerParameters(
         command=str(shim), args=["--workspace", str(workspace)], env=dict(os.environ), cwd=workspace
     )
-    timeout = timedelta(seconds=TIMEOUT_SECONDS)
     with log.open("a") as errors:
         async with (
             stdio_client(parameters, errlog=errors) as (reader, writer),
-            ClientSession(reader, writer, read_timeout_seconds=timeout) as session,
+            ClientSession(reader, writer, read_timeout_seconds=TIMEOUT_SECONDS) as session,
         ):
             await session.initialize()
             yield session
@@ -81,7 +79,7 @@ async def call(session: ClientSession, tool: str, **arguments: Any) -> dict[str,
     """Call a bridge tool and decode its JSON result; stop on a tool error."""
     result = await session.call_tool(tool, arguments)
     text = "".join(part.text for part in result.content if isinstance(part, TextContent))
-    if result.isError:
+    if result.is_error:
         raise SystemExit(f"{tool} failed: {text}")
     return json.loads(text)
 

@@ -6,7 +6,6 @@ from base64 import b64encode
 from importlib.resources import files
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
 from mcp.types import Icon
 
 from agentcy.conversations import models, rounds
@@ -27,6 +26,7 @@ from agentcy.conversations.progress import (
 from agentcy.conversations.roles import Role
 from agentcy.mcp import http_transport
 from agentcy.mcp.http_transport import HttpSettings
+from agentcy.mcp.tool_server import BridgeServer
 from agentcy.mcp.transport import exchange
 from agentcy.tokens.settings import ModelName, TokenBudget, TokenCount
 
@@ -548,16 +548,15 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
     silent_waits: dict[str, int] = {}
     last_teams: dict[str, dict] = {}
     icon_png = files("agentcy.mcp").joinpath("icon.png").read_bytes()
-    server = FastMCP(
+    server = BridgeServer(
         "agentcy",
         icons=[
             Icon(
                 src=f"data:image/png;base64,{b64encode(icon_png).decode('ascii')}",
-                mimeType="image/png",
+                mime_type="image/png",
                 sizes=["64x64"],
             )
         ],
-        transport_security=http_transport.transport_security(http) if http else None,
         instructions=(
             "Use one conversation and brief per team task. Invite chats via join codes, "
             "open_invite, or launch_participant (see list_plugins); retire unneeded peers with "
@@ -742,7 +741,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         )
 
     @server.tool()
-    def post_message(
+    async def post_message(
         token: models.Key,
         submission_id: models.Key,
         body: models.Body,
@@ -771,7 +770,9 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         'to' and 'reply_to'. Save a returned proposal_id only as a receipt. Published proposals
         get message IDs on release. If accepted is false, the round has already released.
         """
-        result = exchange(
+        # Exchange off the event loop, then touch silent_waits on the loop like read_messages.
+        result = await asyncio.to_thread(
+            exchange,
             models.Post(
                 workspace=workspace,
                 token=token,
@@ -781,7 +782,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
                 to=to,
                 reply_to=reply_to,
                 due_minutes=due_minutes,
-            )
+            ),
         )
         silent_waits.pop(hashlib.sha256(token.encode()).hexdigest(), None)
         return result

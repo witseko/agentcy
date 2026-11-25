@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from agentcy.executables import absolute_search_path, find_on_path
 from agentcy.mcp.fresh_server import FRESH_WORKER_PROMPT
@@ -25,7 +25,7 @@ from agentcy.mcp.plugin_contract import (
 )
 from agentcy.storage.database import data_dir
 
-MCP = FastMCP("agentcy-gemini")
+MCP = MCPServer("agentcy-gemini")
 JOIN_VARIABLE = "AGENTCY_FRESH_JOIN_CODE"
 PROMPT = FRESH_WORKER_PROMPT
 ACTIVE = {"starting", "running"}

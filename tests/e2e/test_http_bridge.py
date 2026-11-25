@@ -8,10 +8,9 @@ import sysconfig
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -101,9 +100,9 @@ async def connect_http(url: str) -> AsyncIterator[ClientSession]:
     """Initialize an MCP session over HTTP with the access token."""
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
     async with (
-        httpx.AsyncClient(headers=headers, timeout=TIMEOUT) as http_client,
-        streamable_http_client(url, http_client=http_client) as (reader, writer, _session_id),
-        ClientSession(reader, writer, read_timeout_seconds=timedelta(seconds=TIMEOUT)) as client,
+        httpx2.AsyncClient(headers=headers, timeout=TIMEOUT) as http_client,
+        streamable_http_client(url, http_client=http_client) as (reader, writer),
+        ClientSession(reader, writer, read_timeout_seconds=TIMEOUT) as client,
     ):
         yield client
 
@@ -156,7 +155,7 @@ def test_http_request_without_the_access_token_gets_401(
     if authorization is not None:
         headers["Authorization"] = authorization
 
-    response = httpx.post(http_bridge, json=INITIALIZE, headers=headers, timeout=TIMEOUT)
+    response = httpx2.post(http_bridge, json=INITIALIZE, headers=headers, timeout=TIMEOUT)
 
     assert response.status_code == 401
     assert response.text == "Unauthorized"
@@ -168,7 +167,7 @@ def test_http_bridge_accepts_only_the_configured_public_host(
     http_bridge: str, host: str, status: int
 ) -> None:
     """A valid token does not help a request that arrives under an unknown host name."""
-    response = httpx.post(
+    response = httpx2.post(
         http_bridge, json=INITIALIZE, headers={**MCP_HEADERS, "Host": host}, timeout=TIMEOUT
     )
 

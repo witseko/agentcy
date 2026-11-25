@@ -123,18 +123,18 @@ def test_waiting_read_stops_on_close(
             )
         return repository.apply(conversation_db, request)
 
-    def invoke(app: server.FastMCP, transport: str) -> None:
-        """Exercise the registered tool with the real FastMCP argument and result handling."""
+    def invoke(app: server.BridgeServer, transport: str) -> None:
+        """Exercise the registered tool with the real MCPServer argument and result handling."""
         assert transport == "stdio"
-        content = asyncio.run(
+        result = asyncio.run(
             app.call_tool("read_messages", {"token": worker_token, "wait_seconds": 15})
         )
-        page = json.loads(content[0].text)
+        page = json.loads(result.content[0].text)
         assert page["closed"] is True
         assert [message["body"] for message in page["messages"]] == ([summary] if summary else [])
         assert "Stop listening and report the outcome" in page["next"]
 
     monkeypatch.setattr(server, "exchange", exchange)
-    monkeypatch.setattr(server.FastMCP, "run", invoke)
+    monkeypatch.setattr(server.BridgeServer, "run", invoke)
     server.serve(workspace)
     assert read_count == 1

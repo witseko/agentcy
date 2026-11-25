@@ -114,10 +114,10 @@ def dispatch(bridge: Bridge) -> Dispatch:
     return work
 
 
-def call_tool(app: server.FastMCP, tool_name: str, **arguments: Any) -> dict:
+def call_tool(app: server.BridgeServer, tool_name: str, **arguments: Any) -> dict:
     """Call a registered MCP tool and decode its response."""
-    content = asyncio.run(app.call_tool(tool_name, arguments))
-    return json.loads(content[0].text)
+    result = asyncio.run(app.call_tool(tool_name, arguments))
+    return json.loads(result.content[0].text)
 
 
 def post_as(
@@ -144,14 +144,14 @@ def test_two_fresh_workers_resolve_a_blocker_and_close_with_evidence(
     bridge: Bridge, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Follow a shared retry review across two fresh worker shims and the lead shim."""
-    apps: list[server.FastMCP] = []
+    apps: list[server.BridgeServer] = []
 
-    def capture(app: server.FastMCP, transport: str) -> None:
+    def capture(app: server.BridgeServer, transport: str) -> None:
         """Capture the registered tool surface and keep the test in process."""
         assert transport == "stdio"
         apps.append(app)
 
-    monkeypatch.setattr(server.FastMCP, "run", capture)
+    monkeypatch.setattr(server.BridgeServer, "run", capture)
     monkeypatch.setattr(server, "exchange", bridge.core.apply)
     monkeypatch.setattr(fresh_server, "exchange", bridge.core.apply)
     server.serve(bridge.workspace, bridge.directory)

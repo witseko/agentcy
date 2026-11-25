@@ -10,7 +10,6 @@ import sysconfig
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -71,7 +70,7 @@ async def connect(home: Path, workspace: Path) -> AsyncIterator[ClientSession]:
     )
     async with (
         stdio_client(parameters) as (reader, writer),
-        ClientSession(reader, writer, read_timeout_seconds=timedelta(seconds=TIMEOUT)) as client,
+        ClientSession(reader, writer, read_timeout_seconds=TIMEOUT) as client,
     ):
         await client.initialize()
         yield client
@@ -80,7 +79,7 @@ async def connect(home: Path, workspace: Path) -> AsyncIterator[ClientSession]:
 async def call(client: ClientSession, tool: str, **arguments: Any) -> dict[str, Any]:
     """Decode the bridge's JSON result from MCP text content."""
     result = await client.call_tool(tool, arguments)
-    assert not result.isError, f"{tool} failed: {result.content}"
+    assert not result.is_error, f"{tool} failed: {result.content}"
     assert len(result.content) == 1
     content = result.content[0]
     assert isinstance(content, TextContent)
@@ -94,7 +93,7 @@ async def assert_tool_error(
 ) -> None:
     """Check the MCP error flag and the public rejection message."""
     result = await client.call_tool(tool, arguments)
-    assert result.isError, f"{tool} accepted a call that should fail"
+    assert result.is_error, f"{tool} accepted a call that should fail"
     assert any(
         isinstance(content, TextContent) and expected in content.text for content in result.content
     ), result.content

@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from agentcy.mcp.plugin_contract import (
     AssignmentId,
@@ -24,7 +24,7 @@ from agentcy.mcp.plugin_contract import (
 )
 from agentcy.storage.database import data_dir
 
-MCP = FastMCP("stand-in-fresh-runs")
+MCP = MCPServer("stand-in-fresh-runs")
 STAND_IN = Path(__file__).resolve().with_name("stand_in.py")
 
 

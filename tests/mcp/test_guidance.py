@@ -118,34 +118,36 @@ def test_lead_waits_for_starting_fresh_worker_when_a_manual_task_cannot_start() 
 @pytest.fixture
 def shim(
     conversation_db: Connection, monkeypatch: pytest.MonkeyPatch
-) -> tuple[server.FastMCP, Counter[str]]:
+) -> tuple[server.BridgeServer, Counter[str]]:
     """Route registered tool calls to the test database and skip real waiting time."""
     calls: Counter[str] = Counter()
-    registered: list[server.FastMCP] = []
+    registered: list[server.BridgeServer] = []
 
     def exchange(request: models.Request) -> dict:
         """Count local requests before executing them through the repository."""
         calls[request.action] += 1
         return repository.apply(conversation_db, request)
 
-    def capture(app: server.FastMCP, transport: str) -> None:
+    def capture(app: server.BridgeServer, transport: str) -> None:
         """Capture the configured shim without starting its stdio loop."""
         assert transport == "stdio"
         registered.append(app)
 
     monkeypatch.setattr(server, "exchange", exchange)
-    monkeypatch.setattr(server.FastMCP, "run", capture)
+    monkeypatch.setattr(server.BridgeServer, "run", capture)
     server.serve(conversation_db.info["workspace"])
     return registered[0], calls
 
 
-def tool(app: server.FastMCP, name: str, /, **arguments: Any) -> dict:
+def tool(app: server.BridgeServer, name: str, /, **arguments: Any) -> dict:
     """Call one registered tool and decode its JSON response."""
-    content = asyncio.run(app.call_tool(name, arguments))
-    return json.loads(content[0].text)
+    result = asyncio.run(app.call_tool(name, arguments))
+    return json.loads(result.content[0].text)
 
 
-def test_waiting_on_matches_names_in_guidance(shim: tuple[server.FastMCP, Counter[str]]) -> None:
+def test_waiting_on_matches_names_in_guidance(
+    shim: tuple[server.BridgeServer, Counter[str]],
+) -> None:
     """A lead keeps listening to joined workers and names unused codes when they finish."""
     app, calls = shim
     team = tool(
@@ -172,7 +174,7 @@ def test_waiting_on_matches_names_in_guidance(shim: tuple[server.FastMCP, Counte
 
 
 def test_waiting_read_retains_non_waking_messages(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """Leave an unrelated message unread and return it with the next relevant message."""
     app, _ = shim
@@ -209,7 +211,9 @@ def test_waiting_read_retains_non_waking_messages(
     assert [message["id"] for message in waking["messages"]] == [question, broadcast]
 
 
-def test_lead_can_route_blocker_help_to_a_peer(shim: tuple[server.FastMCP, Counter[str]]) -> None:
+def test_lead_can_route_blocker_help_to_a_peer(
+    shim: tuple[server.BridgeServer, Counter[str]],
+) -> None:
     """Use named wakeups to ask for help and deliver the answer to the task owner."""
     app, _ = shim
     team = tool(
@@ -294,7 +298,7 @@ def test_lead_can_route_blocker_help_to_a_peer(shim: tuple[server.FastMCP, Count
 
 @pytest.mark.parametrize("resolution", ["resume", "done", "handoff"])
 def test_lead_catch_up_skips_a_resolved_task_blocker(
-    shim: tuple[server.FastMCP, Counter[str]], resolution: str
+    shim: tuple[server.BridgeServer, Counter[str]], resolution: str
 ) -> None:
     """Read a block and resolution together without asking for help on the old block."""
     app, _ = shim
@@ -356,7 +360,7 @@ def test_lead_catch_up_skips_a_resolved_task_blocker(
 
 @pytest.mark.parametrize("linked", [False, True], ids=["standalone", "question-reply"])
 def test_lead_uses_member_state_for_a_standalone_blocker(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
     linked: bool,
 ) -> None:
     """Offer help for a blocker outside a task until the member reports completion."""
@@ -395,7 +399,7 @@ def test_lead_uses_member_state_for_a_standalone_blocker(
 
 @pytest.mark.parametrize("reset_by", ["waiting read", "one-time read", "post"])
 def test_silent_waits_reset_after_a_message_or_post(
-    shim: tuple[server.FastMCP, Counter[str]], reset_by: str
+    shim: tuple[server.BridgeServer, Counter[str]], reset_by: str
 ) -> None:
     """A worker starts a new series of quiet waits after any message or own post."""
     app, calls = shim
@@ -435,7 +439,7 @@ def test_silent_waits_reset_after_a_message_or_post(
 
 
 def test_waiting_read_catches_close_between_page_and_status(
-    shim: tuple[server.FastMCP, Counter[str]], monkeypatch: pytest.MonkeyPatch
+    shim: tuple[server.BridgeServer, Counter[str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reload the page to include a final summary posted after the last poll."""
     app, calls = shim
@@ -465,7 +469,7 @@ def test_waiting_read_catches_close_between_page_and_status(
 
 
 def test_lead_sees_team_status_and_free_workers_waiting_for_next_tasks(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """Surface team state on waiting reads and prompt the lead when workers finish."""
     app, _ = shim
@@ -601,7 +605,7 @@ def test_lead_waits_for_open_invite_joiners_instead_of_claiming_done() -> None:
 
 
 def test_mcp_lead_can_open_invite_and_retire_participants(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """MCP tools let a lead enable open invites, accept named joiners, and retire them."""
     app, _ = shim
@@ -623,7 +627,7 @@ def test_mcp_lead_can_open_invite_and_retire_participants(
 
 
 def test_mcp_lead_can_set_participant_role(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """MCP set_participant_role transfers lead and keeps the previous lead active as worker."""
     app, _ = shim
@@ -649,7 +653,7 @@ def test_mcp_lead_can_set_participant_role(
 
 
 def test_lead_guidance_surfaces_token_balance_and_compact_team_usage(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """Expose compact teammate usage in team snapshot and rebalancing advice in lead next."""
     app, _ = shim
@@ -697,7 +701,7 @@ def test_lead_guidance_surfaces_token_balance_and_compact_team_usage(
 
 
 def test_silent_waits_omit_unchanged_team_and_balanced_token_balance(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """Omit redundant team snapshots on unchanged silent waits and omit balanced token_balance."""
     app, _ = shim
@@ -724,7 +728,7 @@ def test_silent_waits_omit_unchanged_team_and_balanced_token_balance(
 
 
 def test_incoming_action_hints_for_task_handoff_and_question(
-    shim: tuple[server.FastMCP, Counter[str]],
+    shim: tuple[server.BridgeServer, Counter[str]],
 ) -> None:
     """Tailor next guidance when a worker receives a direct task, handoff, or question."""
     app, _ = shim

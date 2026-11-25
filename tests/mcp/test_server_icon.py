@@ -29,7 +29,7 @@ async def initialize(workspace: Path) -> InitializeResult:
 def test_stdio_server_advertises_png_icon(tmp_path: Path) -> None:
     """Provide a self-contained 64-pixel icon and base instructions during initialization."""
     result = asyncio.run(initialize(tmp_path))
-    server = result.serverInfo
+    server = result.server_info
     assert server.name == "agentcy"
     assert result.instructions is not None
     assert "report brief progress updates to the lead periodically" in result.instructions
@@ -38,7 +38,7 @@ def test_stdio_server_advertises_png_icon(tmp_path: Path) -> None:
     assert "runs in a VM or a hosted sandbox, do not create a conversation" in result.instructions
     assert server.icons is not None
     (icon,) = server.icons
-    assert icon.mimeType == "image/png"
+    assert icon.mime_type == "image/png"
     assert icon.sizes == ["64x64"]
     prefix = "data:image/png;base64,"
     assert icon.src.startswith(prefix)
