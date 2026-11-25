@@ -38,9 +38,13 @@ from agentcy.tokens.settings import ModelName, TokenBudget, TokenCount
 # Hosts stop a tool call after about one minute, and the first call may also start the core.
 IDLE_WAITS = 3
 WORKER_IDLE_DONE_WAITS = 1
-WORKER_ACTIVE_IDLE_WAITS = 5
+# Some hosts (Codex) end the turn on "Stop listening" and wake only when the user pings them,
+# so a worker listens while a peer is active. The cap (about one hour) stops abandoned rooms.
+WORKER_ACTIVE_IDLE_WAITS = 80
 LEAD_CHECKIN_WAITS = 2
 LEAD_IDLE_WAITS = 8
+# A lead keeps listening while a teammate works, for the same reason and cap as a worker.
+LEAD_ACTIVE_IDLE_WAITS = WORKER_ACTIVE_IDLE_WAITS
 STALE_IDLE_SECONDS = 120
 # A listening chat already holds these from create, join or a one-time read.
 CONTEXT_FIELDS = ("brief", "role", "roster")
@@ -235,7 +239,7 @@ def lead_task_guidance(
             "Reply to each task with kind='done' or 'blocker'."
         )
     other_working = working_peers_without_tasks(members, owners, me)
-    if (working or other_working) and silent_waits < LEAD_IDLE_WAITS:
+    if (working or other_working) and silent_waits < LEAD_ACTIVE_IDLE_WAITS:
         candidates = [name for name in working if name != me] + other_working
         checkin = (
             f" {checkin_nudge(members, candidates, owners)}"
@@ -318,7 +322,7 @@ def lead_pending_guidance(
         return f"Stop listening. Tell your user which join codes are unused: {names}."
     if first["state"] == "blocked":
         return f"Stop listening and tell your user who is blocked: {names}."
-    if silent_waits >= LEAD_IDLE_WAITS:
+    if silent_waits >= LEAD_ACTIVE_IDLE_WAITS:
         return f"Stop listening and tell your user who is still working: {names}."
     checkin = (
         f" {checkin_nudge(members, pending, {})}" if silent_waits >= LEAD_CHECKIN_WAITS else ""
@@ -327,10 +331,10 @@ def lead_pending_guidance(
 
 
 def _worker_idle_limit(members: dict, me: str, state: str) -> int:
-    """Select the quiet-wait ceiling for a worker from its state and peer activity."""
-    if state != "done":
-        return IDLE_WAITS
-    return WORKER_ACTIVE_IDLE_WAITS if has_active_peers(members, me) else WORKER_IDLE_DONE_WAITS
+    """Select the quiet-wait ceiling for a worker from peer activity and its own state."""
+    if has_active_peers(members, me):
+        return WORKER_ACTIVE_IDLE_WAITS
+    return WORKER_IDLE_DONE_WAITS if state == "done" else IDLE_WAITS
 
 
 def _worker_message_guidance(open_tasks: list[dict], action_hint: str) -> str:
