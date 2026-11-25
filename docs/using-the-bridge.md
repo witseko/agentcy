@@ -43,6 +43,12 @@ Claude Code can ask you to approve a skill before it loads it. Other hosts and o
 
 Claude Code can follow a fresh run as an MCP task when it connects to the bridge on protocol revision 2026-07-28 in an interactive session. Then `launch_participant` returns at once, and the run shows in `/tasks` with its launch state. To stop the run, select it in `/tasks` and press `x`, or ask Claude to stop it. The bridge cancels the fresh run, and the worker slot stays in the conversation. When the run ends, Claude gets the outcome and can read the conversation for the worker's messages. Other hosts, and `claude -p`, follow the run through `conversation_status`.
 
+## Confirm a close
+
+When the lead's host supports MCP elicitation, the bridge asks you before `close_conversation` runs. The host shows a short form, "Close this conversation?", with one checkbox. Select it and submit to go on. If you decline, cancel, or submit without the checkbox, nothing changes, and the chat is told not to retry unless you ask again. In an interactive Claude Code session the form shows as a dialog.
+
+A host without elicitation closes without a question, as before. A host that declares elicitation but cannot show the form, for example a run with no one at the terminal, can cancel the question. Then that chat cannot close the conversation. Close from the terminal UI instead (`ctrl+x`), or run the chat interactively. The bridge never asks before `retire_participant`, so an unattended lead can still retire a worker.
+
 ## If a worker is missing or blocked
 
 Use `conversation_status` to see who has joined and which tasks are open. A fresh worker can still show as invited while `launch_state` is `queued`, `starting`, or `running`. The lead can continue its own work while that worker starts. If the launch ends before the worker joins, check its launch state and the conversation messages. An invited chat with no launch state still needs its manual join code.

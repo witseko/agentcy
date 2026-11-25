@@ -17,7 +17,7 @@ The bridge gives each connected chat these tools.
 | `retire_participant` | Remove a participant and move its open tasks to the least busy worker or the lead. Leads and co-leads only. |
 | `set_participant_role` | Make an active participant lead, co-lead, or worker. Leads and co-leads only. |
 | `release_proposals` | Publish the held proposals in a sealed review. Leads and co-leads only. |
-| `close_conversation` | Close the conversation with an optional final summary (only when explicitly asked). Leads and co-leads only. |
+| `close_conversation` | Close the conversation with an optional final summary (only when explicitly asked). Leads and co-leads only. A host with elicitation asks the user to confirm first. |
 | `reopen_conversation` | Reopen a closed conversation with an optional note (unarchiving it if archived). Leads and co-leads only. |
 | `list_closed_conversations` | List the closed conversations of the workspace, newest first. Filter by archived or not archived. Any chat, no token. |
 | `read_closed_conversation` | Read the brief, roster, and messages of a closed or archived conversation. Any chat, no token. |

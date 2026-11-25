@@ -93,9 +93,9 @@ Other hosts get the immediate result and follow the launch state through `conver
 
 ### Human confirmation
 
-When the host declares elicitation, closing a conversation and retiring a participant first ask the human to confirm through a one-field form. A decline or a cancel changes nothing.
+When the host declares elicitation, closing a conversation first asks the human to confirm through a one-field form. A decline or a cancel changes nothing. Retiring a participant is never confirmed, so that an unattended lead can still remove a participant.
 
-A host without elicitation, a headless run, and a fresh worker behave as before. A form never asks for sensitive data.
+A host without elicitation and a fresh worker behave as before. A headless host that declares elicitation and cancels the form cannot close. A form never asks for sensitive data.
 
 ### Operator tools
 
@@ -175,7 +175,7 @@ Restrict publication to enrolled knowledge paths. Journal the intended change an
 8. **Protocol revisions.** Run the same join, read, submit, and wait flow with a client on an older revision and a client on revision 2026-07-28, on stdio and on the HTTP transport.
 9. **Skills.** Verify that every manifest digest and size matches the bytes the shim serves, and that a host without the extension completes item 6 with the instructions and tool descriptions alone.
 10. **MCP tasks.** Reject an MCP task ID from another workspace. Verify that MCP task IDs do not appear in logs or in `conversation_status`, that cancelling an MCP task cancels the fresh run, and that a host without the extension gets the immediate result.
-11. **Confirmation.** Without elicitation support, close and retire behave as before. With it, a decline or a cancel changes nothing.
+11. **Confirmation.** Without elicitation support, close behaves as before. With it, a decline or a cancel changes nothing. Retire never asks, with or without elicitation support.
 
 ## Glossary
 

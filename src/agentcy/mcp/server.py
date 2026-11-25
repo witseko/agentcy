@@ -27,6 +27,7 @@ from agentcy.conversations.progress import (
 )
 from agentcy.conversations.roles import Role
 from agentcy.mcp import http_transport
+from agentcy.mcp.confirmation import CloseConfirmation, require_confirmation
 from agentcy.mcp.http_transport import HttpSettings
 from agentcy.mcp.skills import skills_extension
 from agentcy.mcp.tasks import McpTasksExtension, wants_mcp_task
@@ -835,14 +836,18 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         return exchange(models.Release(workspace=workspace, token=token))
 
     @server.tool()
-    def close_conversation(token: models.Key, summary: models.Body | None = None) -> dict:
+    def close_conversation(
+        token: models.Key, confirmation: CloseConfirmation, summary: models.Body | None = None
+    ) -> dict:
         """Close as lead or co-lead and share an optional final summary.
 
         Call this only when your user explicitly asks to close the conversation. Do not close on
         ambiguous cues like "finalise" or wrapping up a deliverable while the team may still
         coordinate. Unused invitations expire, and members keep read access. If closed by mistake,
         a lead, co-lead, or Human can reopen the conversation with reopen_conversation.
+        If your host supports it, your user is asked to confirm first; a decline changes nothing.
         """
+        require_confirmation(confirmation)
         return exchange(models.Close(workspace=workspace, token=token, summary=summary))
 
     @server.tool()
