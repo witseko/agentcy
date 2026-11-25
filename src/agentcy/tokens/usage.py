@@ -170,7 +170,11 @@ def set_member_budget(
 
 
 def room_usage(connection: Connection, room_id: str) -> dict[int, dict]:
-    """Load per-slot model, budget override, and token totals for one conversation."""
+    """Load per-slot model, budget override, and token totals for one conversation.
+
+    Each slot keeps its bridge estimate in estimated_tokens and its exact reported or plugin
+    total in actual_tokens (None until exact usage arrives).
+    """
     rows = connection.execute(
         select(
             member.c.id.label("slot"),
@@ -192,14 +196,17 @@ def room_usage(connection: Connection, room_id: str) -> dict[int, dict]:
         has_usage = row["source"] is not None
         if has_usage:
             inp, out, source = effective_totals(dict(row))
+            estimated = int(row["estimated_input"]) + int(row["estimated_output"])
         else:
-            inp, out, source = 0, 0, "estimated"
+            inp, out, source, estimated = 0, 0, "estimated", 0
         result[row["slot"]] = {
             "model": row["model"] or row["plugin"],
             "token_budget": row["token_budget"],
             "input_tokens": inp,
             "output_tokens": out,
             "conversation_tokens": inp + out,
+            "estimated_tokens": estimated,
+            "actual_tokens": inp + out if source != "estimated" else None,
             "source": source,
             "has_usage": has_usage,
         }

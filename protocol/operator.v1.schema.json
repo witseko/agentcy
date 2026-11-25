@@ -228,6 +228,17 @@
             }
           ],
           "default": null
+        },
+        "token_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationUsage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -282,6 +293,41 @@
         "joined"
       ],
       "title": "ConversationSummary",
+      "type": "object"
+    },
+    "ConversationUsage": {
+      "additionalProperties": false,
+      "description": "Sum the tokens all agents spent in the conversation: actual where known, else estimated.",
+      "properties": {
+        "total_tokens": {
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "actual_tokens": {
+          "title": "Actual Tokens",
+          "type": "integer"
+        },
+        "estimated_tokens": {
+          "title": "Estimated Tokens",
+          "type": "integer"
+        },
+        "actual_members": {
+          "title": "Actual Members",
+          "type": "integer"
+        },
+        "estimated_members": {
+          "title": "Estimated Members",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_tokens",
+        "actual_tokens",
+        "estimated_tokens",
+        "actual_members",
+        "estimated_members"
+      ],
+      "title": "ConversationUsage",
       "type": "object"
     },
     "ConversationView": {
@@ -1055,6 +1101,22 @@
           "title": "Model Tokens Used",
           "type": "integer"
         },
+        "estimated_tokens": {
+          "title": "Estimated Tokens",
+          "type": "integer"
+        },
+        "actual_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual Tokens"
+        },
         "source": {
           "enum": [
             "estimated",
@@ -1135,6 +1197,7 @@
         "input_tokens",
         "output_tokens",
         "model_tokens_used",
+        "estimated_tokens",
         "source"
       ],
       "title": "MemberUsage",

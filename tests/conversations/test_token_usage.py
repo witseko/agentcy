@@ -73,6 +73,16 @@ def test_estimated_usage_and_reported_supersede_and_lead_balance(
     assert estimated_status["members"]["Claude"]["usage"]["output_tokens"] > 0
     assert estimated_status["members"]["Gemini"]["usage"]["input_tokens"] > 0
     assert estimated_status["token_balance"]["balanced"] is True
+    claude_estimate = estimated_status["members"]["Claude"]["usage"]["estimated_tokens"]
+    gemini_estimate = estimated_status["members"]["Gemini"]["usage"]["estimated_tokens"]
+    assert "actual_tokens" not in estimated_status["members"]["Claude"]["usage"]
+    assert estimated_status["token_usage"] == {
+        "total_tokens": claude_estimate + gemini_estimate,
+        "actual_tokens": 0,
+        "estimated_tokens": claude_estimate + gemini_estimate,
+        "actual_members": 0,
+        "estimated_members": 2,
+    }
 
     # Exact self-reported usage supersedes estimates and triggers imbalance detection.
     repository.apply(
@@ -106,6 +116,58 @@ def test_estimated_usage_and_reported_supersede_and_lead_balance(
     assert status["token_balance"]["balanced"] is False
     assert status["token_balance"]["overloaded"] == ["Claude"]
     assert status["token_balance"]["preferred"] == ["Gemini"]
+    # The bridge estimate stays visible next to the actual figure.
+    assert claude_usage["actual_tokens"] == 60_000
+    assert claude_usage["estimated_tokens"] >= claude_estimate
+    assert status["token_usage"] == {
+        "total_tokens": 110_000,
+        "actual_tokens": 110_000,
+        "estimated_tokens": 0,
+        "actual_members": 2,
+        "estimated_members": 0,
+    }
+
+
+def test_chat_total_mixes_actual_and_estimated_members(conversation_db: Connection) -> None:
+    """A member without exact usage adds its estimate; a reporting member adds its actual spend."""
+    ledger.clear_ledger_cache()
+    workspace = conversation_db.info["workspace"]
+    created = repository.apply(
+        conversation_db,
+        models.Create(
+            workspace=workspace,
+            brief="Mixed usage",
+            initiator="Lead",
+            initiator_model="claude-sonnet-4-6",
+            invitees=[models.Invitation(name="Worker", model="gemini-2.5-pro")],
+        ),
+    )
+    worker = repository.apply(
+        conversation_db, models.Join(workspace=workspace, code=created["invitations"]["Worker"])
+    )
+    repository.apply(
+        conversation_db,
+        models.Post(workspace=workspace, token=worker["token"], submission_id="w1", body="Done."),
+    )
+    repository.apply(
+        conversation_db,
+        models.ReportUsage(
+            workspace=workspace, token=created["token"], input_tokens=9_000, output_tokens=1_000
+        ),
+    )
+
+    status = repository.apply(
+        conversation_db, models.Status(workspace=workspace, token=created["token"])
+    )
+    worker_estimate = status["members"]["Worker"]["usage"]["estimated_tokens"]
+    assert worker_estimate > 0
+    assert status["token_usage"] == {
+        "total_tokens": 10_000 + worker_estimate,
+        "actual_tokens": 10_000,
+        "estimated_tokens": worker_estimate,
+        "actual_members": 1,
+        "estimated_members": 1,
+    }
 
 
 def test_cross_conversation_ledger_shares_model_budget(conversation_db: Connection) -> None:

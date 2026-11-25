@@ -1645,6 +1645,46 @@ func TestTeamViewRendersTokenUsageBarsAndBalanceWarning(t *testing.T) {
 	}
 }
 
+func TestTeamViewShowsActualAndEstimatedTokensAndChatTotal(t *testing.T) {
+	claudeActual := int64(60000)
+	fake := &fakeOperator{
+		view: ConversationView{
+			Conversation: testConversation,
+			Brief:        "Track real spend",
+			Status: ConversationStatus{
+				Open: true,
+				Members: map[string]MemberStatus{
+					"Claude": {Role: "lead", State: "replied", Usage: &MemberUsage{
+						ConversationTokens: 60000, EstimatedTokens: 4000, ActualTokens: &claudeActual, Source: "reported",
+					}},
+					"Gemini": {Role: "worker", State: "replied", Usage: &MemberUsage{
+						ConversationTokens: 3000, EstimatedTokens: 3000, Source: "estimated",
+					}},
+					"Human": {Role: "human", State: "human"},
+				},
+				TokenUsage: &ConversationUsage{
+					TotalTokens: 63000, ActualTokens: 60000, EstimatedTokens: 3000, ActualMembers: 1, EstimatedMembers: 1,
+				},
+			},
+		},
+	}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, cmd := m.openChat(testConversation)
+	m = drive(t, next.(model), cmd)
+
+	panel := ansi.Strip(strings.Join(m.teamView(40, 28), "\n"))
+	for _, want := range []string{
+		"60.0k tok · est 4.0k",
+		"3.0k tok est",
+		"CHAT TOKENS 63.0k",
+		"60.0k actual · 3.0k est (1 unreported)",
+	} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("expected %q in team panel:\n%s", want, panel)
+		}
+	}
+}
+
 func TestBudgetSlashCommandSendsOperatorSetMemberBudget(t *testing.T) {
 	fake := &fakeOperator{}
 	m := chatModel(t, fake)

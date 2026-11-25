@@ -864,8 +864,8 @@ def enrich_token_status(
     slot_ids: dict[str, int],
     members: dict[str, dict],
     now: int,
-) -> dict | None:
-    """Attach per-member token usage and return team balance when budgets are active."""
+) -> tuple[dict | None, dict | None]:
+    """Attach per-member token usage; return team balance and the conversation's total spend."""
     raw_by_slot = token_usage.room_usage(connection, room_id)
     config = read_token_config()
     models_in_room = {
@@ -886,7 +886,9 @@ def enrich_token_status(
         summary = balancer.build_member_usage(raw, config, ledger_spend)
         if summary is not None:
             entry["usage"] = summary
-    return balancer.evaluate_balance(members, config)
+    tracking = any("usage" in entry for entry in members.values())
+    total = balancer.conversation_usage(raw_by_slot.values()) if tracking else None
+    return balancer.evaluate_balance(members, config), total
 
 
 def status(connection: Connection, participant: RowMapping, now: int) -> dict:
@@ -958,7 +960,9 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     ).mappings().all()
     members = {row["label"]: member_entry(row, open_tasks.get(row["id"], []), now) for row in rows}
     slot_ids = {row["label"]: row["id"] for row in rows}
-    balance = enrich_token_status(connection, participant["room"], slot_ids, members, now)
+    balance, total_usage = enrich_token_status(
+        connection, participant["room"], slot_ids, members, now
+    )
     result = {
         "open": bool(participant["open"]),
         "members": members,
@@ -967,6 +971,8 @@ def status(connection: Connection, participant: RowMapping, now: int) -> dict:
     }
     if balance is not None:
         result["token_balance"] = balance
+    if total_usage is not None:
+        result["token_usage"] = total_usage
     if participant.get("open_invite_hash") is not None:
         result["open_invite"] = True
     if participant["round"] == rounds.SEALED and participant["role"] == Role.WORKER:

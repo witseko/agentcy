@@ -1,5 +1,7 @@
 """Compute per-participant token budgets and lead rebalancing recommendations."""
 
+from collections.abc import Iterable
+
 from agentcy.conversations.progress import fresh_run_ended, is_retired
 from agentcy.conversations.roles import Role
 from agentcy.tokens.settings import (
@@ -49,8 +51,11 @@ def build_member_usage(
         "input_tokens": int(raw.get("input_tokens", 0)),
         "output_tokens": int(raw.get("output_tokens", 0)),
         "model_tokens_used": model_used,
+        "estimated_tokens": int(raw.get("estimated_tokens", 0)),
         "source": raw.get("source", "estimated"),
     }
+    if raw.get("actual_tokens") is not None:
+        entry["actual_tokens"] = int(raw["actual_tokens"])
     if model:
         entry["model"] = model
     if initial is not None:
@@ -66,6 +71,33 @@ def build_member_usage(
             status=budget_status(used_pct, warn_pct),
         )
     return entry
+
+
+def conversation_usage(raw_by_slot: Iterable[dict]) -> dict | None:
+    """Sum token spend of all agent slots in one conversation, or None when nothing is spent.
+
+    total_tokens = actual_tokens + estimated_tokens: a slot with exact usage counts its actual
+    total, and a slot without exact usage counts its bridge estimate.
+    """
+    actual = estimated = actual_members = estimated_members = 0
+    for raw in raw_by_slot:
+        if not raw.get("has_usage"):
+            continue
+        if raw.get("actual_tokens") is not None:
+            actual += int(raw["actual_tokens"])
+            actual_members += 1
+        else:
+            estimated += int(raw.get("estimated_tokens", 0))
+            estimated_members += 1
+    if actual_members + estimated_members == 0:
+        return None
+    return {
+        "total_tokens": actual + estimated,
+        "actual_tokens": actual,
+        "estimated_tokens": estimated,
+        "actual_members": actual_members,
+        "estimated_members": estimated_members,
+    }
 
 
 def _active_budgeted_members(members: dict[str, dict]) -> list[tuple[str, dict]]:
