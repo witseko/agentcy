@@ -13,11 +13,13 @@ This document describes the planned first release. Start a task in a familiar ch
 
 ## Non-goals
 
-The first release does not include multi-user access, a hosted or shared core, remote access other than the user's own remote chat through the [HTTP transport](#http-transport), a graphical interface for the human, cloud synchronization, committing to Git, or fresh runs that edit the workspace. The human participates through a chat or the terminal UI.
+The first release does not include multi-user access, a hosted or shared core, remote access other than the user's own remote chat through the [HTTP transport](#http-transport), a graphical interface for the human, cloud synchronization, committing to Git, MCP file uploads, running the waiting read as an MCP task, or fresh runs that edit the workspace. The human participates through a chat or the terminal UI.
 
 ## Core and plugin interface
 
-Use the Model Context Protocol (MCP) for both public interfaces. A desktop app or CLI acts as an MCP client of the core. The core acts as an MCP client of each configured provider plugin. The core coordinates conversations and memory. Each plugin owns the details of its provider. [MCP architecture](https://modelcontextprotocol.io/specification/2025-11-25/architecture)
+Use the Model Context Protocol (MCP) for both public interfaces. A desktop app or CLI acts as an MCP client of the core. The core acts as an MCP client of each configured provider plugin. The core coordinates conversations and memory. Each plugin owns the details of its provider. [MCP architecture](https://modelcontextprotocol.io/specification/2026-07-28/architecture)
+
+The shim serves MCP revision 2026-07-28 and also the older revisions that the SDK supports, on stdio and on the HTTP transport. A host on an older revision keeps the full tool interface. A provider plugin may use either revision.
 
 | Area | Responsibility |
 | --- | --- |
@@ -72,6 +74,28 @@ A chat with MCP support connects directly to the core and can join without a pro
 An existing chat calls tools during a turn its user started. In an active team turn, the lead assigns complementary work from one brief and takes a substantive part. Participants send questions and checkable evidence directly to peers who can use them. The lead verifies the findings against the brief and returns one conclusion with supporting evidence and any gaps. It can record the outcome and close during the same turn when the user asks at kickoff. An idle chat can resume on its next turn. Honor explicit one-time reads.
 
 Each waiting read returns within the host's tool timeout, checks participant status, and gives the chat its next action. The shim counts consecutive silent waits and resets the count when the participant receives or posts a message. In open discussion, a worker that has replied and has no work it can continue stops after three silent waits. A lead or co-lead waits up to eight silent waits while peers are working, starting through a fresh run, or checking a blocker. If the only remaining peers hold unused manual invitations, tell the user which codes still need to be redeemed. Review deadlines and user instructions take precedence.
+
+### Published skills
+
+The shim publishes its conversation playbooks as skills through the MCP Skills extension (`io.modelcontextprotocol/skills`). A skill is a `SKILL.md` file that the host loads on demand. The shim serves each skill as the resource `skill://<name>/SKILL.md`. The manifest lists the URI, the SHA-256 digest, and the size of each file, computed from the bytes the shim serves.
+
+Two skills exist: `lead-conversation` and `join-conversation`. A skill is static packaged text and holds no user data.
+
+A host without the extension relies on the server instructions and the tool descriptions. They stay sufficient on their own.
+
+### Task-backed fresh runs
+
+When the host declares the MCP Tasks extension (`io.modelcontextprotocol/tasks`), `launch_participant` returns an MCP task backed by the persisted assignment. An MCP task is a protocol object that the host polls for status. The host can also cancel it, and a cancel stops the fresh run.
+
+The MCP task ID is an unguessable capability. The core never logs it and status never shows it. It is valid only in its own workspace.
+
+Other hosts get the immediate result and follow the launch state through `conversation_status`.
+
+### Human confirmation
+
+When the host declares elicitation, closing a conversation and retiring a participant first ask the human to confirm through a one-field form. A decline or a cancel changes nothing.
+
+A host without elicitation, a headless run, and a fresh worker behave as before. A form never asks for sensitive data.
 
 ### Operator tools
 
@@ -148,6 +172,10 @@ Restrict publication to enrolled knowledge paths. Journal the intended change an
 5. **Plugins and review.** Run contract fixtures against each plugin. Exercise a review with an existing chat, a fresh read-only CLI run that joins through the core, and a manual participant. Check sealed-answer visibility, deadline handling, failed plugins, cancelled runs, and restart recovery. Smoke-test the Z.ai plugin in an environment with OpenCode installed.
 6. **Tool usability.** On each target host, an agent given only the tool descriptions completes join, read, submit, and wait without further instructions.
 7. **Performance.** Benchmark incremental message reads and scoped knowledge search against 100,000 messages and 10,000 Markdown sections. Target a local warm-query p95 under 100 ms and state the cold start bound. Report the dataset, environment, latency, and concurrency results.
+8. **Protocol revisions.** Run the same join, read, submit, and wait flow with a client on an older revision and a client on revision 2026-07-28, on stdio and on the HTTP transport.
+9. **Skills.** Verify that every manifest digest and size matches the bytes the shim serves, and that a host without the extension completes item 6 with the instructions and tool descriptions alone.
+10. **MCP tasks.** Reject an MCP task ID from another workspace. Verify that MCP task IDs do not appear in logs or in `conversation_status`, that cancelling an MCP task cancels the fresh run, and that a host without the extension gets the immediate result.
+11. **Confirmation.** Without elicitation support, close and retire behave as before. With it, a decline or a cancel changes nothing.
 
 ## Glossary
 
@@ -166,3 +194,5 @@ Restrict publication to enrolled knowledge paths. Journal the intended change an
 | Claim | One published finding or decision with its evidence, identified by a claim ID. |
 | Note | A topic file holding claims under the managed heading. |
 | Index | A folder's README.md or index.md linking to notes and sub-folder indexes. |
+| Skill | A packaged `SKILL.md` playbook that the shim publishes to hosts through the MCP Skills extension. It is static text with a manifest of URI, digest, and size. |
+| MCP task | A protocol object that a host polls for the status of one long operation and can cancel. The bridge uses it for fresh runs. It is not a conversation task, which is a message of kind `task` with an owner and a due time. |
