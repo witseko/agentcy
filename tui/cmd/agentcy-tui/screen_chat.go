@@ -1446,7 +1446,7 @@ func (m model) chatView(width int, height int) []string {
 	}
 	footer := m.composer(width)
 	transcriptHeight := max(height-len(header)-len(footer), 1)
-	lines := append(header, m.visibleTranscript(width, transcriptHeight)...)
+	lines := append(header, m.transcriptWithScrollbar(width, transcriptHeight)...)
 	for len(lines) < height-len(footer) {
 		lines = append(lines, "")
 	}
@@ -1687,6 +1687,46 @@ func (m model) visibleTranscript(width int, height int) []string {
 	end := len(lines) - hidden
 	start := max(end-height, 0)
 	return lines[start:end]
+}
+
+// transcriptWithScrollbar returns the visible transcript with a scrollbar in the last
+// column. A transcript that fits the view has no scrollbar.
+func (m model) transcriptWithScrollbar(width int, height int) []string {
+	visible := m.visibleTranscript(width, height)
+	total := len(m.transcriptLines(width))
+	if total <= height || width < 2 {
+		return visible
+	}
+	hidden := min(m.chat.scroll, total-height)
+	bar := scrollbar(total, height, total-height-hidden)
+	out := make([]string, height)
+	for row := range out {
+		line := ""
+		if row < len(visible) {
+			line = visible[row]
+		}
+		out[row] = pad(line, width-1) + bar[row]
+	}
+	return out
+}
+
+// scrollbar draws a vertical bar of height rows for a view that shows rows
+// [top, top+height) of total rows.
+func scrollbar(total int, height int, top int) []string {
+	thumbSize := max(height*height/total, 1)
+	thumbTop := 0
+	if hiddenRows := total - height; hiddenRows > 0 {
+		thumbTop = (top*(height-thumbSize) + hiddenRows/2) / hiddenRows
+	}
+	bar := make([]string, height)
+	for row := range bar {
+		if row >= thumbTop && row < thumbTop+thumbSize {
+			bar[row] = dimStyle.Render("┃")
+		} else {
+			bar[row] = borderStyle.Render("│")
+		}
+	}
+	return bar
 }
 
 // singleMessageLines renders one message as a header line, wrapped body lines, and a trailing blank line.

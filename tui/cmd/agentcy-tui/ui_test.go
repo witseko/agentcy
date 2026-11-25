@@ -659,6 +659,48 @@ func TestWheelScrollsTheTranscriptAndCtrlOReleasesTheMouse(t *testing.T) {
 	}
 }
 
+func TestTranscriptScrollbarThumbFollowsScroll(t *testing.T) {
+	fake := &fakeOperator{view: longChat()}
+	m := sized(newModel(fake, "/work"), 140, 30)
+	next, command := m.openChat(testConversation)
+	m = drive(t, next.(model), command)
+	_, center, _ := m.columnWidths()
+	height := m.transcriptHeight(center)
+
+	thumbRows := func(m model) []int {
+		var rows []int
+		for row, line := range m.transcriptWithScrollbar(center, height) {
+			plain := ansi.Strip(line)
+			if ansi.StringWidth(plain) != center {
+				t.Fatalf("row %d is %d columns, want %d", row, ansi.StringWidth(plain), center)
+			}
+			if strings.HasSuffix(plain, "┃") {
+				rows = append(rows, row)
+			}
+		}
+		return rows
+	}
+
+	atTail := thumbRows(m)
+	if len(atTail) == 0 || atTail[len(atTail)-1] != height-1 {
+		t.Fatalf("thumb rows at the tail %v, want them to end at row %d", atTail, height-1)
+	}
+	m.chat.scroll = m.maxTranscriptScroll()
+	if atTop := thumbRows(m); len(atTop) == 0 || atTop[0] != 0 {
+		t.Fatalf("thumb rows at the top %v, want them to start at row 0", atTop)
+	}
+}
+
+func TestShortTranscriptHasNoScrollbar(t *testing.T) {
+	m := sized(chatModel(t, &fakeOperator{}), 140, 30)
+	_, center, _ := m.columnWidths()
+	for _, line := range m.transcriptWithScrollbar(center, m.transcriptHeight(center)) {
+		if strings.ContainsAny(ansi.Strip(line), "┃│") {
+			t.Fatalf("a short transcript shows a scrollbar: %q", ansi.Strip(line))
+		}
+	}
+}
+
 func TestClickingAWorkerSourceChangesIt(t *testing.T) {
 	fake := &fakeOperator{plugins: PluginList{Plugins: []PluginSummary{{Name: "glm"}}}}
 	m := sized(newModel(fake, "/work"), 120, 40)
