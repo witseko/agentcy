@@ -270,6 +270,8 @@ class MemberUsage(Result):
     input_tokens: int
     output_tokens: int
     model_tokens_used: int
+    estimated_tokens: int
+    actual_tokens: int | None = None
     source: UsageSource
     initial_tokens: int | None = None
     remaining_tokens: int | None = None
@@ -286,6 +288,16 @@ class TokenBalance(Result):
     overloaded: list[str] | None = None
     preferred: list[str] | None = None
     recommendation: str | None = None
+
+
+class ConversationUsage(Result):
+    """Sum the tokens all agents spent in the conversation: actual where known, else estimated."""
+
+    total_tokens: int
+    actual_tokens: int
+    estimated_tokens: int
+    actual_members: int
+    estimated_members: int
 
 
 class MemberStatus(Result):
@@ -309,6 +321,7 @@ class ConversationStatus(Result):
     round: RoundName | None = None
     round_deadline: int | None = None
     token_balance: TokenBalance | None = None
+    token_usage: ConversationUsage | None = None
 
 
 class TranscriptMessage(Result):

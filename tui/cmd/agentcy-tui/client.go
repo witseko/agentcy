@@ -275,6 +275,8 @@ type MemberUsage struct {
 	InputTokens        int64    `json:"input_tokens"`
 	OutputTokens       int64    `json:"output_tokens"`
 	ModelTokensUsed    int64    `json:"model_tokens_used"`
+	EstimatedTokens    int64    `json:"estimated_tokens"`
+	ActualTokens       *int64   `json:"actual_tokens,omitempty"`
 	Source             string   `json:"source"`
 	InitialTokens      *int64   `json:"initial_tokens,omitempty"`
 	RemainingTokens    *int64   `json:"remaining_tokens,omitempty"`
@@ -290,6 +292,15 @@ type TokenBalance struct {
 	Overloaded          []string `json:"overloaded,omitempty"`
 	Preferred           []string `json:"preferred,omitempty"`
 	Recommendation      string   `json:"recommendation,omitempty"`
+}
+
+// ConversationUsage sums the tokens all agents spent: actual where known, else estimated.
+type ConversationUsage struct {
+	TotalTokens      int64 `json:"total_tokens"`
+	ActualTokens     int64 `json:"actual_tokens"`
+	EstimatedTokens  int64 `json:"estimated_tokens"`
+	ActualMembers    int64 `json:"actual_members"`
+	EstimatedMembers int64 `json:"estimated_members"`
 }
 
 // MemberStatus reports one member's role, state, launch state, open tasks and usage.
@@ -311,6 +322,7 @@ type ConversationStatus struct {
 	Round         string                  `json:"round,omitempty"`
 	RoundDeadline *int64                  `json:"round_deadline,omitempty"`
 	TokenBalance  *TokenBalance           `json:"token_balance,omitempty"`
+	TokenUsage    *ConversationUsage      `json:"token_usage,omitempty"`
 }
 
 // TranscriptMessage is one published message.

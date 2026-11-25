@@ -1923,11 +1923,26 @@ func memberUsageLine(usage *MemberUsage) string {
 		}
 		return okStyle.Render(text)
 	}
-	suffix := ""
-	if usage.Source == "estimated" {
-		suffix = " est"
+	if usage.ActualTokens == nil {
+		return dimStyle.Render(fmt.Sprintf("%s tok est", formatTokens(usage.EstimatedTokens)))
 	}
-	return dimStyle.Render(fmt.Sprintf("%s tok%s", formatTokens(usage.ConversationTokens), suffix))
+	return dimStyle.Render(fmt.Sprintf("%s tok · est %s", formatTokens(*usage.ActualTokens), formatTokens(usage.EstimatedTokens)))
+}
+
+// conversationUsageLines formats the whole chat's token spend for the team panel footer.
+func conversationUsageLines(usage *ConversationUsage) []string {
+	if usage == nil {
+		return nil
+	}
+	detail := fmt.Sprintf("%s actual", formatTokens(usage.ActualTokens))
+	if usage.EstimatedMembers > 0 {
+		detail += fmt.Sprintf(" · %s est (%d unreported)", formatTokens(usage.EstimatedTokens), usage.EstimatedMembers)
+	}
+	return []string{
+		" " + headStyle.Render("CHAT TOKENS") + " " + formatTokens(usage.TotalTokens),
+		" " + dimStyle.Render(detail),
+		"",
+	}
 }
 
 // memberBlock renders one member's lines with selection or hover highlight.
@@ -2038,7 +2053,7 @@ func (m model) teamView(width int, height int) []string {
 		lines = append(lines, m.archivedHeader(len(archived), width), "")
 		appendGroup(archived, !m.archivedCollapsed)
 	}
-	var footer []string
+	footer := conversationUsageLines(m.chat.view.Status.TokenUsage)
 	if balance := m.chat.view.Status.TokenBalance; balance != nil && !balance.Balanced {
 		summary := fmt.Sprintf("gap %.0f%%", balance.ImbalanceGapPercent)
 		if len(balance.Preferred) > 0 {
