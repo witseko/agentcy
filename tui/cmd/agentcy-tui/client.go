@@ -101,11 +101,13 @@ type CreateRequest struct {
 	OpenInvite bool     `json:"open_invite,omitempty"`
 }
 
-// InviteRequest adds a slot or reissues the unused code of an existing slot.
+// InviteRequest adds a slot or reissues the unused code of an existing slot. With Reinvite,
+// a joined or retired member gets a new code and its previous chat loses access.
 type InviteRequest struct {
 	Directory    string `json:"directory"`
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
+	Reinvite     bool   `json:"reinvite,omitempty"`
 }
 
 // OpenInviteRequest enables, rotates, or disables a reusable room-level join code.

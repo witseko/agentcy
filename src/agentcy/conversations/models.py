@@ -199,13 +199,14 @@ class Status(Member):
 
 
 class Invite(Member):
-    """Create an invitation slot or reissue an unused join code."""
+    """Create an invitation slot, reissue an unused join code, or reinvite a member."""
 
     action: Literal["invite"] = "invite"
     name: Label
     role: InviteRole | None = None
     model: ModelName | None = None
     token_budget: TokenBudget | None = None
+    reinvite: bool = False
 
 
 class Release(Member):

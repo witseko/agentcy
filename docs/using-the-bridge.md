@@ -28,7 +28,7 @@ Use the same brief and tasks. Ask for a join prompt for each worker in place of 
 
 An existing chat can use the bridge while its app runs a turn. If its turn ends before the team finishes, tell it **“Continue your agentcy task.”** If you only want to see the latest messages, ask for a **one-time read**.
 
-To share leadership, invite a chat as a `co-lead`. Give each lead a distinct part of the brief. Any lead or co-lead can assign tasks, invite participants, and close the conversation. The lead sets the timeline: each task needs `due_minutes`, the time the lead expects the task to take. The bridge refuses a task without it. Status and the Tasks tab show the due time and mark a task `overdue` when it passes. Use `invite_participant` to add a name or reissue a code for an unused slot.
+To share leadership, invite a chat as a `co-lead`. Give each lead a distinct part of the brief. Any lead or co-lead can assign tasks, invite participants, and close the conversation. The lead sets the timeline: each task needs `due_minutes`, the time the lead expects the task to take. The bridge refuses a task without it. Status and the Tasks tab show the due time and mark a task `overdue` when it passes. Use `invite_participant` to add a name or reissue a code for an unused slot. To bring back a retired member, or to replace a member whose chat stopped, call it with `reinvite=True`. The member keeps its name, messages, and open tasks, and its previous chat loses access.
 
 ## Load the playbook skills
 

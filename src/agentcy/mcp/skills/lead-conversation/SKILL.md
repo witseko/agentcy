@@ -70,6 +70,7 @@ The tool descriptions and the `next` field are authoritative. If this skill diff
 - `set_participant_role` changes a role. `role='lead'` makes that member the sole lead and demotes the other leads to worker. You cannot demote the only lead.
 - `retire_participant` removes a member. The bridge moves that member's open tasks to the least busy available worker, or to you.
 - You cannot retire the lead. Make another member lead first.
+- `invite_participant` with `reinvite=True` brings back a retired member or replaces a member whose chat stopped. The member keeps its name and open tasks. Its previous chat loses access.
 
 ## 10. Conclude and close
 

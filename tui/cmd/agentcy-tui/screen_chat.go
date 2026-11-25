@@ -1076,7 +1076,7 @@ func addressee(text string, members map[string]MemberStatus) (string, string, er
 	return best, text[len(best):], nil
 }
 
-// runCommand handles /invite, /launch, /retire, /lead, /role, and /open-invite.
+// runCommand handles /invite, /reinvite, /launch, /retire, /lead, /role, and /open-invite.
 func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	command, argument, _ := strings.Cut(text, " ")
 	argument = strings.TrimSpace(argument)
@@ -1084,6 +1084,9 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	case command == "/invite" && argument != "":
 		m.chat.input.Reset()
 		return m, m.invite(argument)
+	case command == "/reinvite" && argument != "":
+		m.chat.input.Reset()
+		return m, m.reinvite(argument)
 	case command == "/launch" && argument != "":
 		cut := strings.LastIndex(argument, " ")
 		if cut < 0 {
@@ -1121,7 +1124,7 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		m.chat.input.Reset()
 		return m.reopenChat(m.chat.id, argument)
 	}
-	return m.inform("Commands: /invite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off], /reopen [note]"), nil
+	return m.inform("Commands: /invite Name, /reinvite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off], /reopen [note]"), nil
 }
 
 // parseTokenAmount parses a positive integer token budget, supporting optional k/m suffixes.
@@ -1245,7 +1248,18 @@ func (m model) onOpenInvite(msg openInviteMsg) (tea.Model, tea.Cmd) {
 
 // invite adds or reissues a slot and then shows its join prompt.
 func (m model) invite(name string) tea.Cmd {
-	request := InviteRequest{Directory: m.directory, Conversation: m.chat.id, Name: name}
+	return m.sendInvite(InviteRequest{Directory: m.directory, Conversation: m.chat.id, Name: name})
+}
+
+// reinvite gives a joined or retired member a new code and then shows its join prompt.
+func (m model) reinvite(name string) tea.Cmd {
+	return m.sendInvite(InviteRequest{
+		Directory: m.directory, Conversation: m.chat.id, Name: name, Reinvite: true,
+	})
+}
+
+// sendInvite runs one invitation request and reports its result as an invitedMsg.
+func (m model) sendInvite(request InviteRequest) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		invitation, err := client.Invite(request)
@@ -1292,11 +1306,15 @@ func (m model) prefillLaunch() (tea.Model, tea.Cmd) {
 	return next.(model).inform("Edit the plugin name if needed and press enter."), command
 }
 
-// reissueSelected asks for a new join code for the selected member.
+// reissueSelected asks for a new join code for the selected member. A member who joined or
+// retired is reinvited instead.
 func (m model) reissueSelected() (tea.Model, tea.Cmd) {
 	name := m.selectedMember()
 	if name == "" {
 		return m.inform("Select a member in the team panel first."), nil
+	}
+	if m.chat.view.Status.Members[name].State != "invited" {
+		return m.inform("Reinviting " + cleanLine(name) + "."), m.reinvite(name)
 	}
 	return m.inform("Getting a new code for " + cleanLine(name) + "."), m.invite(name)
 }

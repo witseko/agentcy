@@ -278,9 +278,11 @@ def show(connection: Connection, request: operator_models.ShowConversation) -> d
 def invite(
     connection: Connection, workspace: str, request: operator_models.InviteParticipant
 ) -> dict:
-    """Add or reissue a slot as the human and return its ready join prompt."""
+    """Add, reissue, or reinvite a slot as the human and return its ready join prompt."""
     human = writing_actor(connection, request.conversation)
-    result = repository.invite(connection, human, workspace, request.name, request.role)
+    result = repository.invite(
+        connection, human, workspace, request.name, request.role, reinvite=request.reinvite
+    )
     return invitation(result["participant"], result["role"], result["code"], human["brief"])
 
 

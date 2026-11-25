@@ -65,6 +65,24 @@
     }
   },
   {
+    "action": "operator_invite",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_invite",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Analyst",
+      "reinvite": true
+    },
+    "result": {
+      "participant": "Analyst",
+      "role": "worker",
+      "code": "DDDDDDDDDDDDDDDDDDDDDD.0123456789ab",
+      "join_prompt": "Review the retry behavior of the worker. - worker (Analyst): Use agentcy to join with DDDDDDDDDDDDDDDDDDDDDD.0123456789ab. Read the shared brief and say which role you joined as. Catch up from cursor zero. Do your assigned part. In open discussion, send evidence and questions directly to the peer who can act on them, and report brief progress updates to the lead periodically while working. Reply to your task with the result when it is complete. Follow the bridge's guidance during this turn."
+    }
+  },
+  {
     "action": "operator_open_invite",
     "request": {
       "version": 1,

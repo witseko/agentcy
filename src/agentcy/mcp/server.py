@@ -629,10 +629,13 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
         role: models.InviteRole | None = None,
         model: ModelName | None = None,
         token_budget: TokenBudget | None = None,
+        reinvite: bool = False,
     ) -> dict:
         """As a lead or co-lead, add a participant or replace an unused join code.
 
         New slots default to worker. Reissues keep the slot's role unless you supply a role.
+        Set reinvite=True to bring back a retired member or replace a joined member's chat:
+        the member keeps its name and tasks, and its previous chat loses access.
         Optionally bind a model name or starting token_budget for budget balancing.
         Give the invited chat the join_prompt with CODE replaced by its new code.
         """
@@ -644,6 +647,7 @@ def serve(workspace: str, directory: Path | None = None, http: HttpSettings | No
                 role=role,
                 model=model,
                 token_budget=token_budget,
+                reinvite=reinvite,
             )
         )
 

@@ -42,6 +42,8 @@ The screen has three columns: the workspace's chats on the left, the open chat i
 
 A join code works once and expires after one hour. The UI keeps codes in memory only. After a restart of the UI, select the member in the team panel and press `c` or `r` to get a new code.
 
+To bring back a retired member, or to replace a member whose chat stopped, select the member and press `r`, or type `/reinvite Name`. The member gets a new code and keeps its name, messages, and open tasks. Its previous chat loses access.
+
 ## Rename a chat
 
 A chat's title is the first line of its brief. To give it another title, select the chat in the chat list and press `e`, or right-click the chat or its header and choose **Rename chat**. Type a title of up to 80 characters and press `⏎`. The brief stays as it is. To use the first line of the brief again, save an empty title.

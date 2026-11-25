@@ -2356,3 +2356,33 @@ func TestArchiveWithOpenTasksAlertsAndDeprecates(t *testing.T) {
 		t.Fatalf("archives = %+v, want %+v", fake.archives, want)
 	}
 }
+
+func TestReissueSelectedReinvitesJoinedMembersOnly(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+	for index, name := range m.slotNames() {
+		m.chat.selected = index
+		next, cmd := m.reissueSelected()
+		m = drive(t, next.(model), cmd)
+		last := fake.invites[len(fake.invites)-1]
+		if last.Name != name || last.Reinvite != (name == "Lead") {
+			t.Fatalf("invite request for %s = %+v", name, last)
+		}
+	}
+}
+
+func TestReinviteCommandSendsReinvite(t *testing.T) {
+	fake := &fakeOperator{}
+	m := chatModel(t, fake)
+
+	m = typeText(t, m, "/reinvite Lead")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+
+	if len(fake.invites) != 1 || fake.invites[0] != (InviteRequest{
+		Directory: "/work", Conversation: testConversation, Name: "Lead", Reinvite: true,
+	}) {
+		t.Fatalf("invite requests = %+v", fake.invites)
+	}
+}
