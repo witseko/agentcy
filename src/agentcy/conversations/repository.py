@@ -57,7 +57,9 @@ LEAD_JOIN_PROMPT = (
     "Track the team status in read_messages, assign follow-up work when workers finish, and post "
     "brief team updates so waiting teammates stay active. Mind teammate token budgets in "
     "team/token_balance and prefer assigning new tasks or handoffs to models with more remaining "
-    f"budget. Messages from {HUMAN_LABEL} come from "
+    "budget. All members share one computer: give each member a limit of parallel processes for "
+    "heavy commands (test suites, builds) so the team total fits the computer, and keep message "
+    f"traffic low. Messages from {HUMAN_LABEL} come from "
     "your user. Follow the bridge's guidance during this turn."
 )
 MAX_LABEL_LENGTH = 64
