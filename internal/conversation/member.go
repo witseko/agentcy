@@ -60,8 +60,38 @@ func (handler *Handler) member(ctx context.Context, request wire.Request, unix i
 		return outcome, err
 	case *wire.Plugins:
 		return handler.memberPlugins(ctx, typed)
+	case *wire.ReportUsage:
+		return handler.memberReportUsage(ctx, typed, unix)
 	}
 	return handler.participantRequest(ctx, request, unix)
+}
+
+// memberReportUsage writes the member's reported usage, flushes the token ledger after
+// commit, and then reads status so same-model peers reflect the updated ledger spend.
+func (handler *Handler) memberReportUsage(ctx context.Context, request *wire.ReportUsage, now int64) (core.Outcome, error) {
+	var room string
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		member, _, err := refreshParticipantReleasing(ctx, tx, request.Token, false, now)
+		if err != nil {
+			return wire.Value{}, err
+		}
+		room = member.Room
+		return wire.Value{}, recordReportedUsage(ctx, tx, handler.book, member, request, now)
+	})
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	result, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		member, err := authenticate(ctx, tx, request.Token)
+		if err != nil {
+			return wire.Value{}, err
+		}
+		return reportUsageSummary(ctx, tx, handler.book, member, now)
+	})
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	return core.Outcome{Result: result, Notify: []core.Room{{Workspace: request.Workspace, Conversation: room}}}, nil
 }
 
 // participantMeta holds the per-request routing metadata extracted once from a
@@ -174,8 +204,6 @@ func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member
 	case *wire.OpenInvite:
 		opened, err := setOpenInvite(ctx, tx, member, typed.Workspace, typed.Enabled, now)
 		return opened.value(), err
-	case *wire.ReportUsage:
-		return reportUsage(ctx, tx, handler.book, member, typed, now)
 	case *wire.Post:
 		return postInRound(ctx, tx, handler.book, member, submissionRequest{
 			submissionID: typed.SubmissionID, body: typed.Body, kind: typed.Kind, to: typed.To,

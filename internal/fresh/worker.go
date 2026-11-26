@@ -371,29 +371,13 @@ func (worker *Worker) serviceWorkspace(ctx context.Context, workspace string, re
 	}
 }
 
-// serviceWorkspaceAsync rereads one store's pending runs, remembers them, and dispatches
-// due inspections concurrently via the bounded pool.
+// serviceWorkspaceAsync dispatches one bounded concurrent worker task per workspace so
+// slow plugins in one workspace cannot starve others, while preserving deterministic
+// deadline order for runs within the same workspace.
 func (worker *Worker) serviceWorkspaceAsync(ctx context.Context, wg *sync.WaitGroup, workspace string, restart bool) {
-	runs, err := worker.store.Pending(ctx, workspace)
-	if err != nil {
-		worker.logger.Print("Fresh-run reconciliation failed")
-		return
-	}
-	worker.remember(workspace, runs)
-	for _, run := range runs {
-		if !restart && run.State == StateQueued {
-			continue
-		}
-		if !worker.needsInspect(run, restart) {
-			continue
-		}
-		run := run
-		worker.spawnPluginTask(ctx, wg, run.ID, func() {
-			if err := worker.inspect(ctx, run, restart); err != nil {
-				worker.logger.Print("Fresh-run reconciliation failed")
-			}
-		})
-	}
+	worker.spawnPluginTask(ctx, wg, "workspace:"+workspace, func() {
+		worker.serviceWorkspace(ctx, workspace, restart)
+	})
 }
 
 // remember replaces the remembered runs of a workspace with the ones just read and
