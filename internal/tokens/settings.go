@@ -9,7 +9,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// The defaults and bounds of tokens.json (src/agentcy/tokens/settings.py).
+// The defaults and bounds of tokens.json (the former Python core's tokens/settings.py).
 const (
 	DefaultWarnPercent         = 75
 	DefaultImbalanceGapPercent = 20

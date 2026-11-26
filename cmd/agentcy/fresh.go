@@ -13,7 +13,7 @@ import (
 
 // runFreshWorker serves the fresh worker of one assignment on stdio:
 // `agentcy fresh-worker DIR`, with the join code in AGENTCY_FRESH_JOIN_CODE.
-// Port of the __main__ block of src/agentcy/mcp/fresh_server.py.
+// Port of the __main__ block of the former Python core's mcp/fresh_server.py.
 func runFreshWorker(arguments []string) int {
 	if len(arguments) != 1 {
 		return fail(errors.New("Worker requires its configured workspace"))

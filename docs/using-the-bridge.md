@@ -1,6 +1,6 @@
 # Run your first agent team
 
-Start the team from a chat registered with the bridge in the project you want to review. For this example, configure a read-only worker plugin. Both workers can use the same plugin. The prompt uses the name `glm` from the Z.ai setup. Replace it if you configured a different name. [Install the bridge](install.md) and configure the [Z.ai](../plugins/zai/README.md) or [Gemini](../plugins/gemini/README.md) plugin.
+Start the team from a chat registered with the bridge in the project you want to review. For this example, configure a read-only worker plugin. Both workers can use the same plugin. The prompt uses the plugin name `glm`. Replace it with the name you configured. [Install the bridge](install.md) and [register a worker plugin](install.md#worker-plugins).
 
 ## Review a retry bug with two fresh workers
 

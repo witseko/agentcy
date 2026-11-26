@@ -40,7 +40,7 @@ func sameNames(names ...string) []wire.Argument {
 }
 
 // The arguments of each tool, in the order of the tool function's signature in
-// src/agentcy/mcp/server.py and fresh_server.py, bound to the request fields they fill.
+// the former Python core's mcp/server.py and fresh_server.py, bound to the request fields they fill.
 // A tool without arguments of its own, such as the fresh worker's status, binds none.
 var (
 	createArguments = []wire.Argument{
@@ -76,7 +76,7 @@ var (
 )
 
 // memberTools returns the tool functions of the main shim by tool name. Each is a port
-// of the tool of the same name in src/agentcy/mcp/server.py.
+// of the tool of the same name in the former Python core's mcp/server.py.
 func (shim *shimServer) memberTools() map[string]toolFunction {
 	return map[string]toolFunction{
 		"create_conversation":       shim.sender(func() wire.Request { return &wire.Create{Workspace: shim.workspace} }, createArguments),

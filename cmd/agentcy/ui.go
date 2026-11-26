@@ -12,7 +12,7 @@ import (
 	"github.com/witseko/agentcy/internal/paths"
 )
 
-// The terminal UI program and its messages, from src/agentcy/tools/cli.py.
+// The terminal UI program and its messages, from the former Python core's tools/cli.py.
 const (
 	tuiProgram  = "agentcy-tui"
 	tuiVariable = "AGENTCY_TUI"

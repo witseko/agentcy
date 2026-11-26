@@ -46,7 +46,7 @@ func TestOldStoreIsRefusedWithThePythonMessageAndLoggedWithTheFix(t *testing.T) 
 		t.Fatalf("error = %v, want the rejection %q", err, "Unsupported bridge database version")
 	}
 	line := logged.String()
-	for _, want := range []string{workspace + ".sqlite3", "schema version 15", "make stop-core", "make migrate-stores"} {
+	for _, want := range []string{workspace + ".sqlite3", "schema version 15", "make stop-core", "17eb9ce", "make migrate-stores"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("log line %q lacks %q", line, want)
 		}

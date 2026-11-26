@@ -2,20 +2,52 @@
 
 import os
 from pathlib import Path
+from typing import Annotated, Literal
 
 from mcp.server.mcpserver import MCPServer
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from agentcy.mcp.plugin_contract import (
-    AssignmentId,
-    Capabilities,
-    CostCap,
-    RunResult,
-    Timeout,
-    TokenCap,
-)
-from agentcy.storage.database import data_dir
+# Version one of the fresh-run plugin contract (protocol/fresh-runs.v1.schema.json).
+AssignmentId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{32}$")]
+RunState = Literal["starting", "running", "finished", "failed", "cancelled", "timed_out", "unknown"]
+Timeout = Annotated[int, Field(ge=1, le=3600)]
+TokenCap = Annotated[int, Field(gt=0, le=100_000_000)]
+CostCap = Annotated[int, Field(gt=0, le=100_000_000)]
+TokenUsage = Annotated[int, Field(ge=0, le=1_000_000_000)]
 
 MCP = MCPServer("fake-fresh-runs")
+
+
+class ContractModel(BaseModel):
+    """Validate cross-process messages without including their contents in errors."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+class Capabilities(ContractModel):
+    """Declare the version and optional hard limits a plugin enforces."""
+
+    version: Literal[1]
+    token_cap: bool = False
+    cost_cap: bool = False
+
+
+class RunResult(ContractModel):
+    """Report a provider state without returning native identifiers or content."""
+
+    state: RunState
+    exit_code: int | None = None
+    input_tokens: TokenUsage | None = None
+    output_tokens: TokenUsage | None = None
+
+
+def data_dir() -> Path:
+    """Return the private bridge data directory that the core passes in AGENTCY_HOME."""
+    path = Path(os.getenv("AGENTCY_HOME", Path.home() / ".agentcy"))
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.is_symlink() or path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o077:
+        raise ValueError("Bridge data directory must belong to you and have mode 0700")
+    return path.resolve()
 
 
 def marker(assignment_id: str) -> Path:

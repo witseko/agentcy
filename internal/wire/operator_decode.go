@@ -21,7 +21,7 @@ type Incoming struct {
 }
 
 // DecodeIncoming parses and validates one request line for the core, member or operator,
-// the way the Python core does (REQUEST and rejects_operator_key in src/agentcy/mcp/core.py).
+// the way the former Python core did (REQUEST and rejects_operator_key in its mcp/core.py).
 //
 // The error decides the answer, in this order:
 //

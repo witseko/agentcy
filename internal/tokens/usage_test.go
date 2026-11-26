@@ -4,14 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/witseko/agentcy/internal/paths"
 	"github.com/witseko/agentcy/internal/store"
 )
 
@@ -195,67 +190,5 @@ func TestRoomUsageWithoutUsageRows(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// pythonUsage replays usageOperations with the Python token_usage module on its own
-// store and prints the snapshots and room usage.
-const pythonUsage = `
-import dataclasses, json, os, sys
-os.environ["AGENTCY_HOME"] = sys.argv[1]
-from agentcy.storage.database import database
-from agentcy.tokens import usage as u
-engine = database(sys.argv[2])
-with engine.begin() as c:
-    for statement in sys.stdin.read().split(";"):
-        if statement.strip():
-            c.exec_driver_sql(statement)
-    snaps = [
-        u.add_estimated(c, "r1", 1, input_tokens=0, output_tokens=0, now=100),
-        u.add_estimated(c, "r1", 1, input_tokens=10, now=101),
-        u.add_estimated(c, "r1", 1, input_tokens=5, output_tokens=7, now=102),
-        u.add_estimated(c, "r1", 2, output_tokens=3, now=103),
-        u.record_exact(c, "r1", 2, input_tokens=50, output_tokens=20, source="reported", now=104),
-        u.add_estimated(c, "r1", 2, input_tokens=4, output_tokens=4, now=105),
-        u.record_exact(c, "r1", 2, input_tokens=60, output_tokens=25, source="plugin", model="m2b", now=106),
-        u.set_member_budget(c, 1, model="m1", token_budget=9000),
-        u.set_member_budget(c, 3, token_budget=500),
-        u.add_estimated(c, "r1", 3, input_tokens=8, now=107),
-    ]
-    room = u.room_usage(c, "r1")
-print(json.dumps([[dataclasses.asdict(s) if s else None for s in snaps], {str(k): v for k, v in room.items()}], sort_keys=True, separators=(",", ":")))
-`
-
-// TestUsageMatchesPython replays the same updates in Python on a fresh store and
-// compares the snapshots and room usage. It skips when uv is unavailable.
-func TestUsageMatchesPython(t *testing.T) {
-	pathValue, pathSet := os.LookupEnv("PATH")
-	uv := paths.FindOnPath("uv", pathValue, pathSet)
-	if uv == "" {
-		t.Skip("uv is unavailable")
-	}
-	workspace, _ := openRoom(t)
-	got := runUsage(t, workspace)
-	pythonHome := newDataDir(t)
-	repository, _ := filepath.Abs("../..")
-	command := exec.Command(uv, "run", "--locked", "--project", repository, "python", "-I", "-c", pythonUsage, pythonHome, testKey)
-	command.Env = append(os.Environ(), paths.HomeVariable+"="+pythonHome)
-	command.Stdin = strings.NewReader(roomSetup)
-	output, err := command.Output()
-	if err != nil {
-		if exit, ok := err.(*exec.ExitError); ok {
-			t.Fatalf("Python failed: %v\n%s", err, exit.Stderr)
-		}
-		t.Skipf("Python unavailable: %v", err)
-	}
-	var want, have any
-	if err := json.Unmarshal(output, &want); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(got), &have); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(have, want) {
-		t.Errorf("Go and Python differ:\n Go     %s\n Python %s", got, output)
 	}
 }

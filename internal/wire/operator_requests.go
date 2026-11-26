@@ -2,7 +2,7 @@ package wire
 
 // OperatorRequest is one operator request to the core, sent by a local interface for the
 // human such as the terminal UI. Each action has its own struct; the fields mirror the
-// pydantic models in src/agentcy/conversations/operator_models.py. Every operator
+// pydantic models in the former Python core's conversations/operator_models.py. Every operator
 // request is also a Request, so Validate and Encode work on it.
 type OperatorRequest interface {
 	Request

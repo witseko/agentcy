@@ -54,6 +54,7 @@ def http_bridge(bridge_home: Path) -> Iterator[str]:  # noqa: F811 - pytest fixt
     log_path = bridge_home / "http.log"
     with log_path.open("w") as log:
         # The test starts the project's own CLI with a fixed argument list and no shell.
+        # nosemgrep: dangerous-subprocess-use-audit
         bridge = subprocess.Popen(  # noqa: S603
             [
                 shim_command(),

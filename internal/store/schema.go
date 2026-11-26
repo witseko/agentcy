@@ -18,14 +18,15 @@ const LedgerFilename = "token_ledger.sqlite3"
 // storeSuffix ends the file name of every workspace store.
 const storeSuffix = ".sqlite3"
 
-// workspaceSchema is the DDL of a store that the Python code creates at version 15,
-// dumped by testdata/dump_python_schema.py. The full-text index makes its own shadow
-// tables, and SQLite makes the indexes behind UNIQUE and PRIMARY KEY constraints.
+// workspaceSchema is the DDL of a store that the Python core created at version 15,
+// dumped at commit 17eb9ce, the last commit with the Python core. The full-text index
+// makes its own shadow tables, and SQLite makes the indexes behind UNIQUE and PRIMARY
+// KEY constraints.
 //
 //go:embed schema.sql
 var workspaceSchema string
 
-// ledgerSchema is the DDL of the token ledger, dumped by the same script.
+// ledgerSchema is the DDL of the token ledger, dumped the same way.
 //
 //go:embed ledger.sql
 var ledgerSchema string

@@ -15,13 +15,12 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// The packaged skills. The files are copies of src/agentcy/mcp/skills, which the Python
-// shim serves; a test keeps them byte-identical until the Python shim is removed.
+// The packaged skills.
 //
 //go:embed skills
 var skillFiles embed.FS
 
-// Skills extension constants, from src/agentcy/mcp/skills.py.
+// Skills extension constants, from the former Python core's mcp/skills.py.
 const (
 	skillsExtension      = "io.modelcontextprotocol/skills"
 	skillFile            = "SKILL.md"

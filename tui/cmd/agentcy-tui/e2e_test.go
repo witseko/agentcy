@@ -12,14 +12,11 @@ import (
 	"time"
 )
 
-// This test starts a real core. Run it under the project's environment, so VIRTUAL_ENV names
-// the interpreter that has agentcy installed:
+// This test starts a real core. AGENTCY_CORE_CMD is the core command, split on whitespace
+// and run with no shell. Run the test under the project's environment, so VIRTUAL_ENV names
+// the interpreter that runs the fixture plugin:
 //
-//	uv run --locked go test -tags e2e ./tui/...
-//
-// AGENTCY_CORE_CMD selects another core command, split on whitespace and run with no shell,
-// for example AGENTCY_CORE_CMD="$PWD/bin/agentcy core". Unset or empty, the test runs
-// `python -I -m agentcy.mcp.core` from that environment.
+//	AGENTCY_CORE_CMD="$PWD/bin/agentcy core" uv run --locked go test -tags e2e ./tui/...
 
 // repositoryRoot is the agentcy clone, three levels above this package.
 var repositoryRoot = filepath.Join("..", "..", "..")
@@ -55,12 +52,14 @@ func registerFixturePlugin(t *testing.T, home string, python string) {
 	}
 }
 
-// coreCommand returns the core command from AGENTCY_CORE_CMD, or the project's Python core.
-func coreCommand(python string) []string {
-	if configured := strings.Fields(os.Getenv("AGENTCY_CORE_CMD")); len(configured) > 0 {
-		return configured
+// coreCommand returns the core command from AGENTCY_CORE_CMD.
+func coreCommand(t *testing.T) []string {
+	t.Helper()
+	configured := strings.Fields(os.Getenv("AGENTCY_CORE_CMD"))
+	if len(configured) == 0 {
+		t.Fatal(`AGENTCY_CORE_CMD is unset: set it to the core command, for example "$PWD/bin/agentcy core"`)
 	}
-	return []string{python, "-I", "-m", "agentcy.mcp.core"}
+	return configured
 }
 
 // startCore runs the core command with a short private AGENTCY_HOME and waits for its
@@ -70,7 +69,7 @@ func startCore(t *testing.T) string {
 	python := projectPython(t)
 	home := shortHome(t)
 	registerFixturePlugin(t, home, python)
-	command := coreCommand(python)
+	command := coreCommand(t)
 	core := exec.Command(command[0], command[1:]...)
 	core.Dir = home
 	core.Env = []string{"AGENTCY_HOME=" + home, "PATH=/usr/bin:/bin"}

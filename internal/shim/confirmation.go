@@ -9,7 +9,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Close confirmation, from src/agentcy/mcp/confirmation.py. The confirmation is a
+// Close confirmation, from the former Python core's mcp/confirmation.py. The confirmation is a
 // safeguard against a model acting by mistake; the core still authorizes the close.
 const (
 	confirmInputID  = "agentcy.mcp.confirmation:confirm_close"

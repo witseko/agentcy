@@ -34,6 +34,7 @@ def bridge_home() -> Iterator[Path]:
         log_path = home / "core.log"
         with log_path.open("w") as log:
             # The test starts the configured core with an argument list and no shell.
+            # nosemgrep: dangerous-subprocess-use-audit
             core = subprocess.Popen(  # noqa: S603
                 core_command(),
                 cwd=home,

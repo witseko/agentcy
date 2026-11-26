@@ -6,7 +6,7 @@ Read the [design](../DESIGN.md) and the [project instructions](../AGENTS.md) bef
 
 The core is Go: one static binary, `agentcy`, built from `cmd/agentcy` and the packages under `internal/`. The terminal UI is a second Go binary from `tui/cmd/agentcy-tui`. Both belong to one Go module at the repository root.
 
-Python remains for two reasons. The Z.ai and Gemini plugins in `plugins/` are Python programs. The Python core in `src/agentcy` is the reference implementation: the conformance goldens, the differential walk, and the end-to-end tests compare the Go core with it. Do not add features to the Python core.
+Python is used only for tests and tools: the end-to-end tests in `tests/e2e`, the fixture plugin in `tests/fixtures`, and the tutorial video tools in `docs/videos/tools`. Commit `17eb9ce` is the last commit with the former Python core.
 
 ## Tests and checks
 
@@ -25,7 +25,7 @@ go test -race ./internal/...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
-The Python checks cover `plugins/`, the Python reference, and `scripts/migrate_stores.py`:
+The Python checks cover the end-to-end tests and the video tools:
 
 ```bash
 uv sync --locked
@@ -33,14 +33,13 @@ uv sync --locked
 
 ```bash
 uv run --locked ruff check .
-uv run --locked pytest --ignore=tests/e2e tests
+uv run --locked pytest
 ```
 
-The end-to-end tests drive the shim with two independent MCP clients from the Python SDK, with providers disabled. `AGENTCY_BIN` selects the shim and `AGENTCY_CORE_CMD` the core. Unset, they select the Python reference. Run them on the Go binary and on the Python reference:
+The end-to-end tests drive the shim with two independent MCP clients from the Python SDK, with providers disabled. `AGENTCY_BIN` selects the shim and `AGENTCY_CORE_CMD` the core. Both are required, so plain `pytest` does not run these tests:
 
 ```bash
 AGENTCY_BIN="$PWD/bin/agentcy" AGENTCY_CORE_CMD="$PWD/bin/agentcy core" uv run --locked pytest tests/e2e
-uv run --locked pytest tests/e2e
 ```
 
 The terminal UI end-to-end test starts a real core. It needs the uv environment for its fixture plugin:
@@ -49,7 +48,7 @@ The terminal UI end-to-end test starts a real core. It needs the uv environment 
 AGENTCY_CORE_CMD="$PWD/bin/agentcy core" uv run --locked go test -tags e2e ./tui/...
 ```
 
-Semgrep scans `src/`, `plugins/`, and `scripts/` with Python, SQLAlchemy, and MCP security rules. CI fails on unsuppressed findings or scan errors. Git ignore rules are disabled. Semgrep's own path, file type, and size filters apply. Add `--disable-nosem` to review findings covered by inline suppressions.
+Semgrep scans the Python files in `tests/e2e` and `tests/fixtures` with Python and MCP security rules. Semgrep skips `tests/` directories by default, so the command names the files. CI fails on unsuppressed findings or scan errors. Git ignore rules are disabled. Semgrep's own path, file type, and size filters apply. Add `--disable-nosem` to review findings covered by inline suppressions.
 
 ```bash
 (
@@ -60,11 +59,11 @@ Semgrep scans `src/`, `plugins/`, and `scripts/` with Python, SQLAlchemy, and MC
       a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2 &&
     git -C "$rules_dir" checkout -q --detach FETCH_HEAD &&
     uvx --from semgrep==1.186.0 semgrep scan \
-      --config "$rules_dir/python/lang/security" --config "$rules_dir/python/sqlalchemy/security" \
+      --config "$rules_dir/python/lang/security" \
       --config "$rules_dir/ai/ai-best-practices/mcp-command-injection/mcp-command-injection.yaml" \
       --config "$rules_dir/ai/ai-best-practices/mcp-ssrf/mcp-ssrf.yaml" \
       --error --strict --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore \
-      src/ plugins/ scripts/
+      tests/e2e/*.py tests/fixtures/*.py
 )
 ```
 
@@ -83,11 +82,10 @@ Audit the locked third-party runtime and development dependencies.
 
 ## Daemon conformance suite
 
-The suite in `conformance/` pins the behavior of the core daemon as a black box. It starts the daemon that `AGENTCY_CORE_CMD` names, sends requests over the Unix socket, and compares every normalized response with a golden file in `conformance/testdata/`. The goldens come from the Python core, so the Go core must give the same responses. `make conformance` builds `bin/agentcy` and tests it. Pass `AGENTCY_CORE_CMD` to test the Python reference:
+The suite in `conformance/` pins the behavior of the core daemon as a black box. It starts the daemon that `AGENTCY_CORE_CMD` names, sends requests over the Unix socket, and compares every normalized response with a golden file in `conformance/testdata/`. The first goldens were recorded from the former Python core. `make conformance` builds `bin/agentcy` and tests it:
 
 ```bash
 make conformance
-make conformance AGENTCY_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core"
 ```
 
 Each test starts its own daemon with a new private `AGENTCY_HOME` and a new workspace under `/tmp`, and stops the daemon at the end. The suite never reads or writes `~/.agentcy`. Without the `conformance` build tag, `go test ./...` skips the suite.
@@ -102,34 +100,9 @@ To add a scenario:
 
 Do not put text in a request that looks like a generated value: a run of 24, 32 or 64 characters from `0-9a-f`, or a run of 43 URL-safe characters. Normalization would replace it.
 
-### Differential walk
-
-The differential walk sends the same seeded sequence of valid and near-valid requests to two daemons, each with its own `AGENTCY_HOME`. It compares every normalized response and, at the end, a normalized dump of every database. `AGENTCY_REFERENCE_CORE_CMD` names the reference daemon and `AGENTCY_CORE_CMD` the daemon under test. `TestExistingStoreCarriesOver` runs with the same two variables: it fills a store with the reference, switches to the daemon under test on the same store, and checks that the answers stay the same.
-
-```bash
-AGENTCY_REFERENCE_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core" \
-  AGENTCY_CORE_CMD="$PWD/bin/agentcy core" \
-  go test -tags conformance ./conformance/... \
-  -run 'TestDifferentialWalk|TestExistingStoreCarriesOver' -seeds 20 -steps 2000
-```
-
-Flags:
-
-| Flag | Meaning | Default |
-| --- | --- | --- |
-| `-seeds N` | Run seeds 1 to N, in parallel | 2 |
-| `-seed N` | Run only seed N, to replay a failure | none |
-| `-steps N` | Requests per seed | 200 |
-
-The full gate is 20 seeds of 2,000 steps with zero differences. Run it before you merge a change to the core rules. CI runs 4 seeds of 500 steps.
-
 ## Performance
 
-`bench/` measures one shim and daemon pair (see [bench/README.md](../bench/README.md)). `make bench` measures `bin/agentcy`. To measure the Python reference, set both commands:
-
-```bash
-make bench AGENTCY_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core" AGENTCY_BIN="$PWD/.venv/bin/agentcy"
-```
+`bench/` measures one shim and daemon pair (see [bench/README.md](../bench/README.md)). `make bench` measures `bin/agentcy`.
 
  The numbers below were taken on 2026-11-26 on an Apple M1 (8 cores, macOS, Darwin 27.2.0, Go 1.27.4) with nothing else running, with the default flags: one conversation of 100,000 messages (99,800 written with the `sqlite3` CLI, 200 posted through the socket), 1,000 warm samples per operation, and a 60 s load scenario with 20 listening shims, one 1 Hz `operator_show` poller, and one writer every 5 s. "Go after M5" shows both runs of the final build.
 
@@ -170,18 +143,13 @@ The global guides have no Go guide, so the core follows these rules on top of `c
 - In the core, run every process with an argument slice and an explicit `cmd.Env`. Never use a shell. Find programs with `paths.FindOnPath`, not `exec.LookPath`, which also accepts relative `PATH` entries.
 - Never log tokens, join codes, the operator key, MCP task IDs, or message bodies.
 
-## Differences from the Python core
+## Changes from the Python versions
 
-The Go core gives the same responses as the Python core, with these exceptions:
+Versions before the Go core ran a Python core. The Go core gives the same responses, with these changes that a user can notice after an upgrade:
 
 - **Fresh runs.** The assignment worker inspects a running fresh run every 5 seconds, not every second. A state change shows up to 5 seconds later. A stop or a cancel stays immediate.
-- **SIGTERM.** The Go core stops cleanly: it stops accepting, ends waiting reads, gives running requests 5 seconds, removes the socket, and closes the stores. The Python core ends at once.
-- **Unexpected errors.** An unexpected error or a panic gets `Core operation failed`. The Python core sent no reply for an exception other than `ValueError`, `OSError`, and SQLAlchemy errors. A reply over the 2 MiB cap also gets `Core operation failed`.
-- **Error wording in the shim.** An unknown MCP method gets `method not found: "<method>"` from the Go SDK, where the Python shim sent `Method not found` with the method as data. The code stays `-32601`, and the `tasks/*` methods keep the Python text. A tool argument validation error leaves out pydantic's `input_value` and `input_type`, so the error never repeats the input.
-- **Unicode.** Text rules use the Unicode 17 tables of Go 1.27. Python 3.14 uses Unicode 16, so a character assigned in Unicode 17 is valid in a name for Go and unassigned for Python.
-- **`requestState`.** The Go shim signs the `requestState` of a confirmation with HMAC-SHA-256 and binds it to the tool and its arguments. It does not encrypt it, so a client can read it. The Python SDK encrypts it with AES-GCM. The state holds no secret.
-- **Workspace keys.** The store layer opens only a workspace key of 64 lowercase hex characters. Python's `database()` accepted any key. Every request already passes the same pattern, so only a direct caller can notice.
-- **Store versions.** The Go core opens only stores at schema version 15. It answers `Unsupported bridge database version` for any other store, as Python does for a newer one, and logs the steps that fix it to `core.log`. `make migrate-stores` migrates older stores with the Python code.
+- **SIGTERM.** The Go core stops cleanly: it stops accepting, ends waiting reads, gives running requests 5 seconds, removes the socket, and closes the stores.
+- **Store versions.** The Go core opens only stores at schema version 15. It answers `Unsupported bridge database version` for any other store and logs the steps that fix it to `core.log`. An older store migrates with the Python code at commit `17eb9ce` (see [Upgrade from a Python version](../README.md#upgrade-from-a-python-version)).
 - **`listen`.** The Go core adds the member action `listen`, one exchange for a waiting read and its status (see the [protocol](../protocol/README.md#go-core-only-listen)).
 
 ## Release binaries
@@ -198,7 +166,7 @@ The build is reproducible and static (`CGO_ENABLED=0`): the same source, version
 
 ## Versions and releases
 
-The `VERSION` file holds the version. The Makefile and the release workflow read it, and `pyproject.toml` keeps the same number for the Python code. Both binaries report it:
+The `VERSION` file holds the version. The Makefile and the release workflow read it. Both binaries report it:
 
 ```bash
 bin/agentcy --version
@@ -210,7 +178,7 @@ bin/agentcy-tui --version
 
 To make a release:
 
-1. Set the new version. The target writes `VERSION` and `pyproject.toml` and runs `uv lock`:
+1. Set the new version. The target writes `VERSION`:
 
    ```bash
    make release VERSION=0.0.2
@@ -223,4 +191,4 @@ To make a release:
    git tag v0.0.2 && git push origin v0.0.2
    ```
 
-The tag starts the release workflow. It checks that the tag matches `VERSION` and that `pyproject.toml` agrees, and builds the eight binaries from the tagged source. Then it publishes a GitHub release with the eight binaries and a `SHA256SUMS` file.
+The tag starts the release workflow. It checks that the tag matches `VERSION` and builds the eight binaries from the tagged source. Then it publishes a GitHub release with the eight binaries and a `SHA256SUMS` file.

@@ -2,7 +2,7 @@ package tokens
 
 import "unicode/utf8"
 
-// The estimate heuristics of src/agentcy/tokens/estimator.py.
+// The estimate heuristics of the former Python core's tokens/estimator.py.
 const (
 	// CharsPerToken is the number of characters (code points) counted as one token.
 	CharsPerToken = 4

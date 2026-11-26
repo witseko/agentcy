@@ -1,6 +1,6 @@
 // Package shim is the MCP server that each chat runs: it exposes the conversation tools
 // over stdio or HTTP, holds no database, and forwards every call to the core daemon over
-// its Unix socket. It is a port of src/agentcy/mcp/server.py and its helpers, and keeps
+// its Unix socket. It is a port of the former Python core's mcp/server.py and its helpers, and keeps
 // their tool texts, guidance texts and wire shapes.
 package shim
 
@@ -25,12 +25,12 @@ import (
 	"github.com/witseko/agentcy/protocol"
 )
 
-// serverIcon is the shim's icon, a copy of src/agentcy/mcp/icon.png.
+// serverIcon is the shim's icon, a copy of the former Python core's mcp/icon.png.
 //
 //go:embed icon.png
 var serverIcon []byte
 
-// The server instructions, from serve in src/agentcy/mcp/server.py.
+// The server instructions, from serve in the former Python core's mcp/server.py.
 const (
 	separateBridgeWarning = "If your client runs in a VM or a hosted sandbox, do not create a conversation: " +
 		"that bridge is separate from the bridge on your user's computer, so local chats " +

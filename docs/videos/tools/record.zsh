@@ -47,7 +47,7 @@ for tool in ffmpeg ffprobe swiftc; do
 done
 for file in "$repo/bin/agentcy" "$repo/bin/agentcy-tui" "$python" "$ghostty"; do
   if [[ ! -x "$file" ]]; then
-    echo "Missing $file: run make setup and make plugin-deps, and install Ghostty." >&2
+    echo "Missing $file: run make setup and uv sync --locked, and install Ghostty." >&2
     exit 1
   fi
 done

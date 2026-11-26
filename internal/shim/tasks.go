@@ -15,7 +15,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// MCP Tasks extension (SEP-2663), from src/agentcy/mcp/tasks.py. An MCP task is a
+// MCP Tasks extension (SEP-2663), from the former Python core's mcp/tasks.py. An MCP task is a
 // protocol object, not a conversation task: the core keeps the fresh-run assignment and
 // this file maps its state to the wire form. The MCP task ID is the only credential, so
 // it is never logged or put into an error.

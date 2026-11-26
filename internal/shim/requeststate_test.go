@@ -3,6 +3,8 @@ package shim
 import (
 	"testing"
 	"time"
+
+	"github.com/witseko/agentcy/internal/wire"
 )
 
 func TestRequestStateIsSignedAndBoundToTheCall(t *testing.T) {
@@ -36,4 +38,13 @@ func TestRequestStateIsSignedAndBoundToTheCall(t *testing.T) {
 	if _, err := signer.verify(token, "close_conversation", arguments); err == nil {
 		t.Error("an expired state was accepted")
 	}
+}
+
+// parseLiteral parses a fixed JSON text.
+func parseLiteral(text string) wire.Value {
+	value, err := wire.Parse([]byte(text))
+	if err != nil {
+		panic(err)
+	}
+	return value
 }

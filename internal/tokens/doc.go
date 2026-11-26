@@ -1,7 +1,7 @@
 // Package tokens tracks token spend: the bridge's own estimates, exact usage reported by
 // members and plugins, per-model budgets from tokens.json, the user-level ledger of
 // spend across conversations, and the balance guidance for leads. It is a port of
-// src/agentcy/tokens.
+// the former Python core's tokens.
 //
 // Functions that touch a workspace store take the *sql.Tx of a store.Write or store.Read
 // call; ledger functions take the ledger *store.Store from Registry.OpenLedger in package

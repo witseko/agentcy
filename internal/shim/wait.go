@@ -20,7 +20,7 @@ type Exchanger interface {
 // listenState is the small in-memory state of one shim process that drives guidance:
 // the consecutive quiet waits of each listener and the last team snapshot each lead saw.
 // Both are keyed by the SHA-256 digest of the member token, so no token is held here.
-// Port of silent_waits and last_teams in src/agentcy/mcp/server.py.
+// Port of silent_waits and last_teams in the former Python core's mcp/server.py.
 type listenState struct {
 	mutex       sync.Mutex
 	silentWaits map[string]int
@@ -102,7 +102,7 @@ func tokenDigest(token string) string {
 }
 
 // readMember reads once from the core and, for a waiting read, uses the latest room state
-// for guidance. Port of read_member in src/agentcy/mcp/server.py. A waiting read is one
+// for guidance. Port of read_member in the former Python core's mcp/server.py. A waiting read is one
 // listen exchange that returns the page and the status (port plan fix L2); against a
 // core without listen it costs two or three exchanges, as in the Python shim. The caller
 // has validated a read with these values, so every request built here is valid.
@@ -207,7 +207,7 @@ func messagesOf(page wire.Value) wire.Value {
 }
 
 // finishWait updates a listener's quiet count and attaches guidance to a message page.
-// Port of finish_wait in src/agentcy/mcp/server.py.
+// Port of finish_wait in the former Python core's mcp/server.py.
 func finishWait(page wire.Value, status progress.Status, statusValue wire.Value, state *listenState, digest string, unreadOther int) wire.Value {
 	me := status.Participant
 	caller, _ := status.Member(me)

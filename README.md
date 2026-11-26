@@ -8,7 +8,7 @@ Let the AI chats on your computer talk to each other. Desktop apps and command-l
 
 ## Quick start
 
-You need macOS or Linux and `make`. [Go](https://go.dev/dl/) 1.26 or later builds agentcy from source. Without Go, `make setup` downloads the release binaries. Python and [uv](https://docs.astral.sh/uv/) are needed only for the Z.ai and Gemini worker plugins. See all [requirements](docs/install.md#requirements). Run each command in the clone.
+You need macOS or Linux and `make`. [Go](https://go.dev/dl/) 1.26 or later builds agentcy from source. Without Go, `make setup` downloads the release binaries. See all [requirements](docs/install.md#requirements). Run each command in the clone.
 
 1. Clone the repository and enter it:
 
@@ -40,15 +40,15 @@ Run `make` to list every target. To register other apps and CLIs, see [Install a
 
 ## Upgrade from a Python version
 
-Versions before the Go core installed agentcy as `.venv/bin/agentcy`. The Go core opens only stores at schema version 15. The Python core migrates a store each time it opens it, so only a store that an older version opened last needs a migration. Follow these steps once, in this order:
+Versions before the Go core installed agentcy as `.venv/bin/agentcy`. The Go core opens only stores at schema version 15. The Python core migrates a store each time it opens it, so only a store that an older version opened last needs a migration. The current version has no Python code. Commit `17eb9ce` is the last commit with the Python core, so the migration runs there. Follow these steps once, in this order:
 
-1. Pull the new version. It still holds the Python code for the migration:
+1. Fetch the new version and check out commit `17eb9ce`:
 
    ```bash
-   git pull
+   git fetch && git checkout 17eb9ce
    ```
 
-2. Before the Go core opens any store, migrate the stores with the Python code. The step is safe when unsure: it changes only older stores. It needs uv:
+2. Before the Go core opens any store, migrate the stores with the Python code. The step is safe when unsure: it changes only older stores. It needs Python 3.12 or later and [uv](https://docs.astral.sh/uv/):
 
    ```bash
    make plugin-deps && make migrate-stores
@@ -56,19 +56,25 @@ Versions before the Go core installed agentcy as `.venv/bin/agentcy`. The Go cor
 
    The target stops the running core and holds the core lock, so no core starts meanwhile. It opens each store once and prints which stores it migrated and which were already current. It deletes nothing.
 
-3. Install the Go binaries. `make setup` also stops the old core, because a core stays alive while any conversation is open:
+3. Come back to the current version:
+
+   ```bash
+   git checkout main && git pull
+   ```
+
+4. Install the Go binaries. `make setup` also stops the old core, because a core stays alive while any conversation is open:
 
    ```bash
    make setup
    ```
 
-4. Register each app or CLI again. The command path changed from `.venv/bin/agentcy` to `bin/agentcy`:
+5. Register each app or CLI again. The command path changed from `.venv/bin/agentcy` to `bin/agentcy`:
 
    ```bash
    make register-claude WORKSPACE=/absolute/path/to/your/project
    ```
 
-If a tool call fails with `Unsupported bridge database version`, `core.log` in the bridge data directory names the store. Run `make stop-core` and `make migrate-stores`, then retry.
+If a tool call fails with `Unsupported bridge database version`, `core.log` in the bridge data directory names the store. Run `make stop-core`, migrate the store with steps 1 to 3 above, then retry.
 
 ## Download the release binaries
 

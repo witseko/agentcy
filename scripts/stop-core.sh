@@ -47,7 +47,8 @@ fi
 user_id="$(id -u)"
 
 # is_agentcy_core PID succeeds when the process belongs to this user and runs a core:
-# `<path>/agentcy core` (the Go core) or `python ... -m agentcy.mcp.core` (the Python core).
+# `<path>/agentcy core` (the Go core) or `python ... -m agentcy.mcp.core` (the Python core of
+# versions before the Go core, which can still run during an upgrade).
 is_agentcy_core() {
     owner="$(ps -o uid= -p "$1" 2>/dev/null | tr -d ' ')"
     test "$owner" = "$user_id" || return 1

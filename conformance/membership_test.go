@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// From tests/conversations/test_repository.py: create, join once, read from zero and after
+// From the former Python test_repository.py: create, join once, read from zero and after
 // a cursor, and status for a lead with two worker slots.
 func TestCreateJoinReadAndStatus(t *testing.T) {
 	s := newScenario(t)

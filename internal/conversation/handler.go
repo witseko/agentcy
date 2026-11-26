@@ -88,11 +88,13 @@ func NewHandler(shared Shared, environment []string, freshRuns FreshRuns) *Handl
 var _ core.Handler = (*Handler)(nil)
 
 // unsupportedStoreHelp is the core.log line for a store at another schema version. The
-// client gets only the Python core's message, store.ErrUnsupportedVersion, so the steps
-// that fix the store go to the log, where the user looks after a failed call.
+// client gets only the former Python core's message, store.ErrUnsupportedVersion, so the
+// steps that fix the store go to the log, where the user looks after a failed call. Commit
+// 17eb9ce is the last commit with the Python core, which migrates older stores.
 const unsupportedStoreHelp = "%s in %s.sqlite3: this core opens schema version %d only. " +
-	"If an older agentcy last opened the store, run 'make stop-core' and then " +
-	"'make migrate-stores' in the agentcy clone, then retry. If a newer agentcy wrote it, " +
+	"If an older agentcy last opened the store, run 'make stop-core', check out commit " +
+	"17eb9ce in the agentcy clone, run 'make plugin-deps && make migrate-stores' there, " +
+	"then check out the current version again and retry. If a newer agentcy wrote it, " +
 	"upgrade agentcy."
 
 // openStore opens the store of a workspace key. A store at another schema version is

@@ -19,8 +19,6 @@ RELEASE_DIR := dist
 GO_BUILD_FLAGS = -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$(VERSION)"
 # The bridge data directory, as the core finds it: AGENTCY_HOME, else ~/.agentcy.
 DATA_DIR = $(or $(AGENTCY_HOME),$(HOME)/.agentcy)
-# The Python environment of the Z.ai and Gemini plugins and of the Python reference core.
-PLUGIN_PYTHON := $(CURDIR)/.venv/bin/python
 # The project folder whose chats join each other. Pass it as WORKSPACE=/path/to/project.
 WORKSPACE ?=
 WORKSPACE_PATH = $(abspath $(WORKSPACE))
@@ -29,14 +27,14 @@ HTTP_PORT ?= 8765
 PUBLIC_HOST ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help setup agentcy tui build plugin-deps stop-core migrate-stores release-files release \
-	register-claude register-codex ui http check-workspace check-bridge check-plugin-deps
+.PHONY: help setup agentcy tui build stop-core release-files release \
+	register-claude register-codex ui http check-workspace check-bridge
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
 
 # setup stops a running core last: the core stays alive while any conversation is open, so
-# without this an old core (Python or Go) would keep serving the new shims after an upgrade.
+# without this an old core would keep serving the new shims after an upgrade.
 setup: agentcy tui ## Install agentcy and the terminal UI into bin/, then stop a running core
 	@$(MAKE) --no-print-directory stop-core
 	@echo "Done. Next: make register-claude WORKSPACE=/path/to/project"
@@ -65,19 +63,8 @@ build: ## Build bin/agentcy from source with Go
 	@echo "Building agentcy $(VERSION) from source"
 	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o "$(BRIDGE)" ./cmd/agentcy
 
-plugin-deps: ## Install the Python dependencies of the Z.ai and Gemini plugins into .venv
-	@command -v uv >/dev/null || { echo "uv is missing: https://docs.astral.sh/uv/"; exit 1; }
-	uv sync --locked --no-dev
-
-check-plugin-deps:
-	@test -x "$(PLUGIN_PYTHON)" || { echo "This needs the Python environment. Run make plugin-deps first."; exit 1; }
-
 stop-core: ## Stop the running core of AGENTCY_HOME (default ~/.agentcy), if any
 	@sh scripts/stop-core.sh "$(DATA_DIR)"
-
-migrate-stores: check-plugin-deps ## Migrate stores of older versions with the Python code before the Go core opens them
-	@$(MAKE) --no-print-directory stop-core
-	"$(PLUGIN_PYTHON)" -I scripts/migrate_stores.py
 
 release-files: ## Build agentcy and the terminal UI for every platform and SHA256SUMS into dist/
 	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
@@ -93,12 +80,9 @@ release-files: ## Build agentcy and the terminal UI for every platform and SHA25
 	cd "$(RELEASE_DIR)" && if command -v sha256sum >/dev/null; then sha256sum agentcy-*; \
 		else shasum -a 256 agentcy-*; fi > SHA256SUMS
 
-release: ## Prepare release VERSION=x.y.z: set the version in VERSION, pyproject.toml and uv.lock
+release: ## Prepare release VERSION=x.y.z: set the version in VERSION
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "Pass VERSION=x.y.z"; exit 1; }
 	echo "$(VERSION)" > VERSION
-	sed 's/^version = ".*"/version = "$(VERSION)"/' pyproject.toml > pyproject.toml.new
-	mv pyproject.toml.new pyproject.toml
-	uv lock
 	@echo "Release $(VERSION) is ready. Commit the changes, merge them into main, then run:"
 	@echo "  git tag v$(VERSION) && git push origin v$(VERSION)"
 
@@ -127,8 +111,7 @@ bench: build ## Benchmark a core (default: Go in bin/). Set AGENTCY_CORE_CMD, AG
 	AGENTCY_CORE_CMD="$${AGENTCY_CORE_CMD:-$(BRIDGE) core}" \
 		AGENTCY_BIN="$${AGENTCY_BIN:-$(BRIDGE)}" go run -tags bench ./bench $(BENCH_FLAGS)
 
-# The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one,
-# for example the Python reference: AGENTCY_CORE_CMD="$(PLUGIN_PYTHON) -I -m agentcy.mcp.core".
+# The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one.
 AGENTCY_CORE_CMD ?= $(BRIDGE) core
 .PHONY: conformance
 conformance: build ## Compare the core daemon (default: Go in bin/) with the recorded conformance goldens

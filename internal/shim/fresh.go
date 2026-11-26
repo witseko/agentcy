@@ -19,7 +19,7 @@ const FreshJoinCodeVariable = "AGENTCY_FRESH_JOIN_CODE"
 var errNotJoined = errors.New("Join your assigned conversation first")
 
 // freshWorker binds an OpenCode worker to its assigned slot without exposing the join
-// code or the member token to the model. Port of src/agentcy/mcp/fresh_server.py.
+// code or the member token to the model. Port of the former Python core's mcp/fresh_server.py.
 type freshWorker struct {
 	shim   *shimServer
 	code   string

@@ -13,7 +13,7 @@ import (
 )
 
 // runCore serves the core daemon: `agentcy core`. It is the port of main in
-// src/agentcy/mcp/core.py and takes no arguments; AGENTCY_HOME selects the data
+// the former Python core's mcp/core.py and takes no arguments; AGENTCY_HOME selects the data
 // directory. Log lines go to standard error, which the starting shim sends to core.log.
 func runCore(arguments []string) int {
 	if len(arguments) != 0 {

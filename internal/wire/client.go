@@ -61,7 +61,7 @@ type Client struct {
 // sent once more after a broken pipe, a reset, or an incomplete response, unless ctx has
 // already ended.
 //
-// Port of exchange in src/agentcy/mcp/transport.py.
+// Port of exchange in the former Python core's mcp/transport.py.
 func (client *Client) Exchange(ctx context.Context, request Request) (Value, error) {
 	result, err := client.exchangeOnce(ctx, request)
 	if err != nil && ctx.Err() == nil && isTransientDisconnect(err) && idempotentActions[request.Action()] {

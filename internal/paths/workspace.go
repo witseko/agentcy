@@ -27,7 +27,7 @@ var gitVariables = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"}
 // Linked worktrees of one repository therefore share a key. environment is the process
 // environment in os.Environ form; it supplies PATH and Git's environment.
 //
-// Port of workspace_key in src/agentcy/storage/database.py. Python spells the path in
+// Port of workspace_key in the former Python core's storage/database.py. Python spells the path in
 // UTF-8 with surrogate escapes; Go hashes the same bytes.
 func WorkspaceKey(workspace string, environment []string) (string, error) {
 	root, err := RealPath(workspace, true)

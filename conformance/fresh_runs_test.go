@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// freshRunTimeout bounds each wait for the worker. The Python worker scans every second
-// and the Go worker inspects every 5 s, so the waits below only look for states that
-// both reach and then keep.
+// freshRunTimeout bounds each wait for the worker. The goldens come from the former Python
+// worker, which scanned every second, and the Go worker inspects every 5 s, so the waits
+// below only look for states that both reach and then keep.
 const freshRunTimeout = 30 * time.Second
 
 // registerFixturePlugin writes plugins.json with tests/fixtures/fake_run_plugin.py run by

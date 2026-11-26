@@ -3,14 +3,9 @@ package tokens
 import (
 	"context"
 	"database/sql"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
-	"github.com/witseko/agentcy/internal/paths"
 	"github.com/witseko/agentcy/internal/store"
 )
 
@@ -146,61 +141,5 @@ func TestSyncLedgerNeedsAModel(t *testing.T) {
 	}
 	if want := []string{`["w","r",3,"m",5,6,11,"plugin",9]`}; !reflect.DeepEqual(rows, want) {
 		t.Errorf("ledger rows = %v, want %v", rows, want)
-	}
-}
-
-// pythonModelSpend reads the ledger of the AGENTCY_HOME in argv[1] with the Python
-// model_spend and then records one more slot through Python.
-const pythonModelSpend = `
-import json, os, sys
-os.environ["AGENTCY_HOME"] = sys.argv[1]
-from agentcy.tokens import ledger
-spend = [
-    ledger.model_spend(["claude-sonnet-4-6", "m", "none"]),
-    ledger.model_spend(["claude-sonnet-4-6"], {"claude-sonnet-4-6": 1_700_050_000}),
-]
-ledger.record_slot_usage(workspace="py", room="r", slot=1, model="m", input_tokens=7, output_tokens=8, source="reported", now=5)
-print(json.dumps(spend, sort_keys=True, separators=(",", ":")))
-`
-
-// TestLedgerMatchesPython lets Python read a ledger that Go created and wrote, then reads
-// Python's write back in Go. It skips when uv is unavailable.
-func TestLedgerMatchesPython(t *testing.T) {
-	pathValue, pathSet := os.LookupEnv("PATH")
-	uv := paths.FindOnPath("uv", pathValue, pathSet)
-	if uv == "" {
-		t.Skip("uv is unavailable")
-	}
-	ledger, directory := openLedger(t)
-	record(t, ledger,
-		claude("w1", "old", 1, 40_000, 10_000, 1_700_000_000),
-		claude("w1", "new", 2, 8_000, 2_000, 1_700_100_000),
-		LedgerEntry{Workspace: "w2", Room: "r", Slot: 4, Model: "m", InputTokens: 1, OutputTokens: 1, Source: SourcePlugin, Updated: 1},
-	)
-	ctx := context.Background()
-	all, err := ModelSpend(ctx, ledger, []string{"claude-sonnet-4-6", "m", "none"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	windowed, err := ModelSpend(ctx, ledger, []string{"claude-sonnet-4-6"}, map[string]*int64{"claude-sonnet-4-6": pointer(1_700_050_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	repository, _ := filepath.Abs("../..")
-	command := exec.Command(uv, "run", "--locked", "--project", repository, "python", "-I", "-c", pythonModelSpend, directory)
-	command.Env = append(os.Environ(), paths.HomeVariable+"="+directory)
-	output, err := command.Output()
-	if err != nil {
-		if exit, ok := err.(*exec.ExitError); ok {
-			t.Fatalf("Python failed: %v\n%s", err, exit.Stderr)
-		}
-		t.Skipf("Python unavailable: %v", err)
-	}
-	if got := jsonText([]any{all, windowed}); strings.TrimSpace(string(output)) != got {
-		t.Errorf("Go spend %s, Python spend %s", got, output)
-	}
-	after, err := ModelSpend(ctx, ledger, []string{"m"}, nil)
-	if err != nil || after["m"] != 17 {
-		t.Errorf("after the Python write: spend = %v, %v; want m = 17", after, err)
 	}
 }

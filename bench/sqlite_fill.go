@@ -18,9 +18,9 @@ const (
 	// schemaVersion is the store version whose message shape this file writes.
 	schemaVersion = "15"
 	// messageColumns is the message table of schema version 15, in declaration order
-	// (src/agentcy/conversations/tables.py).
+	// (the former Python core's conversations/tables.py).
 	messageColumns = "id,room,author,body,created,kind,recipient,reply_to,due_minutes"
-	// roleLead is the stored value of the lead role (src/agentcy/conversations/roles.py).
+	// roleLead is the stored value of the lead role (the former Python core's conversations/roles.py).
 	roleLead = 1
 	// fillSpacingSeconds spaces the created times of direct rows, ending just before now.
 	fillSpacingSeconds = 20

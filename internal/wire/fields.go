@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// The limits of the request fields, from src/agentcy/conversations/models.py.
+// The limits of the request fields, from the former Python core's conversations/models.py.
 const (
 	MaxLabelLength     = 64
 	MaxBodyLength      = 8192

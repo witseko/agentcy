@@ -3,7 +3,7 @@
 // Command bench measures one agentcy shim and daemon implementation.
 //
 // AGENTCY_CORE_CMD names the daemon command and AGENTCY_BIN the shim executable, so the
-// same driver measures the Python core today and the Go core later. The driver always
+// same driver measures any build of the core. The driver always
 // works in a fresh temporary AGENTCY_HOME and workspace, and it stops every process it
 // started before it exits. See bench/README.md for the meaning of each number.
 package main

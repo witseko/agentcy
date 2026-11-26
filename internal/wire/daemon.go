@@ -16,7 +16,7 @@ import (
 // CoreBinVariable selects another core executable, run as `<path> core`.
 const CoreBinVariable = "AGENTCY_CORE_BIN"
 
-// Start timing, from core_connection in src/agentcy/mcp/transport.py.
+// Start timing, from core_connection in the former Python core's mcp/transport.py.
 const (
 	startDeadline     = 8 * time.Second
 	startPollInterval = 50 * time.Millisecond
@@ -61,7 +61,7 @@ type Connector struct {
 }
 
 // Connect returns a connection to the running core, starting the core when no core
-// listens. Port of core_connection in src/agentcy/mcp/transport.py.
+// listens. Port of core_connection in the former Python core's mcp/transport.py.
 func (connector *Connector) Connect(ctx context.Context) (net.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
