@@ -122,34 +122,20 @@ func previousSubmission(ctx context.Context, tx *sql.Tx, author int64, key strin
 	return &previous, id, nil
 }
 
-// recentDuplicate finds the newest identical message of the author within the
-// deduplication window. A NULL field matches only NULL, as SQLAlchemy's filter_by does.
-func recentDuplicate(ctx context.Context, tx *sql.Tx, author int64, content postContent, now int64) (sql.NullInt64, error) {
-	query := "SELECT message.id \nFROM message \nWHERE message.author = ? AND message.created >= ? AND message.body = ?"
-	arguments := []any{author, now - contentDedupSeconds, content.body}
-	query, arguments = matchNullable(query, arguments, "message.kind", content.kind)
-	query, arguments = matchNullable(query, arguments, "message.recipient", content.recipient)
-	query, arguments = matchNullable(query, arguments, "message.reply_to", content.replyTo)
-	query, arguments = matchNullable(query, arguments, "message.due_minutes", content.dueMinutes)
-	query += " ORDER BY message.id DESC\n LIMIT ? OFFSET ?"
-	return firstInteger(ctx, tx, query, append(arguments, 1, 0)...)
-}
+const selectRecentDuplicate = `SELECT message.id
+FROM message
+WHERE message.author = ? AND message.created >= ? AND message.body = ?
+	AND message.kind IS ? AND message.recipient IS ? AND message.reply_to IS ? AND message.due_minutes IS ?
+ORDER BY message.id DESC
+LIMIT 1 OFFSET 0`
 
-// matchNullable adds "column = ?" for a value, or "column IS NULL" for NULL.
-func matchNullable(query string, arguments []any, column string, value any) (string, []any) {
-	switch typed := value.(type) {
-	case sql.NullString:
-		if !typed.Valid {
-			return query + " AND " + column + " IS NULL", arguments
-		}
-		return query + " AND " + column + " = ?", append(arguments, typed.String)
-	case sql.NullInt64:
-		if !typed.Valid {
-			return query + " AND " + column + " IS NULL", arguments
-		}
-		return query + " AND " + column + " = ?", append(arguments, typed.Int64)
-	}
-	return query, arguments
+// recentDuplicate finds the newest identical message of the author within the
+// deduplication window. SQLite's IS treats NULL as equal to NULL, matching SQLAlchemy's
+// filter_by semantics.
+func recentDuplicate(ctx context.Context, tx *sql.Tx, author int64, content postContent, now int64) (sql.NullInt64, error) {
+	return firstInteger(ctx, tx, selectRecentDuplicate,
+		author, now-contentDedupSeconds, content.body,
+		content.kind, content.recipient, content.replyTo, content.dueMinutes)
 }
 
 const insertFullMessage = `INSERT INTO message (room, author, body, created, kind, recipient, reply_to, due_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`

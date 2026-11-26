@@ -15,15 +15,19 @@
 # It never matches processes by name alone and never sends SIGKILL.
 set -eu
 
-data_dir="$1"
-lock="$data_dir/core.lock"
-# The longest wait for the core to exit. The Go core gives running requests 5 seconds.
-stop_timeout_seconds=15
-
 fail() {
     echo "$1" >&2
     exit 1
 }
+
+if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+    fail "Usage: stop-core.sh DATA_DIR"
+fi
+
+data_dir="$1"
+lock="$data_dir/core.lock"
+# The longest wait for the core to exit. The Go core gives running requests 5 seconds.
+stop_timeout_seconds=15
 
 if [ ! -e "$lock" ]; then
     echo "No agentcy core runs for $data_dir."
@@ -55,13 +59,24 @@ is_agentcy_core() {
 }
 
 for pid in $holders; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+        continue
+    fi
     is_agentcy_core "$pid" ||
         fail "Process $pid holds $lock but is not an agentcy core of this user. Nothing was stopped."
 done
 
 for pid in $holders; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+        continue
+    fi
     echo "Stopping the agentcy core (process $pid) for $data_dir"
-    kill -TERM "$pid"
+    if ! kill -TERM "$pid" 2>/dev/null; then
+        # Ignore ESRCH if the process exited between the check and kill.
+        if kill -0 "$pid" 2>/dev/null; then
+            fail "Could not send SIGTERM to agentcy core (process $pid)."
+        fi
+    fi
 done
 
 waited=0

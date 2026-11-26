@@ -6,6 +6,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // WorkspaceKeyLifetime is how long a cached workspace key stays valid (plan fix L7).
@@ -24,6 +26,7 @@ type WorkspaceKeyCache struct {
 
 	mutex   sync.Mutex
 	entries map[string]cachedWorkspaceKey
+	flight  singleflight.Group
 }
 
 // cachedWorkspaceKey is one remembered key with its expiry and the .git status it saw.
@@ -52,7 +55,7 @@ func NewWorkspaceKeyCache(environment []string, now func() time.Time) *Workspace
 	}
 	return &WorkspaceKeyCache{
 		now:     now,
-		compute: func(root string) (string, error) { return WorkspaceKey(root, environment) },
+		compute: func(root string) (string, error) { return workspaceKeyResolved(root, environment) },
 		entries: map[string]cachedWorkspaceKey{},
 	}
 }
@@ -72,16 +75,24 @@ func (cache *WorkspaceKeyCache) Key(directory string) (string, error) {
 	if found && now.Before(entry.expires) && entry.git == status {
 		return entry.key, nil
 	}
-	// Git runs outside the lock, so one slow checkout does not block the others.
-	key, err := cache.compute(root)
+	// Git runs outside the lock, deduplicated per root by singleflight so concurrent
+	// misses share one subprocess and one slow checkout does not block the others.
+	value, err, _ := cache.flight.Do(root, func() (any, error) {
+		key, err := cache.compute(root)
+		if err != nil {
+			return "", err
+		}
+		computedAt := cache.now()
+		cache.mutex.Lock()
+		defer cache.mutex.Unlock()
+		cache.dropExpired(computedAt)
+		cache.entries[root] = cachedWorkspaceKey{key: key, expires: computedAt.Add(WorkspaceKeyLifetime), git: status}
+		return key, nil
+	})
 	if err != nil {
 		return "", err
 	}
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
-	cache.dropExpired(now)
-	cache.entries[root] = cachedWorkspaceKey{key: key, expires: now.Add(WorkspaceKeyLifetime), git: status}
-	return key, nil
+	return value.(string), nil
 }
 
 // dropExpired removes expired entries, so the cache holds only recently used checkouts.

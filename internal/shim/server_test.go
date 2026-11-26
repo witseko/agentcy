@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -269,7 +270,7 @@ func TestModernCloseAsksThenClosesWithTheSealedState(t *testing.T) {
 	if rpcError == nil {
 		t.Error("a state sealed for other arguments was accepted")
 	}
-	if containsText(core.actions(), "close") {
+	if slices.Contains(core.actions(), "close") {
 		t.Fatal("the core closed before a valid confirmation")
 	}
 	closed, _ := client.call("tools/call", `{"name":"close_conversation","arguments":{"token":"t"},`+accept+`,"requestState":"`+state+`"}`)

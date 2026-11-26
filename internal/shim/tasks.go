@@ -89,7 +89,7 @@ func wireTask(taskID string, view wire.Value) (wire.Value, error) {
 	task.Set("ttlMs", wire.NullValue())
 	task.Set("pollIntervalMs", wire.IntValue(taskPollIntervalMs))
 	switch {
-	case containsText(progress.PendingStates, launchState):
+	case progress.IsPendingState(launchState):
 		task.Set("status", wire.TextValue("working"))
 		task.Set("statusMessage", wire.TextValue(fmt.Sprintf("The fresh run for %s is %s.", name, launchState)))
 	case launchState == "cancelled":

@@ -33,6 +33,12 @@ func WorkspaceKey(workspace string, environment []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return workspaceKeyResolved(root, environment)
+}
+
+// workspaceKeyResolved computes the storage key for a path already canonicalized by
+// RealPath(workspace, true).
+func workspaceKeyResolved(root string, environment []string) (string, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		return "", err

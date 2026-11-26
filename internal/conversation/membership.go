@@ -253,7 +253,10 @@ func setRole(ctx context.Context, tx *sql.Tx, actor *participant, name, requeste
 	if target.retired {
 		return wire.Value{}, rejectf("Participant is retired: %s", target.label)
 	}
-	newRole := assignableRoles[requestedRole]
+	newRole, ok := assignableRoles[requestedRole]
+	if !ok {
+		return wire.Value{}, reject("Invalid role")
+	}
 	var event string
 	switch newRole {
 	case roleLead:

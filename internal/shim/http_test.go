@@ -77,15 +77,15 @@ func TestHTTPGateAllowsOnlyLoopbackAndTheTunnelHost(t *testing.T) {
 		}
 	}
 	origins := map[string]int{
-		"https://bridge.example.com":     http.StatusTeapot,
-		"http://localhost:3000":          http.StatusTeapot,
-		"http://127.0.0.1:8765":          http.StatusTeapot,
-		"https://evil.example":           http.StatusForbidden,
-		"http://localhost:80@evil.com":   http.StatusForbidden,
-		"http://localhost:3000/extra":    http.StatusForbidden,
-		"http://localhost:3000?q=1":      http.StatusForbidden,
-		"http://localhost:evil":          http.StatusForbidden,
-		"https://localhost:3000":         http.StatusForbidden,
+		"https://bridge.example.com":   http.StatusTeapot,
+		"http://localhost:3000":        http.StatusTeapot,
+		"http://127.0.0.1:8765":        http.StatusTeapot,
+		"https://evil.example":         http.StatusForbidden,
+		"http://localhost:80@evil.com": http.StatusForbidden,
+		"http://localhost:3000/extra":  http.StatusForbidden,
+		"http://localhost:3000?q=1":    http.StatusForbidden,
+		"http://localhost:evil":        http.StatusForbidden,
+		"https://localhost:3000":       http.StatusForbidden,
 	}
 	for origin, want := range origins {
 		request := newPost("127.0.0.1:8765", authorization)

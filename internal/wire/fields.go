@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -300,7 +301,7 @@ func isHiddenCharacter(character rune) bool {
 
 // CheckLiteral accepts one of the allowed texts exactly.
 func CheckLiteral(value Value, allowed []string) (string, *FieldError) {
-	if value.Kind == String && containsText(allowed, value.Text) {
+	if value.Kind == String && slices.Contains(allowed, value.Text) {
 		return value.Text, nil
 	}
 	quoted := make([]string, len(allowed))
@@ -309,16 +310,6 @@ func CheckLiteral(value Value, allowed []string) (string, *FieldError) {
 	}
 	expected := strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
 	return "", problem("Input should be "+expected, "literal_error")
-}
-
-// containsText reports whether texts holds text.
-func containsText(texts []string, text string) bool {
-	for _, candidate := range texts {
-		if candidate == text {
-			return true
-		}
-	}
-	return false
 }
 
 // CheckModelName validates a model name such as "claude-opus-4".

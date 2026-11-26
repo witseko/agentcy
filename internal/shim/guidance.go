@@ -2,6 +2,7 @@ package shim
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/witseko/agentcy/internal/progress"
@@ -217,7 +218,7 @@ func leadTaskGuidance(wait waitContext, owners []progress.Member) string {
 		return summary + idleNote + " " + nextAfterMessages
 	}
 	working, hasBlockedTask := progress.TaskAvailability(owners)
-	if containsText(working, wait.me) {
+	if slices.Contains(working, wait.me) {
 		return summary + idleNote + " Continue your tasks. Reply to each task with kind='done' or 'blocker'."
 	}
 	otherWorking := progress.WorkingPeersWithoutTasks(members, owners, wait.me)
@@ -445,23 +446,9 @@ func ownsTask(owners []progress.Member, name string) bool {
 	return found
 }
 
-// containsText reports whether texts holds text.
-func containsText(texts []string, text string) bool {
-	for _, candidate := range texts {
-		if candidate == text {
-			return true
-		}
-	}
-	return false
-}
-
 // withoutText returns a copy of texts without text.
 func withoutText(texts []string, text string) []string {
-	var kept []string
-	for _, candidate := range texts {
-		if candidate != text {
-			kept = append(kept, candidate)
-		}
-	}
-	return kept
+	return slices.DeleteFunc(slices.Clone(texts), func(candidate string) bool {
+		return candidate == text
+	})
 }

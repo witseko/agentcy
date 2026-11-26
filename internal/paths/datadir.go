@@ -41,19 +41,15 @@ func DataDir(home string, homeSet bool) (string, error) {
 	return RealPath(path, true)
 }
 
-// checkPrivateDirectory rejects a symbolic link, a directory owned by another user, and
-// any group or other permission bit.
+// checkPrivateDirectory rejects a symbolic link, a non-directory, a directory owned by
+// another user, and any group or other permission bit using a single Lstat call.
 func checkPrivateDirectory(path string) error {
-	link, err := os.Lstat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
-	if link.Mode()&os.ModeSymlink != 0 {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return ErrDataDirUnsafe
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
 	}
 	status, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || int(status.Uid) != os.Getuid() || info.Mode().Perm()&0o077 != 0 {

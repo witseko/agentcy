@@ -14,6 +14,7 @@ It prints one line per store and exits with status 1 when a core runs or a store
 migrated.
 """
 
+import contextlib
 import fcntl
 import os
 import sqlite3
@@ -25,7 +26,7 @@ from agentcy.storage.database import SCHEMA_VERSION, data_dir, database, workspa
 
 def stored_version(path: Path) -> int:
     """Read a store's schema version without changing the file."""
-    with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as connection:
+    with contextlib.closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
         return connection.execute("PRAGMA user_version").fetchone()[0]
 
 
@@ -34,13 +35,18 @@ def migrate(root: Path) -> bool:
     succeeded = True
     for key in sorted(workspace_keys()):
         name = key + ".sqlite3"
-        before = stored_version(root / name)
+        try:
+            before = stored_version(root / name)
+        except (sqlite3.Error, OSError) as error:
+            print(f"Not migrated: {name}: {error}")
+            succeeded = False
+            continue
         if before == SCHEMA_VERSION:
             print(f"Already current: {name} (version {before})")
             continue
         try:
             database(key).dispose()
-        except ValueError as error:
+        except (ValueError, sqlite3.Error, OSError) as error:
             print(f"Not migrated: {name} (version {before}): {error}")
             succeeded = False
             continue

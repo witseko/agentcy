@@ -54,10 +54,17 @@ func (state *listenState) clearWaits() {
 	clear(state.silentWaits)
 }
 
+// maxTrackedListeners caps the in-memory guidance maps so a long-lived HTTP shim cannot
+// accumulate unbounded entries across many conversations.
+const maxTrackedListeners = 256
+
 // countWait adds one quiet wait for a listener and returns the new count.
 func (state *listenState) countWait(digest string) int {
 	state.mutex.Lock()
 	defer state.mutex.Unlock()
+	if _, exists := state.silentWaits[digest]; !exists && len(state.silentWaits) >= maxTrackedListeners {
+		clear(state.silentWaits)
+	}
 	state.silentWaits[digest]++
 	return state.silentWaits[digest]
 }
@@ -74,6 +81,9 @@ func (state *listenState) teamUnchanged(digest, fingerprint string, hasMessages 
 		if previous, found := state.lastTeams[digest]; found && previous == fingerprint {
 			return true
 		}
+	}
+	if _, exists := state.lastTeams[digest]; !exists && len(state.lastTeams) >= maxTrackedListeners {
+		clear(state.lastTeams)
 	}
 	state.lastTeams[digest] = fingerprint
 	return false
