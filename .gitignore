@@ -2,6 +2,7 @@
 __pycache__/
 .ruff_cache/
 /tui/agentcy-tui
+/bin/
 /dist/
 
 # Tutorial video takes and renders.

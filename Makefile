@@ -22,7 +22,7 @@ HTTP_PORT ?= 8765
 PUBLIC_HOST ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help setup deps tui release-files release register-claude register-codex ui http check-workspace
+.PHONY: help setup deps tui build release-files release register-claude register-codex ui http check-workspace
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -43,6 +43,10 @@ tui: ## Install the terminal UI into .venv/bin: built with Go, else downloaded f
 		echo "Go is missing. Downloading the terminal UI $(VERSION) for $(HOST_PLATFORM) from the GitHub release"; \
 		sh scripts/install-tui-release.sh "$(RELEASE_URL)" "$(HOST_PLATFORM)" "$(TUI_BINARY)"; \
 	fi
+
+build: ## Build the Go shim into bin/agentcy (setup and the registrations still use Python)
+	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/bin/agentcy" ./cmd/agentcy
 
 release-files: ## Build the terminal UI for every platform and SHA256SUMS into dist/
 	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }

@@ -1,0 +1,118 @@
+{
+  "tools": [
+    {
+      "description": "Join the assigned conversation and return the work brief and current roster.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object",
+        "title": "join_conversationArguments"
+      },
+      "name": "join_conversation"
+    },
+    {
+      "description": "Post a finding, blocker, or completion. Reply to the task ID to finish a task.\n\nWhen you can continue a blocked task, reply to its original ID with kind='resume'.\n",
+      "inputSchema": {
+        "properties": {
+          "submission_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Submission Id",
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "kind": {
+            "default": "note",
+            "enum": [
+              "note",
+              "question",
+              "finding",
+              "blocker",
+              "resume",
+              "done",
+              "task",
+              "handoff",
+              "accept",
+              "decline",
+              "proposal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "To"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reply To"
+          }
+        },
+        "required": [
+          "submission_id",
+          "body"
+        ],
+        "type": "object",
+        "title": "post_messageArguments"
+      },
+      "name": "post_message"
+    },
+    {
+      "description": "Read after the last cursor and optionally wait for activity or close guidance.",
+      "inputSchema": {
+        "properties": {
+          "after": {
+            "default": 0,
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "title": "After",
+            "type": "integer"
+          },
+          "wait_seconds": {
+            "default": 0,
+            "maximum": 45,
+            "minimum": 0,
+            "title": "Wait Seconds",
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "title": "read_messagesArguments"
+      },
+      "name": "read_messages"
+    },
+    {
+      "description": "See member activity, fresh-run launch states and open tasks in this conversation.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object",
+        "title": "conversation_statusArguments"
+      },
+      "name": "conversation_status"
+    }
+  ]
+}
