@@ -159,20 +159,20 @@ func taskResultFor(name string, result *mcp.CallToolResult) (wire.Value, bool, e
 func (shim *shimServer) addTaskMethods(server *mcp.Server) error {
 	return errors.Join(
 		mcp.AddReceivingCustomMethod(server, "tasks/get", func(ctx context.Context, session *mcp.ServerSession, params *TaskParams) (*orderedResult, error) {
-			return shim.taskMethod(session, params, "tasks/get")
+			return shim.taskMethod(ctx, session, params, "tasks/get")
 		}),
 		mcp.AddReceivingCustomMethod(server, "tasks/cancel", func(ctx context.Context, session *mcp.ServerSession, params *TaskParams) (*orderedResult, error) {
-			return shim.taskMethod(session, params, "tasks/cancel")
+			return shim.taskMethod(ctx, session, params, "tasks/cancel")
 		}),
 		mcp.AddReceivingCustomMethod(server, "tasks/update", func(ctx context.Context, session *mcp.ServerSession, params *TaskParams) (*orderedResult, error) {
-			return shim.taskMethod(session, params, "tasks/update")
+			return shim.taskMethod(ctx, session, params, "tasks/update")
 		}),
 	)
 }
 
 // taskMethod serves one tasks/* request. The methods exist only in the 2026-07-28 era,
 // and each request must declare the extension.
-func (shim *shimServer) taskMethod(session *mcp.ServerSession, params *TaskParams, method string) (*orderedResult, error) {
+func (shim *shimServer) taskMethod(ctx context.Context, session *mcp.ServerSession, params *TaskParams, method string) (*orderedResult, error) {
 	if params == nil {
 		params = &TaskParams{}
 	}
@@ -184,12 +184,12 @@ func (shim *shimServer) taskMethod(session *mcp.ServerSession, params *TaskParam
 		return nil, missingExtensionError(tasksExtension)
 	}
 	if method == "tasks/cancel" {
-		if _, err := shim.callTaskCore(&wire.McpTaskCancel{Workspace: shim.workspace, TaskID: params.TaskID}); err != nil {
+		if _, err := shim.callTaskCore(ctx, &wire.McpTaskCancel{Workspace: shim.workspace, TaskID: params.TaskID}); err != nil {
 			return nil, err
 		}
 		return shim.newResult(completeBody(wire.NewObject())), nil
 	}
-	view, err := shim.callTaskCore(&wire.McpTaskStatus{Workspace: shim.workspace, TaskID: params.TaskID})
+	view, err := shim.callTaskCore(ctx, &wire.McpTaskStatus{Workspace: shim.workspace, TaskID: params.TaskID})
 	if err != nil {
 		return nil, err
 	}
@@ -212,12 +212,12 @@ func completeBody(body wire.Value) wire.Value {
 // callTaskCore sends one MCP task request and translates its rejections: an ID that no
 // run could have, and the core's unknown-task answer, both become the one unknown-task
 // error.
-func (shim *shimServer) callTaskCore(request wire.Request) (wire.Value, error) {
+func (shim *shimServer) callTaskCore(ctx context.Context, request wire.Request) (wire.Value, error) {
 	unknown := &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: unknownMcpTask}
 	if request.Validate() != nil {
 		return wire.Value{}, unknown
 	}
-	view, err := shim.core.Exchange(request)
+	view, err := shim.core.Exchange(ctx, request)
 	var rejection *wire.CoreError
 	switch {
 	case err == nil:

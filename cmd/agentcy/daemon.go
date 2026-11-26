@@ -18,7 +18,7 @@ import (
 // directory. Log lines go to standard error, which the starting shim sends to core.log.
 func runCore(arguments []string) int {
 	if len(arguments) != 0 {
-		return fail(errorText("agentcy core takes no arguments"))
+		return fail(errors.New("agentcy core takes no arguments"))
 	}
 	home, homeSet := os.LookupEnv(paths.HomeVariable)
 	dataDir, err := paths.DataDir(home, homeSet)

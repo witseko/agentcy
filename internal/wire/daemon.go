@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -61,9 +62,13 @@ type Connector struct {
 
 // Connect returns a connection to the running core, starting the core when no core
 // listens. Port of core_connection in src/agentcy/mcp/transport.py.
-func (connector *Connector) Connect() (net.Conn, error) {
+func (connector *Connector) Connect(ctx context.Context) (net.Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var dialer net.Dialer
 	socketPath := filepath.Join(connector.DataDir, "core.sock")
-	connection, err := net.Dial("unix", socketPath)
+	connection, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err == nil || !isNotListening(err) {
 		return connection, err
 	}
@@ -75,15 +80,18 @@ func (connector *Connector) Connect() (net.Conn, error) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		return nil, err
 	}
-	connection, err = net.Dial("unix", socketPath)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	connection, err = dialer.DialContext(ctx, "unix", socketPath)
 	if err == nil || !isNotListening(err) {
 		return connection, err
 	}
-	return connector.startCore(socketPath)
+	return connector.startCore(ctx, socketPath)
 }
 
 // startCore spawns the core in its own session and waits up to 8 seconds for its socket.
-func (connector *Connector) startCore(socketPath string) (net.Conn, error) {
+func (connector *Connector) startCore(ctx context.Context, socketPath string) (net.Conn, error) {
 	arguments, err := connector.Command()
 	if err != nil {
 		return nil, err
@@ -107,21 +115,33 @@ func (connector *Connector) startCore(socketPath string) (net.Conn, error) {
 		_ = command.Wait()
 		close(exited)
 	}()
+	var dialer net.Dialer
 	deadline := time.Now().Add(startDeadline)
 	for time.Now().Before(deadline) {
 		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-exited:
 			return nil, fmt.Errorf("Bridge startup failed. See %s", logPath)
 		default:
 		}
-		connection, err := net.Dial("unix", socketPath)
+		connection, err := dialer.DialContext(ctx, "unix", socketPath)
 		if err == nil {
 			return connection, nil
 		}
 		if !isNotListening(err) {
 			return nil, err
 		}
-		time.Sleep(startPollInterval)
+		timer := time.NewTimer(startPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-exited:
+			timer.Stop()
+			return nil, fmt.Errorf("Bridge startup failed. See %s", logPath)
+		case <-timer.C:
+		}
 	}
 	return nil, fmt.Errorf("Bridge startup failed. See %s", logPath)
 }

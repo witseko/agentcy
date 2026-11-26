@@ -2,11 +2,14 @@ package shim
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,9 +25,10 @@ const (
 	loopbackHost         = "127.0.0.1"
 	unauthorizedBody     = "Unauthorized"
 	// maxRequestBody is the Python SDK's HTTP request body limit (4 MiB).
-	maxRequestBody    = 4 * 1024 * 1024
-	readHeaderTimeout = 10 * time.Second
-	mcpPath           = "/mcp"
+	maxRequestBody      = 4 * 1024 * 1024
+	readHeaderTimeout   = 10 * time.Second
+	httpShutdownTimeout = 5 * time.Second
+	mcpPath             = "/mcp"
 )
 
 // publicHostPattern accepts a host name without scheme, port or path.
@@ -98,7 +102,7 @@ type transportChecks struct {
 
 // ServeHTTP applies the checks in the order of the Python bridge.
 func (checks transportChecks) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if request.Method == http.MethodPost && !strings.HasPrefix(strings.ToLower(request.Header.Get("Content-Type")), "application/json") {
+	if request.Method == http.MethodPost && !isJSONContentType(request.Header.Get("Content-Type")) {
 		http.Error(writer, "Invalid Content-Type header", http.StatusBadRequest)
 		return
 	}
@@ -114,35 +118,66 @@ func (checks transportChecks) ServeHTTP(writer http.ResponseWriter, request *htt
 	checks.next.ServeHTTP(writer, request)
 }
 
-// authorized compares the bearer credential with the access token in constant time.
+// isJSONContentType reports whether header names the application/json media type.
+func isJSONContentType(header string) bool {
+	mediaType, _, err := mime.ParseMediaType(header)
+	return err == nil && mediaType == "application/json"
+}
+
+// authorized compares SHA-256 digests of the bearer credential and access token in
+// constant time so that token length is not leaked.
 func (checks bearerGate) authorized(header string) bool {
 	scheme, credential, _ := strings.Cut(header, " ")
 	if !strings.EqualFold(scheme, "bearer") {
 		return false
 	}
 	given := strings.Trim(credential, " \t\n\r\v\f")
-	return subtle.ConstantTimeCompare([]byte(given), []byte(checks.settings.AccessToken)) == 1
+	givenDigest := sha256.Sum256([]byte(given))
+	expectedDigest := sha256.Sum256([]byte(checks.settings.AccessToken))
+	return subtle.ConstantTimeCompare(givenDigest[:], expectedDigest[:]) == 1
 }
 
-// allowedHost accepts the loopback names with any port and the tunnel host with or
-// without a port, as the Python transport security settings do.
+// validPort reports a canonical decimal TCP port in 1..65535.
+func validPort(portText string) bool {
+	port, err := strconv.Atoi(portText)
+	return err == nil && port >= 1 && port <= 65535 && strconv.Itoa(port) == portText
+}
+
+// allowedHost accepts the loopback names with a valid port and the tunnel host with or
+// without a valid port, as the Python transport security settings do.
 func allowedHost(settings HTTPSettings, host string) bool {
 	if host == "" {
 		return false
 	}
-	if strings.HasPrefix(host, loopbackHost+":") || strings.HasPrefix(host, "localhost:") {
+	if settings.PublicHost != "" && host == settings.PublicHost {
 		return true
 	}
-	public := settings.PublicHost
-	return public != "" && (host == public || strings.HasPrefix(host, public+":"))
+	name, port, err := net.SplitHostPort(host)
+	if err != nil || !validPort(port) {
+		return false
+	}
+	return name == loopbackHost || name == "localhost" || (settings.PublicHost != "" && name == settings.PublicHost)
 }
 
-// allowedOrigin accepts http origins on the loopback names and the https tunnel origin.
+// allowedOrigin accepts http origins on the loopback names with a valid port and the
+// https tunnel origin.
 func allowedOrigin(settings HTTPSettings, origin string) bool {
-	if strings.HasPrefix(origin, "http://"+loopbackHost+":") || strings.HasPrefix(origin, "http://localhost:") {
+	if settings.PublicHost != "" && origin == "https://"+settings.PublicHost {
 		return true
 	}
-	return settings.PublicHost != "" && origin == "https://"+settings.PublicHost
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" || parsed.User != nil || parsed.Path != "" ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || parsed.ForceQuery {
+		return false
+	}
+	name, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil || !validPort(port) {
+		return false
+	}
+	return name == loopbackHost || name == "localhost"
 }
 
 // eraRouter sends 2026-07-28 requests to a stateless handler and older ones to a
@@ -176,11 +211,23 @@ func ServeHTTP(ctx context.Context, server *mcp.Server, settings HTTPSettings) e
 		return err
 	}
 	httpServer := &http.Server{Handler: NewHTTPHandler(server, settings), ReadHeaderTimeout: readHeaderTimeout}
+	serveDone := make(chan struct{})
+	shutdownDone := make(chan struct{})
 	go func() {
-		<-ctx.Done()
-		_ = httpServer.Close()
+		defer close(shutdownDone)
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+			defer cancel()
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				_ = httpServer.Close()
+			}
+		case <-serveDone:
+		}
 	}()
 	err = httpServer.Serve(listener)
+	close(serveDone)
+	<-shutdownDone
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

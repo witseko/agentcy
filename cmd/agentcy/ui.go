@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,9 +29,10 @@ func tuiExecutable() (string, error) {
 		}
 		return configured, nil
 	}
-	directory := filepath.Dir(ownExecutable())
-	if candidate := filepath.Join(directory, tuiProgram); isExecutableFile(candidate) {
-		return candidate, nil
+	if exe := ownExecutable(); exe != "" {
+		if candidate := filepath.Join(filepath.Dir(exe), tuiProgram); isExecutableFile(candidate) {
+			return candidate, nil
+		}
 	}
 	pathValue, pathSet := os.LookupEnv("PATH")
 	if found := paths.FindOnPath(tuiProgram, pathValue, pathSet); found != "" {
@@ -57,6 +59,10 @@ func runUI(arguments []string) int {
 		}
 		return exitUsage
 	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "agentcy ui: unrecognized arguments: %v\n", flags.Args())
+		return exitUsage
+	}
 	executable, err := tuiExecutable()
 	if err != nil {
 		return fail(err)
@@ -68,7 +74,7 @@ func runUI(arguments []string) int {
 	if info, err := os.Stat(directory); err != nil || !info.IsDir() {
 		return fail(fmt.Errorf("Workspace is not a directory: %s", directory))
 	}
-	connection, err := connectCore()
+	connection, err := connectCore(context.Background())
 	if err != nil {
 		return fail(fmt.Errorf("Cannot start the bridge core: %v", err))
 	}

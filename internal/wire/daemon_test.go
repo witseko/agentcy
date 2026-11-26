@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"net"
 	"os"
@@ -112,7 +113,7 @@ func TestSpawnUsesExplicitEnvironment(t *testing.T) {
 		Command:     func() ([]string, error) { return []string{testBinary, "-test.run=^$"}, nil },
 	}
 	client := &Client{Connect: connector.Connect}
-	result, err := client.Exchange(validRead())
+	result, err := client.Exchange(context.Background(), validRead())
 	if err != nil {
 		t.Fatalf("Exchange through a started core: %v", err)
 	}
@@ -139,7 +140,7 @@ func TestStartFailureNamesTheLog(t *testing.T) {
 		Environment: []string{},
 		Command:     func() ([]string, error) { return []string{"/usr/bin/false"}, nil },
 	}
-	_, err := connector.Connect()
+	_, err := connector.Connect(context.Background())
 	if err == nil || !strings.Contains(err.Error(), filepath.Join(home, "core.log")) {
 		t.Errorf("err = %v", err)
 	}

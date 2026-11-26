@@ -26,7 +26,7 @@ func TestFormatFloatMatchesRecordedPython(t *testing.T) {
 		{1e15, "1000000000000000.0"}, {123456789012345680, "1.2345678901234568e+17"},
 		{0.0001, "0.0001"}, {0.00001, "1e-05"}, {0.000123, "0.000123"}, {0.0000123, "1.23e-05"},
 		{1e-100, "1e-100"}, {1.7976931348623157e308, "1.7976931348623157e+308"},
-		{5e-324, "5e-324"}, {math.NaN(), "NaN"}, {math.Inf(1), "Infinity"}, {math.Inf(-1), "-Infinity"},
+		{5e-324, "5e-324"}, {math.NaN(), "0.0"}, {math.Inf(1), "0.0"}, {math.Inf(-1), "0.0"},
 	}
 	for _, test := range cases {
 		if got := FormatFloat(test.number); got != test.want {

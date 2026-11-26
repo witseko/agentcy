@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -54,17 +55,18 @@ func (rejection *CoreError) Error() string { return rejection.Message }
 // Client sends member requests to the core over its Unix socket.
 type Client struct {
 	// Connect opens a connection to the core, starting it when needed.
-	Connect func() (net.Conn, error)
+	Connect func(ctx context.Context) (net.Conn, error)
 }
 
 // Exchange sends one request and returns the core's result. An idempotent request is
-// sent once more after a broken pipe, a reset, or an incomplete response.
+// sent once more after a broken pipe, a reset, or an incomplete response, unless ctx has
+// already ended.
 //
 // Port of exchange in src/agentcy/mcp/transport.py.
-func (client *Client) Exchange(request Request) (Value, error) {
-	result, err := client.exchangeOnce(request)
-	if err != nil && isTransientDisconnect(err) && idempotentActions[request.Action()] {
-		return client.exchangeOnce(request)
+func (client *Client) Exchange(ctx context.Context, request Request) (Value, error) {
+	result, err := client.exchangeOnce(ctx, request)
+	if err != nil && ctx.Err() == nil && isTransientDisconnect(err) && idempotentActions[request.Action()] {
+		return client.exchangeOnce(ctx, request)
 	}
 	return result, err
 }
@@ -75,20 +77,33 @@ func isTransientDisconnect(err error) bool {
 }
 
 // exchangeOnce writes one JSON line and reads one bounded JSON line back.
-func (client *Client) exchangeOnce(request Request) (Value, error) {
-	connection, err := client.Connect()
+func (client *Client) exchangeOnce(ctx context.Context, request Request) (Value, error) {
+	if err := ctx.Err(); err != nil {
+		return Value{}, err
+	}
+	connection, err := client.Connect(ctx)
 	if err != nil {
 		return Value{}, err
 	}
 	defer connection.Close()
+	stopCancel := context.AfterFunc(ctx, func() {
+		_ = connection.Close()
+	})
+	defer stopCancel()
 	if err := connection.SetDeadline(time.Now().Add(exchangeTimeout)); err != nil {
 		return Value{}, err
 	}
 	if _, err := io.WriteString(connection, request.Encode().Compact()+"\n"); err != nil {
+		if ctx.Err() != nil {
+			return Value{}, ctx.Err()
+		}
 		return Value{}, err
 	}
 	line, err := readBoundedLine(bufio.NewReader(connection), MaxResponseBytes)
 	if err != nil {
+		if ctx.Err() != nil {
+			return Value{}, ctx.Err()
+		}
 		return Value{}, err
 	}
 	return decodeResponse(line)

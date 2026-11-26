@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"net"
 	"strings"
@@ -17,7 +18,7 @@ type fakeCore struct {
 }
 
 // connect returns one end of an in-memory connection and serves the other end.
-func (core *fakeCore) connect() (net.Conn, error) {
+func (core *fakeCore) connect(context.Context) (net.Conn, error) {
 	client, server := net.Pipe()
 	response := ""
 	if len(core.responses) > 0 {
@@ -44,7 +45,7 @@ func validRead() *Read {
 func TestExchangeRetriesOnceForIdempotentActions(t *testing.T) {
 	core := &fakeCore{responses: []string{"", `{"result": {"ok": true}}` + "\n"}}
 	client := &Client{Connect: core.connect}
-	result, err := client.Exchange(validRead())
+	result, err := client.Exchange(context.Background(), validRead())
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -57,7 +58,7 @@ func TestExchangeNeverRetriesCreate(t *testing.T) {
 	core := &fakeCore{responses: []string{"", `{"result": {}}` + "\n"}}
 	client := &Client{Connect: core.connect}
 	create := &Create{Workspace: strings.Repeat("a", 64), Brief: "Test", Initiator: "Lead", Invitees: []Slot{{Name: "Worker"}}}
-	if _, err := client.Exchange(create); !errors.Is(err, ErrIncompleteResponse) {
+	if _, err := client.Exchange(context.Background(), create); !errors.Is(err, ErrIncompleteResponse) {
 		t.Errorf("err = %v, want ErrIncompleteResponse", err)
 	}
 	if len(core.requests) != 1 {
@@ -80,7 +81,7 @@ func TestCoreRejectingAValidRequestReportsAVersionMismatch(t *testing.T) {
 	core := &fakeCore{responses: []string{`{"error": "Invalid bridge arguments"}` + "\n"}}
 	client := &Client{Connect: core.connect}
 	join := &Join{Workspace: strings.Repeat("a", 64), Code: "abcdefghijklmnopqrstuv.0123456789ab"}
-	_, err := client.Exchange(join)
+	_, err := client.Exchange(context.Background(), join)
 	var rejection *CoreError
 	if !errors.As(err, &rejection) {
 		t.Fatalf("err = %v, want a CoreError", err)
@@ -96,7 +97,7 @@ func TestCoreRejectingAValidRequestReportsAVersionMismatch(t *testing.T) {
 func TestCoreErrorPassesThrough(t *testing.T) {
 	core := &fakeCore{responses: []string{`{"error": "Conversation is closed"}` + "\n"}}
 	client := &Client{Connect: core.connect}
-	if _, err := client.Exchange(validRead()); err == nil || err.Error() != "Conversation is closed" {
+	if _, err := client.Exchange(context.Background(), validRead()); err == nil || err.Error() != "Conversation is closed" {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -105,7 +106,7 @@ func TestRequestLineIsOneCompactJSONLine(t *testing.T) {
 	core := &fakeCore{responses: []string{`{"result": {}}` + "\n"}}
 	client := &Client{Connect: core.connect}
 	post := &Post{Workspace: strings.Repeat("a", 64), Token: "t", SubmissionID: "s", Body: "é <b> &  ", Kind: "note"}
-	if _, err := client.Exchange(post); err != nil {
+	if _, err := client.Exchange(context.Background(), post); err != nil {
 		t.Fatal(err)
 	}
 	want := `{"submission_id":"s","body":"é <b> & ` + " " + `","kind":"note","to":null,"reply_to":null,"due_minutes":null,"workspace":"` + strings.Repeat("a", 64) + `","token":"t","action":"post"}` + "\n"

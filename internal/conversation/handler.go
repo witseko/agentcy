@@ -86,16 +86,21 @@ func (handler *Handler) writeResult(ctx context.Context, workspace string, work 
 		return wire.Value{}, err
 	}
 	ctx, rooms := withRoomCache(ctx, handler.rooms, workspaceStore.Path())
+	ctx, syncs := withLedgerSync(ctx)
 	var result wire.Value
 	err = workspaceStore.Write(ctx, func(tx *sql.Tx) error {
 		var workErr error
 		result, workErr = work(ctx, tx)
 		return workErr
 	})
-	if err == nil {
-		rooms.publish()
+	if err != nil {
+		return wire.Value{}, err
 	}
-	return result, err
+	rooms.publish()
+	if err := syncs.flush(ctx, handler.book); err != nil {
+		return wire.Value{}, err
+	}
+	return result, nil
 }
 
 // readResult runs work in a read transaction of a workspace store that exists.
@@ -121,7 +126,7 @@ func (handler *Handler) readResult(ctx context.Context, workspace string, work f
 // round deadline (the first transaction of wait_for_read).
 func (handler *Handler) OpenWait(ctx context.Context, request *wire.Read, now time.Time) (core.WaitStart, error) {
 	var member *participant
-	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+	_, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		var authErr error
 		member, authErr = authenticate(ctx, tx, request.Token)
 		return wire.Value{}, authErr
@@ -210,7 +215,7 @@ func (handler *Handler) HasActiveWork(ctx context.Context, now time.Time) (bool,
 	}
 	for _, key := range keys {
 		active := false
-		_, err := handler.writeResult(ctx, key, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		_, err := handler.readResult(ctx, key, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			pending, err := hasPendingAssignment(ctx, tx)
 			if err != nil || pending {
 				active = pending

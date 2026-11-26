@@ -372,16 +372,16 @@ func TestRoomCacheDropsTheLeastRecentlyUsedRoom(t *testing.T) {
 	cache := newRoomCache()
 	snapshot := &roomSnapshot{board: newTaskBoard(recoverySets{})}
 	for index := range roomCacheLimit + 5 {
-		cache.store(roomCacheKey{store: "store", room: fmt.Sprint(index)}, snapshot, recoverySets{})
+		cache.store(roomCacheKey{store: "store", room: fmt.Sprint(index)}, snapshot, recoverySets{}, 0)
 		cache.lookup(roomCacheKey{store: "store", room: "0"})
 	}
 	if cache.size() != roomCacheLimit {
 		t.Errorf("size = %d, want %d", cache.size(), roomCacheLimit)
 	}
-	if cache.lookup(roomCacheKey{store: "store", room: "0"}) == nil {
+	if entry, _ := cache.lookup(roomCacheKey{store: "store", room: "0"}); entry == nil {
 		t.Error("the recently used room was dropped")
 	}
-	if cache.lookup(roomCacheKey{store: "store", room: "1"}) != nil {
+	if entry, _ := cache.lookup(roomCacheKey{store: "store", room: "1"}); entry != nil {
 		t.Error("the least recently used room was kept")
 	}
 }

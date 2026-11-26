@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,14 +19,14 @@ func coreClient() *wire.Client {
 
 // connectCore connects to the core of the configured data directory, starting it when
 // none listens.
-func connectCore() (net.Conn, error) {
+func connectCore(ctx context.Context) (net.Conn, error) {
 	home, homeSet := os.LookupEnv(paths.HomeVariable)
 	dataDir, err := paths.DataDir(home, homeSet)
 	if err != nil {
 		return nil, err
 	}
 	connector := &wire.Connector{DataDir: dataDir, Environment: os.Environ(), Command: coreCommand}
-	return connector.Connect()
+	return connector.Connect(ctx)
 }
 
 // coreCommand returns the daemon command: AGENTCY_CORE_BIN when set, else this program

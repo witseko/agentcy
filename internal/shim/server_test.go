@@ -28,7 +28,7 @@ type fakeCore struct {
 }
 
 // Exchange returns the canned answer of the request's action.
-func (core *fakeCore) Exchange(request wire.Request) (wire.Value, error) {
+func (core *fakeCore) Exchange(_ context.Context, request wire.Request) (wire.Value, error) {
 	core.mutex.Lock()
 	defer core.mutex.Unlock()
 	core.requests = append(core.requests, request)

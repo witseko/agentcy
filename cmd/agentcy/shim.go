@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/witseko/agentcy/internal/paths"
@@ -60,8 +61,8 @@ func parseShimOptions(arguments []string, output io.Writer) (shimOptions, error)
 
 // parsePort reads a decimal port number.
 func parsePort(value string) (int, error) {
-	var port int
-	if _, err := fmt.Sscanf(value, "%d", &port); err != nil || fmt.Sprint(port) != value {
+	port, err := strconv.Atoi(value)
+	if err != nil || strconv.Itoa(port) != value {
 		return 0, fmt.Errorf("invalid int value: %q", value)
 	}
 	return port, nil

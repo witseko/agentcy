@@ -121,7 +121,7 @@ func BuildMemberUsage(raw SlotUsage, settings *Settings, ledgerSpend map[string]
 		ActualTokens:       raw.ActualTokens,
 		Model:              model,
 	}
-	if initial != nil {
+	if initial != nil && *initial > 0 {
 		usage.Budget = budgetUsage(*initial, modelUsed, settings, model)
 	}
 	return usage
@@ -129,6 +129,9 @@ func BuildMemberUsage(raw SlotUsage, settings *Settings, ledgerSpend map[string]
 
 // budgetUsage computes the percentages of a member with an initial budget.
 func budgetUsage(initial, modelUsed int64, settings *Settings, model string) *BudgetUsage {
+	if initial <= 0 {
+		return nil
+	}
 	usedPercent := roundOneDecimal(100.0 * float64(modelUsed) / float64(initial))
 	warnPercent := int64(DefaultWarnPercent)
 	if settings != nil {
@@ -292,7 +295,7 @@ func EvaluateBalance(members []BalanceMember, settings *Settings) *Balance {
 	}
 	overloaded := overloadedMembers(ranked, lowestUsed, threshold)
 	preferred := preferredMembers(alternatives, highestUsed)
-	if len(preferred) == 0 {
+	if len(overloaded) == 0 || len(preferred) == 0 {
 		return &Balance{Balanced: true, ImbalanceGapPercent: gap}
 	}
 	return &Balance{
@@ -325,7 +328,8 @@ func lessLoadedPeers(ranked []rankedMember, highest rankedMember) []rankedMember
 func overloadedMembers(ranked []rankedMember, lowestUsed, threshold float64) []rankedMember {
 	var overloaded []rankedMember
 	for _, member := range ranked {
-		if underPressure(member.usage) || member.usage.Budget.UsedPercent-lowestUsed >= threshold {
+		memberGap := roundOneDecimal(maxZero(member.usage.Budget.UsedPercent - lowestUsed))
+		if underPressure(member.usage) || memberGap >= threshold {
 			overloaded = append(overloaded, member)
 		}
 	}

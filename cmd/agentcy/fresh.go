@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,13 +16,13 @@ import (
 // Port of the __main__ block of src/agentcy/mcp/fresh_server.py.
 func runFreshWorker(arguments []string) int {
 	if len(arguments) != 1 {
-		return fail(errorText("Worker requires its configured workspace"))
+		return fail(errors.New("Worker requires its configured workspace"))
 	}
 	code, found := os.LookupEnv(shim.FreshJoinCodeVariable)
 	// The code leaves the environment before Git or the core can inherit it.
 	os.Unsetenv(shim.FreshJoinCodeVariable)
 	if !found {
-		return fail(errorText("Worker requires a private join credential"))
+		return fail(errors.New("Worker requires a private join credential"))
 	}
 	key, err := paths.WorkspaceKey(arguments[0], os.Environ())
 	if err != nil {
@@ -38,9 +39,3 @@ func runFreshWorker(arguments []string) int {
 	}
 	return 0
 }
-
-// errorText is an error with a fixed message.
-type errorText string
-
-// Error returns the message.
-func (text errorText) Error() string { return string(text) }

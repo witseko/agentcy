@@ -20,12 +20,53 @@ type usageBook struct {
 	logger   *log.Logger
 }
 
+// pendingLedgerSync is a slot snapshot waiting for its workspace transaction to commit
+// before being copied into the user-level token ledger.
+type pendingLedgerSync struct {
+	workspace string
+	snapshot  *tokens.SlotSnapshot
+}
+
+// ledgerSyncBuffer collects ledger syncs during a workspace write transaction and flushes
+// them only after the transaction commits. It is used by one goroutine.
+type ledgerSyncBuffer struct {
+	pending []pendingLedgerSync
+}
+
+type ledgerSyncKey struct{}
+
+// withLedgerSync attaches a post-commit ledger sync buffer to ctx.
+func withLedgerSync(ctx context.Context) (context.Context, *ledgerSyncBuffer) {
+	buffer := &ledgerSyncBuffer{}
+	return context.WithValue(ctx, ledgerSyncKey{}, buffer), buffer
+}
+
+// flush writes all buffered snapshots into the token ledger after commit.
+func (buffer *ledgerSyncBuffer) flush(ctx context.Context, book *usageBook) error {
+	for _, entry := range buffer.pending {
+		if err := book.syncNow(ctx, entry.workspace, entry.snapshot); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // sync copies a slot snapshot into the ledger when the slot is bound to a model,
-// creating the ledger on first use (sync_ledger in Python).
+// creating the ledger on first use (sync_ledger in Python). Inside a workspace write
+// transaction carrying a ledgerSyncBuffer, the write is deferred until after commit.
 func (book *usageBook) sync(ctx context.Context, workspace string, snapshot *tokens.SlotSnapshot) error {
 	if snapshot == nil || snapshot.Model == nil || *snapshot.Model == "" {
 		return nil
 	}
+	if buffer, ok := ctx.Value(ledgerSyncKey{}).(*ledgerSyncBuffer); ok && buffer != nil {
+		buffer.pending = append(buffer.pending, pendingLedgerSync{workspace: workspace, snapshot: snapshot})
+		return nil
+	}
+	return book.syncNow(ctx, workspace, snapshot)
+}
+
+// syncNow writes one slot snapshot directly to the user-level token ledger.
+func (book *usageBook) syncNow(ctx context.Context, workspace string, snapshot *tokens.SlotSnapshot) error {
 	ledger, err := store.OpenLedger(ctx, book.dataDir)
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -37,7 +38,7 @@ var oldCoreRejection = &wire.CoreError{Message: wire.InvalidArguments + ". The r
 // waitOnce runs one waiting read through readMember and fails the test on an error.
 func waitOnce(t *testing.T, core *fakeCore, state *listenState) wire.Value {
 	t.Helper()
-	page, err := readMember(core, state, testWorkspace, listenToken, 4, 30)
+	page, err := readMember(context.Background(), core, state, testWorkspace, listenToken, 4, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +87,7 @@ func TestListenFailureOtherThanAnOldCoreIsReturned(t *testing.T) {
 	failure := &wire.CoreError{Message: "Invalid participant token"}
 	core := newCore(failure)
 	state := newListenState(true)
-	if _, err := readMember(core, state, testWorkspace, listenToken, 4, 30); !errors.Is(err, failure) {
+	if _, err := readMember(context.Background(), core, state, testWorkspace, listenToken, 4, 30); !errors.Is(err, failure) {
 		t.Errorf("err = %v, want the core's rejection", err)
 	}
 	if state.usesOldCore() {
@@ -97,7 +98,7 @@ func TestListenFailureOtherThanAnOldCoreIsReturned(t *testing.T) {
 // A read without a wait stays a plain read.
 func TestReadWithoutWaitIsAPlainRead(t *testing.T) {
 	core := newCore(nil)
-	if _, err := readMember(core, newListenState(true), testWorkspace, listenToken, 4, 0); err != nil {
+	if _, err := readMember(context.Background(), core, newListenState(true), testWorkspace, listenToken, 4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := core.actions(); !slices.Equal(got, []string{"read"}) {

@@ -12,8 +12,8 @@ func connectionString(path string, immediate bool) string {
 	query := url.Values{}
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "foreign_keys(1)")
-	query.Add("_pragma", "journal_mode(WAL)")
 	if immediate {
+		query.Add("_pragma", "journal_mode(WAL)")
 		query.Set("_txlock", "immediate")
 	}
 	location := url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}

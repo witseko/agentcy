@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,7 +14,7 @@ import (
 
 // Exchanger sends one member request to the core and returns its result.
 type Exchanger interface {
-	Exchange(request wire.Request) (wire.Value, error)
+	Exchange(ctx context.Context, request wire.Request) (wire.Value, error)
 }
 
 // listenState is the small in-memory state of one shim process that drives guidance:
@@ -88,10 +89,10 @@ func tokenDigest(token string) string {
 // for guidance. Port of read_member in src/agentcy/mcp/server.py. A waiting read is one
 // listen exchange that returns the page and the status (port plan fix L2); against a
 // core without listen it costs two or three exchanges, as in the Python shim.
-func readMember(core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, error) {
+func readMember(ctx context.Context, core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, error) {
 	digest := tokenDigest(token)
 	if waitSeconds == 0 {
-		page, err := exchangeValid(core, &wire.Read{Workspace: workspace, Token: token, After: after})
+		page, err := exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after})
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -101,13 +102,13 @@ func readMember(core Exchanger, state *listenState, workspace, token string, aft
 		}
 		return page, nil
 	}
-	page, statusValue, err := waitForPageAndStatus(core, state, workspace, token, after, waitSeconds)
+	page, statusValue, err := waitForPageAndStatus(ctx, core, state, workspace, token, after, waitSeconds)
 	if err != nil {
 		return wire.Value{}, err
 	}
 	status := progress.StatusFromValue(statusValue)
 	if needsFreshPage(page, status) {
-		page, err = exchangeValid(core, &wire.Read{Workspace: workspace, Token: token, After: after})
+		page, err = exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after})
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -124,9 +125,9 @@ func readMember(core Exchanger, state *listenState, workspace, token string, aft
 
 // waitForPageAndStatus runs a waiting read and returns its page and the caller's status:
 // with one listen exchange, or with a read and a status when the core predates listen.
-func waitForPageAndStatus(core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, wire.Value, error) {
+func waitForPageAndStatus(ctx context.Context, core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, wire.Value, error) {
 	if !state.usesOldCore() {
-		result, err := exchangeValid(core, &wire.Listen{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+		result, err := exchangeValid(ctx, core, &wire.Listen{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
 		if err == nil {
 			page, _ := result.Get("page")
 			status, _ := result.Get("status")
@@ -137,11 +138,11 @@ func waitForPageAndStatus(core Exchanger, state *listenState, workspace, token s
 		}
 		state.markOldCore()
 	}
-	page, err := exchangeValid(core, &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+	page, err := exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
 	if err != nil {
 		return wire.Value{}, wire.Value{}, err
 	}
-	status, err := exchangeValid(core, &wire.Status{Workspace: workspace, Token: token})
+	status, err := exchangeValid(ctx, core, &wire.Status{Workspace: workspace, Token: token})
 	return page, status, err
 }
 
@@ -357,9 +358,9 @@ func attachWorkerFields(page wire.Value, status progress.Status, me string, unre
 
 // exchangeValid validates a request built by the shim, then sends it. A validation
 // failure has the text pydantic gives when the Python shim builds the model.
-func exchangeValid(core Exchanger, request wire.Request) (wire.Value, error) {
+func exchangeValid(ctx context.Context, core Exchanger, request wire.Request) (wire.Value, error) {
 	if err := request.Validate(); err != nil {
 		return wire.Value{}, err
 	}
-	return core.Exchange(request)
+	return core.Exchange(ctx, request)
 }

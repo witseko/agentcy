@@ -87,6 +87,8 @@ func openDatabase(ctx context.Context, path string, version int, schema string, 
 	if err != nil {
 		return nil, errors.Join(err, write.Close())
 	}
+	read.SetMaxOpenConns(8)
+	read.SetMaxIdleConns(4)
 	store := &Store{path: path, write: write, read: read}
 	if err := store.initialise(ctx, version, schema, unsupported); err != nil {
 		return nil, errors.Join(err, store.close())
@@ -122,9 +124,23 @@ func (store *Store) initialise(ctx context.Context, version int, schema string, 
 	return err
 }
 
+// sqliteCoder matches driver errors exposing a SQLite result code (modernc.org/sqlite).
+type sqliteCoder interface {
+	Code() int
+}
+
+const sqliteBusyCode = 5
+
 // isBusy recognizes the error of a database locked by another connection.
 func isBusy(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "SQLITE_BUSY")
+	if err == nil {
+		return false
+	}
+	var coder sqliteCoder
+	if errors.As(err, &coder) && (coder.Code()&0xff) == sqliteBusyCode {
+		return true
+	}
+	return strings.Contains(err.Error(), "SQLITE_BUSY")
 }
 
 // createPrivateFile creates an empty database file readable only by the user, unless it

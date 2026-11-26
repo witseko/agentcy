@@ -57,7 +57,7 @@ func transcript(ctx context.Context, tx *sql.Tx, room string, page transcriptPag
 	if backward {
 		slices.Reverse(messages)
 	}
-	state, err := roomState(ctx, tx, room)
+	totalMessages, err := firstInteger(ctx, tx, selectRoomMessageCount, room)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func transcript(ctx context.Context, tx *sql.Tx, room string, page transcriptPag
 	result.Set("messages", wire.ListValue(values))
 	result.Set("more", wire.BoolValue(more))
 	result.Set("cursor", wire.IntValue(cursor))
-	result.Set("total_messages", wire.IntValue(state.messages))
+	result.Set("total_messages", wire.IntValue(totalMessages.Int64))
 	return nil
 }
 

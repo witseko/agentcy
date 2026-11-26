@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"context"
 	"errors"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,6 +15,7 @@ type toolFunction func(call toolCall) (wire.Value, error)
 
 // toolCall is one tools/call request as a tool function sees it.
 type toolCall struct {
+	ctx       context.Context
 	request   *mcp.CallToolRequest
 	arguments *argumentReader
 	// raw is the arguments object as sent, for binding a requestState to the call.
@@ -52,7 +54,7 @@ func (shim *shimServer) send(call toolCall, tool string, request wire.Request) (
 	if err := call.arguments.err(tool); err != nil {
 		return wire.Value{}, err
 	}
-	return exchangeValid(shim.core, request)
+	return exchangeValid(call.ctx, shim.core, request)
 }
 
 func (shim *shimServer) createConversation(call toolCall) (wire.Value, error) {
@@ -158,7 +160,7 @@ func (shim *shimServer) readMessages(call toolCall) (wire.Value, error) {
 	if err := arguments.err("read_messages"); err != nil {
 		return wire.Value{}, err
 	}
-	return readMember(shim.core, shim.state, shim.workspace, token, after, waitSeconds)
+	return readMember(call.ctx, shim.core, shim.state, shim.workspace, token, after, waitSeconds)
 }
 
 func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
@@ -175,7 +177,7 @@ func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
 	}
 	request.Directory = shim.directory
 	request.McpTask = wantsMcpTask(call.request)
-	return exchangeValid(shim.core, request)
+	return exchangeValid(call.ctx, shim.core, request)
 }
 
 // conversationStatus returns the status without the caller's own name.
@@ -206,7 +208,7 @@ func (shim *shimServer) closeConversation(call toolCall) (wire.Value, error) {
 	if err := shim.confirmClose(call.request, call.raw); err != nil {
 		return wire.Value{}, err
 	}
-	return exchangeValid(shim.core, request)
+	return exchangeValid(call.ctx, shim.core, request)
 }
 
 func (shim *shimServer) reopenConversation(call toolCall) (wire.Value, error) {

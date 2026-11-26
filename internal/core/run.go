@@ -86,27 +86,25 @@ func (server *server) run(ctx context.Context) error {
 	}
 	defer removeSocket(socketPath)
 	server.settings.logger.Printf("serving")
-	stopBackground := server.startBackground(ctx)
-	defer stopBackground()
-	return server.serve(ctx, listener)
+	cancelBackground, backgroundDone := server.startBackground(ctx)
+	defer cancelBackground()
+	return server.serve(ctx, listener, socketPath, cancelBackground, backgroundDone)
 }
 
-// startBackground runs Options.Background, if any, and returns the function that ends
-// it and waits for it to return.
-func (server *server) startBackground(ctx context.Context) func() {
-	if server.settings.background == nil {
-		return func() {}
-	}
-	backgroundCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+// startBackground runs Options.Background, if any, and returns a cancel function and a
+// channel that closes when the background function returns.
+func (server *server) startBackground(ctx context.Context) (context.CancelFunc, <-chan struct{}) {
 	finished := make(chan struct{})
+	if server.settings.background == nil {
+		close(finished)
+		return func() {}, finished
+	}
+	backgroundCtx, cancel := context.WithCancel(ctx)
 	go func() {
 		defer close(finished)
 		server.settings.background(backgroundCtx, server.hub.notify)
 	}()
-	return func() {
-		cancel()
-		<-finished
-	}
+	return cancel, finished
 }
 
 // listenPrivate replaces a socket left by an earlier daemon and listens with mode 0600.
@@ -132,7 +130,7 @@ func removeSocket(socketPath string) {
 
 // serve accepts connections until a stop, then shuts down. Port of the handle_request
 // loop in core.py: the idle check runs after IdleInterval without a new connection.
-func (server *server) serve(ctx context.Context, listener *net.UnixListener) error {
+func (server *server) serve(ctx context.Context, listener *net.UnixListener, socketPath string, cancelBackground context.CancelFunc, backgroundDone <-chan struct{}) error {
 	// Requests keep running after a stop until the grace period ends.
 	requestCtx, cancelRequests := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelRequests()
@@ -142,10 +140,12 @@ func (server *server) serve(ctx context.Context, listener *net.UnixListener) err
 	go func() { acceptDone <- server.acceptLoop(requestCtx, listener, &inFlight, activity) }()
 	result, acceptStopped := server.waitForStop(ctx, requestCtx, activity, acceptDone)
 	listener.Close()
+	removeSocket(socketPath)
+	cancelBackground()
 	if !acceptStopped {
 		<-acceptDone
 	}
-	server.drain(&inFlight, cancelRequests)
+	server.drain(&inFlight, cancelRequests, backgroundDone)
 	server.settings.logger.Printf("stopped")
 	return result
 }
@@ -188,7 +188,16 @@ func (server *server) acceptLoop(ctx context.Context, listener *net.UnixListener
 		}
 		if err != nil {
 			// socketserver ignores a failed accept and waits for the next connection.
-			time.Sleep(acceptRetryDelay)
+			timer := time.NewTimer(acceptRetryDelay)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-server.draining:
+				timer.Stop()
+				return nil
+			}
 			continue
 		}
 		select {
@@ -203,10 +212,11 @@ func (server *server) acceptLoop(ctx context.Context, listener *net.UnixListener
 	}
 }
 
-// drain ends waiting reads, waits up to the grace period for the other requests, and then
-// cancels them. Reads and writes on a connection have their own 5 s deadlines, so the
-// final wait is bounded once the Handler honours its context.
-func (server *server) drain(inFlight *sync.WaitGroup, cancelRequests context.CancelFunc) {
+// drain ends waiting reads, waits up to the grace period for the other requests and the
+// background worker, and then cancels remaining requests. Reads and writes on a
+// connection have their own 5 s deadlines, so the final wait is bounded once the Handler
+// honours its context.
+func (server *server) drain(inFlight *sync.WaitGroup, cancelRequests context.CancelFunc, backgroundDone <-chan struct{}) {
 	close(server.draining)
 	finished := make(chan struct{})
 	go func() {
@@ -215,10 +225,28 @@ func (server *server) drain(inFlight *sync.WaitGroup, cancelRequests context.Can
 	}()
 	grace := time.NewTimer(server.settings.shutdownGrace)
 	defer grace.Stop()
-	select {
-	case <-finished:
-	case <-grace.C:
-		cancelRequests()
-		<-finished
+	requestsDone := false
+	bgDone := false
+	for !requestsDone || !bgDone {
+		var finishedCh <-chan struct{}
+		if !requestsDone {
+			finishedCh = finished
+		}
+		var bgCh <-chan struct{}
+		if !bgDone {
+			bgCh = backgroundDone
+		}
+		select {
+		case <-finishedCh:
+			requestsDone = true
+		case <-bgCh:
+			bgDone = true
+		case <-grace.C:
+			cancelRequests()
+			if !requestsDone {
+				<-finished
+			}
+			return
+		}
 	}
 }

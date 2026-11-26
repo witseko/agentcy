@@ -51,9 +51,9 @@ func (handler *Handler) member(ctx context.Context, request wire.Request, unix i
 	case *wire.Launch:
 		return handler.launch(ctx, typed, unix)
 	case *wire.McpTaskStatus:
-		return handler.mcpTask(ctx, typed.Workspace, typed.TaskID, mcpTaskStatus)
+		return handler.mcpTask(ctx, typed.Workspace, typed.TaskID, true, mcpTaskStatus)
 	case *wire.McpTaskCancel:
-		outcome, err := handler.mcpTask(ctx, typed.Workspace, typed.TaskID, cancelMcpTask)
+		outcome, err := handler.mcpTask(ctx, typed.Workspace, typed.TaskID, false, cancelMcpTask)
 		if err == nil {
 			handler.wakeFreshRuns(typed.Workspace)
 		}
@@ -72,6 +72,7 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 	token, workspace := memberCredentials(request)
 	var room string
 	var added []core.Message
+	var roundReleased bool
 	targeted := addsOnlyMessages(request)
 	result, err := handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, released, err := refreshParticipantReleasing(ctx, tx, token, releasesRound(request), now)
@@ -79,6 +80,7 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 			return wire.Value{}, err
 		}
 		room = member.Room
+		roundReleased = released
 		targeted = targeted && !released
 		if !targeted {
 			return handler.applyParticipant(ctx, tx, member, request, now)
@@ -101,8 +103,11 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 	changed := core.Room{Workspace: workspace, Conversation: room}
 	switch {
 	case isStatusRequest(request):
+	case isReadRequest(request) && !roundReleased:
 	case targeted:
-		outcome.Added = []core.AddedMessages{{Room: changed, Messages: added}}
+		if len(added) > 0 {
+			outcome.Added = []core.AddedMessages{{Room: changed, Messages: added}}
+		}
 	default:
 		outcome.Notify = []core.Room{changed}
 	}
@@ -110,17 +115,20 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 }
 
 // addsOnlyMessages reports the requests whose only change that a waiting read can see is
-// the messages they add, unless they release a sealed round: a read records activity and
-// usage, and a post that is not a proposal adds at most one message and its receipt.
-// Every other write wakes the whole room.
+// the messages they add, unless they release a sealed round: a post that is not a
+// proposal adds at most one message and its receipt. Every other write wakes the whole
+// room.
 func addsOnlyMessages(request wire.Request) bool {
-	switch typed := request.(type) {
-	case *wire.Read:
-		return true
-	case *wire.Post:
-		return typed.Kind != kindProposal
+	if post, ok := request.(*wire.Post); ok {
+		return post.Kind != kindProposal
 	}
 	return false
+}
+
+// isReadRequest reports a read request.
+func isReadRequest(request wire.Request) bool {
+	_, isRead := request.(*wire.Read)
+	return isRead
 }
 
 // isStatusRequest reports a status request.
@@ -229,11 +237,15 @@ func (handler *Handler) readClosed(ctx context.Context, request *wire.ReadClosed
 }
 
 // mcpTask reads or cancels the fresh run behind an MCP task without creating a store.
-func (handler *Handler) mcpTask(ctx context.Context, workspace, taskID string, action func(context.Context, *sql.Tx, string) (wire.Value, error)) (core.Outcome, error) {
+func (handler *Handler) mcpTask(ctx context.Context, workspace, taskID string, readOnly bool, action func(context.Context, *sql.Tx, string) (wire.Value, error)) (core.Outcome, error) {
 	if !store.Exists(handler.dataDir, workspace) {
 		return core.Outcome{}, reject(unknownMcpTask)
 	}
-	result, err := handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+	run := handler.writeResult
+	if readOnly {
+		run = handler.readResult
+	}
+	result, err := run(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		return action(ctx, tx, taskID)
 	})
 	return core.Outcome{Result: result}, err

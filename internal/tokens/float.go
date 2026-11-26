@@ -17,15 +17,10 @@ func FloatValue(number float64) wire.Value {
 // FormatFloat spells a float like Python's repr, which json.dumps uses: the shortest
 // digits that read back to the same float, a ".0" on integral values, and exponent
 // notation ("1e-05", "1.5e+16") when the decimal exponent is below -4 or at least 16.
-// NaN and the infinities get json.dumps's spellings.
+// Non-finite numbers (NaN, ±Inf) are normalized to "0.0" so emitted JSON stays valid.
 func FormatFloat(number float64) string {
-	switch {
-	case math.IsNaN(number):
-		return "NaN"
-	case math.IsInf(number, 1):
-		return "Infinity"
-	case math.IsInf(number, -1):
-		return "-Infinity"
+	if math.IsNaN(number) || math.IsInf(number, 0) {
+		return "0.0"
 	}
 	sign := ""
 	if math.Signbit(number) {

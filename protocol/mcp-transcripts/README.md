@@ -1,6 +1,6 @@
 # MCP wire transcripts of the Python shim
 
-These files record what the Python shim (`src/agentcy/mcp/server.py`, mcp SDK 2.3.0) sends and receives on the wire. The Go port uses them as the reference for its MCP layer. Spike S1 (`spikes/mcp/RESULT.md`) compares a Go server against them.
+These files record what the Python shim (`src/agentcy/mcp/server.py`, mcp SDK 2.3.0) sends and receives on the wire. The Go port uses them as the reference for its MCP layer.
 
 ## Files
 

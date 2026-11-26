@@ -39,9 +39,10 @@ type roomSnapshot struct {
 // higher ID than every committed message before it. The daemon is the only process that
 // writes stores, but the check would also catch another writer that appends.
 type roomCache struct {
-	mutex   sync.Mutex
-	entries map[roomCacheKey]*roomCacheEntry
-	clock   uint64
+	mutex      sync.Mutex
+	entries    map[roomCacheKey]*roomCacheEntry
+	clock      uint64
+	generation uint64
 	// builds and extensions count full replays and replays of new messages only.
 	builds     atomic.Int64
 	extensions atomic.Int64
@@ -53,12 +54,13 @@ type roomCacheKey struct {
 	room  string
 }
 
-// roomCacheEntry is a cached snapshot with the recovery sets it was built for and its
-// last use, for eviction.
+// roomCacheEntry is a cached snapshot with the recovery sets it was built for, its
+// monotonic store generation, and its last use, for eviction.
 type roomCacheEntry struct {
-	snapshot *roomSnapshot
-	recovery recoverySets
-	used     uint64
+	snapshot   *roomSnapshot
+	recovery   recoverySets
+	generation uint64
+	used       uint64
 }
 
 // newRoomCache returns an empty cache.
@@ -66,29 +68,45 @@ func newRoomCache() *roomCache {
 	return &roomCache{entries: map[roomCacheKey]*roomCacheEntry{}}
 }
 
-// lookup returns the cached entry of a room, or nil.
-func (cache *roomCache) lookup(key roomCacheKey) *roomCacheEntry {
+// lookup returns the cached entry of a room and the cache's current generation.
+func (cache *roomCache) lookup(key roomCacheKey) (*roomCacheEntry, uint64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 	entry, found := cache.entries[key]
 	if !found {
-		return nil
+		return nil, cache.generation
 	}
 	cache.clock++
 	entry.used = cache.clock
-	return &roomCacheEntry{snapshot: entry.snapshot, recovery: entry.recovery}
+	return &roomCacheEntry{
+		snapshot:   entry.snapshot,
+		recovery:   entry.recovery,
+		generation: entry.generation,
+	}, cache.generation
 }
 
-// store keeps a snapshot unless the cache already holds a later one for the room, and
-// drops the least recently used room when the cache is full.
-func (cache *roomCache) store(key roomCacheKey, snapshot *roomSnapshot, recovery recoverySets) {
+// store keeps a snapshot unless the cache already holds a later one for the room (either
+// a higher message ID or a newer generation published after seenGen at the same message
+// ID), and drops the least recently used room when the cache is full.
+func (cache *roomCache) store(key roomCacheKey, snapshot *roomSnapshot, recovery recoverySets, seenGen uint64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	if current, found := cache.entries[key]; found && current.snapshot.lastMessage > snapshot.lastMessage {
-		return
+	if current, found := cache.entries[key]; found {
+		if current.snapshot.lastMessage > snapshot.lastMessage {
+			return
+		}
+		if current.snapshot.lastMessage == snapshot.lastMessage && current.generation > seenGen {
+			return
+		}
 	}
 	cache.clock++
-	cache.entries[key] = &roomCacheEntry{snapshot: snapshot, recovery: recovery, used: cache.clock}
+	cache.generation++
+	cache.entries[key] = &roomCacheEntry{
+		snapshot:   snapshot,
+		recovery:   recovery,
+		generation: cache.generation,
+		used:       cache.clock,
+	}
 	if len(cache.entries) <= roomCacheLimit {
 		return
 	}
@@ -122,6 +140,7 @@ type transactionRooms struct {
 type pendingSnapshot struct {
 	snapshot *roomSnapshot
 	recovery recoverySets
+	seenGen  uint64
 }
 
 // transactionRoomsKey is the context key of the transaction's cache view.
@@ -135,10 +154,10 @@ func withRoomCache(ctx context.Context, cache *roomCache, storePath string) (con
 }
 
 // lookup returns the snapshot this transaction built for a room, or else the shared
-// one, or nil.
-func (view *transactionRooms) lookup(room string) *roomCacheEntry {
+// one, or nil, along with the cache generation observed.
+func (view *transactionRooms) lookup(room string) (*roomCacheEntry, uint64) {
 	if pending, found := view.pending[room]; found {
-		return &roomCacheEntry{snapshot: pending.snapshot, recovery: pending.recovery}
+		return &roomCacheEntry{snapshot: pending.snapshot, recovery: pending.recovery}, pending.seenGen
 	}
 	return view.cache.lookup(roomCacheKey{store: view.store, room: room})
 }
@@ -146,7 +165,7 @@ func (view *transactionRooms) lookup(room string) *roomCacheEntry {
 // publish moves the snapshots of a committed transaction into the shared cache.
 func (view *transactionRooms) publish() {
 	for room, pending := range view.pending {
-		view.cache.store(roomCacheKey{store: view.store, room: room}, pending.snapshot, pending.recovery)
+		view.cache.store(roomCacheKey{store: view.store, room: room}, pending.snapshot, pending.recovery, pending.seenGen)
 	}
 }
 
@@ -168,7 +187,7 @@ func roomState(ctx context.Context, tx *sql.Tx, room string) (*roomSnapshot, err
 	if view == nil {
 		return buildRoomSnapshot(ctx, tx, room, lastMessage)
 	}
-	cached := view.lookup(room)
+	cached, seenGen := view.lookup(room)
 	var snapshot *roomSnapshot
 	switch {
 	case cached == nil || !cached.recovery.equal(recovery) || cached.snapshot.lastMessage > lastMessage:
@@ -183,7 +202,7 @@ func roomState(ctx context.Context, tx *sql.Tx, room string) (*roomSnapshot, err
 	if err != nil {
 		return nil, err
 	}
-	view.pending[room] = pendingSnapshot{snapshot: snapshot, recovery: recovery}
+	view.pending[room] = pendingSnapshot{snapshot: snapshot, recovery: recovery, seenGen: seenGen}
 	return snapshot, nil
 }
 

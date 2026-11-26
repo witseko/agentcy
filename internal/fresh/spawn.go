@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -95,7 +96,8 @@ func pluginEnvironment(plugin Plugin, settings spawnSettings) []string {
 // arrive on lines from a reader goroutine, which ends when the output ends.
 type pluginProcess struct {
 	command *exec.Cmd
-	stdin   io.WriteCloser
+	stdin   *os.File
+	stdout  *os.File
 	lines   chan outputLine
 	// abandon tells the reader goroutine to stop sending once nobody receives.
 	abandon    chan struct{}
@@ -114,32 +116,45 @@ func startPlugin(plugin Plugin, environment []string) (*pluginProcess, error) {
 	if len(plugin.Command) == 0 || !filepath.IsAbs(plugin.Command[0]) {
 		return nil, errCommunication
 	}
+	stdinRead, stdinWrite, err := os.Pipe()
+	if err != nil {
+		return nil, errCommunication
+	}
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		_ = stdinRead.Close()
+		_ = stdinWrite.Close()
+		return nil, errCommunication
+	}
 	command := exec.Command(plugin.Command[0], plugin.Command[1:]...)
 	command.Env = environment
+	command.Stdin = stdinRead
+	command.Stdout = stdoutWrite
 	// A nil Stderr connects the null device, so plugin diagnostics are discarded.
 	command.Stderr = nil
 	// Its own process group lets a timeout kill the plugin's children with it, as the
 	// Python SDK does with start_new_session.
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		return nil, errCommunication
-	}
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return nil, errCommunication
-	}
 	if err := command.Start(); err != nil {
+		_ = stdinRead.Close()
+		_ = stdinWrite.Close()
+		_ = stdoutRead.Close()
+		_ = stdoutWrite.Close()
 		return nil, errCommunication
 	}
+	// Close the child ends in the parent so EOF propagates as soon as the child exits
+	// and Wait never races with reads from stdoutRead.
+	_ = stdinRead.Close()
+	_ = stdoutWrite.Close()
 	process := &pluginProcess{
 		command:    command,
-		stdin:      stdin,
+		stdin:      stdinWrite,
+		stdout:     stdoutRead,
 		lines:      make(chan outputLine),
 		abandon:    make(chan struct{}),
 		readerDone: make(chan struct{}),
 	}
-	go process.readLines(stdout)
+	go process.readLines(stdoutRead)
 	return process, nil
 }
 
@@ -185,18 +200,15 @@ func (process *pluginProcess) write(message []byte) error {
 // reader goroutine, so no zombie and no goroutine remains. It reports whether the
 // plugin exited before the deadline.
 func (process *pluginProcess) stop(deadline time.Time) bool {
+	close(process.abandon)
 	_ = process.stdin.Close()
 	exited := make(chan struct{})
 	go func() {
-		// Wait also closes the output pipe, which ends the reader goroutine.
 		_ = process.command.Wait()
 		close(exited)
 	}()
-	grace := time.Until(deadline)
-	if grace > exitGrace {
-		grace = exitGrace
-	}
-	timer := time.NewTimer(max(grace, 0))
+	grace := min(max(time.Until(deadline), 0), exitGrace)
+	timer := time.NewTimer(grace)
 	defer timer.Stop()
 	clean := true
 	select {
@@ -206,7 +218,7 @@ func (process *pluginProcess) stop(deadline time.Time) bool {
 		process.kill()
 		<-exited
 	}
-	close(process.abandon)
+	_ = process.stdout.Close()
 	<-process.readerDone
 	return clean
 }

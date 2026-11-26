@@ -195,7 +195,7 @@ func serverInfoValue(implementation *mcp.Implementation) wire.Value {
 func toolHandler(name string, function toolFunction) mcp.ToolHandler {
 	return func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw := argumentsValue(request.Params.Arguments)
-		result, err := function(toolCall{request: request, arguments: newArgumentReader(raw), raw: raw})
+		result, err := function(toolCall{ctx: ctx, request: request, arguments: newArgumentReader(raw), raw: raw})
 		var ask *askUser
 		if errors.As(err, &ask) {
 			return ask.result, nil

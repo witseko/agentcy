@@ -60,7 +60,7 @@ func (handler *Handler) configuredPlugin(name string) (*fresh.Plugin, error) {
 
 // memberPlugins lists the plugins for an active lead of an open conversation.
 func (handler *Handler) memberPlugins(ctx context.Context, request *wire.Plugins) (core.Outcome, error) {
-	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+	_, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		_, err := launchAuthority(ctx, tx, request.Token)
 		return wire.Value{}, err
 	})
@@ -74,21 +74,28 @@ func (handler *Handler) memberPlugins(ctx context.Context, request *wire.Plugins
 // launch binds a requested worker to this checkout, queues the committed assignment and
 // hands its join code to the worker (Core.launch in core.py).
 func (handler *Handler) launch(ctx context.Context, request *wire.Launch, now int64) (core.Outcome, error) {
+	_, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		_, err := launchAuthority(ctx, tx, request.Token)
+		return wire.Value{}, err
+	})
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	if !handler.freshRunsReady() {
+		return core.Outcome{}, reject(workerNotReady)
+	}
+	directory, err := core.CheckLaunchCheckout(request.Directory, request.Workspace, handler.workspaceKeys.Key)
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	plugin, err := handler.configuredPlugin(request.Plugin)
+	if err != nil {
+		return core.Outcome{}, err
+	}
 	var queued queuedLaunch
-	var directory string
-	var plugin *fresh.Plugin
-	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+	_, err = handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, err := launchAuthority(ctx, tx, request.Token)
 		if err != nil {
-			return wire.Value{}, err
-		}
-		if !handler.freshRunsReady() {
-			return wire.Value{}, reject(workerNotReady)
-		}
-		if directory, err = core.CheckLaunchCheckout(request.Directory, request.Workspace, handler.workspaceKeys.Key); err != nil {
-			return wire.Value{}, err
-		}
-		if plugin, err = handler.configuredPlugin(request.Plugin); err != nil {
 			return wire.Value{}, err
 		}
 		queued, err = queueAssignment(ctx, tx, member, queueRequest{

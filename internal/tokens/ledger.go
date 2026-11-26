@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"slices"
+	"strings"
 
 	"github.com/witseko/agentcy/internal/store"
 )
@@ -63,10 +64,6 @@ func RecordSlotUsage(ctx context.Context, ledger *store.Store, entry LedgerEntry
 	})
 }
 
-const selectModelSpend = `
-SELECT count(*), coalesce(sum(total_tokens), 0) FROM model_usage
-WHERE model = ? AND (? IS NULL OR updated >= ?)`
-
 // ModelSpend sums the spend of each named model across all conversations. A model with a
 // cutoff in sinceByModel counts only slots updated at or after it; a model without one
 // counts everything. Models without ledger rows and empty names are left out of the
@@ -77,21 +74,34 @@ func ModelSpend(ctx context.Context, ledger *store.Store, models []string, since
 	if len(unique) == 0 {
 		return spend, nil
 	}
+	clauses := make([]string, 0, len(unique))
+	args := make([]any, 0, len(unique)*2)
+	for _, model := range unique {
+		if since := sinceByModel[model]; since != nil {
+			clauses = append(clauses, "(model = ? AND updated >= ?)")
+			args = append(args, model, *since)
+		} else {
+			clauses = append(clauses, "model = ?")
+			args = append(args, model)
+		}
+	}
+	query := "SELECT model, coalesce(sum(total_tokens), 0) FROM model_usage WHERE " +
+		strings.Join(clauses, " OR ") + " GROUP BY model"
 	err := ledger.Read(ctx, func(tx *sql.Tx) error {
-		for _, model := range unique {
-			var cutoff sql.NullInt64
-			if since := sinceByModel[model]; since != nil {
-				cutoff = sql.NullInt64{Int64: *since, Valid: true}
-			}
-			var rows, total int64
-			if err := tx.QueryRowContext(ctx, selectModelSpend, model, cutoff, cutoff).Scan(&rows, &total); err != nil {
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var model string
+			var total int64
+			if err := rows.Scan(&model, &total); err != nil {
 				return err
 			}
-			if rows > 0 {
-				spend[model] = total
-			}
+			spend[model] = total
 		}
-		return nil
+		return rows.Err()
 	})
 	if err != nil {
 		return nil, err

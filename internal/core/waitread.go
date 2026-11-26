@@ -63,20 +63,37 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (wire
 	if err != nil || pageIsReady(page) {
 		return page, err
 	}
+	if pageRound := pageRoundDeadline(page); pageRound != nil {
+		roundDeadline = pageRound
+	}
+	var lastExpiredRound *int64
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 || server.stopping(ctx) {
 			return page, nil
 		}
 		if roundDeadline != nil {
-			remaining = min(remaining, max(0, time.Until(time.Unix(*roundDeadline, 0))))
+			roundRemaining := time.Until(time.Unix(*roundDeadline, 0))
+			if roundRemaining > 0 {
+				remaining = min(remaining, roundRemaining)
+			} else if lastExpiredRound == nil || *lastExpiredRound != *roundDeadline {
+				expired := *roundDeadline
+				lastExpiredRound = &expired
+				remaining = 0
+			}
 		}
 		server.sleep(ctx, listener.changed(), remaining)
+		if ctx.Err() != nil {
+			return page, nil
+		}
 		if page, err = server.readPage(ctx, request, listener); err != nil {
 			return wire.Value{}, err
 		}
 		roundDeadline = pageRoundDeadline(page)
 		if pageIsReady(page) {
+			if server.stopping(ctx) {
+				return page, nil
+			}
 			return server.settle(ctx, request, listener, page)
 		}
 	}
@@ -106,6 +123,9 @@ func (server *server) settle(ctx context.Context, request *wire.Read, listener *
 			break
 		}
 		server.sleep(ctx, listener.changed(), remaining)
+		if server.stopping(ctx) {
+			return page, nil
+		}
 		next, err := server.readPage(ctx, request, listener)
 		if err != nil {
 			return wire.Value{}, err

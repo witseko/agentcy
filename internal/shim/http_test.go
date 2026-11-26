@@ -27,7 +27,7 @@ func serveGated(settings HTTPSettings, request *http.Request) *httptest.Response
 
 // newPost builds a JSON POST to the MCP path.
 func newPost(host, authorization string) *http.Request {
-	request := httptest.NewRequest(http.MethodPost, "http://"+host+"/mcp", strings.NewReader("{}"))
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8765/mcp", strings.NewReader("{}"))
 	request.Host = host
 	request.Header.Set("Content-Type", "application/json")
 	if authorization != "" {
@@ -66,13 +66,27 @@ func TestHTTPGateAllowsOnlyLoopbackAndTheTunnelHost(t *testing.T) {
 		"attacker.example.net":    http.StatusMisdirectedRequest,
 		"127.0.0.1":               http.StatusMisdirectedRequest,
 		"bridge.example.com.evil": http.StatusMisdirectedRequest,
+		"localhost:evil.com":      http.StatusMisdirectedRequest,
+		"127.0.0.1:0":             http.StatusMisdirectedRequest,
+		"127.0.0.1:99999":         http.StatusMisdirectedRequest,
+		"bridge.example.com:evil": http.StatusMisdirectedRequest,
 	}
 	for host, want := range cases {
 		if response := serveGated(settings, newPost(host, authorization)); response.Code != want {
 			t.Errorf("host %q: %d, want %d", host, response.Code, want)
 		}
 	}
-	origins := map[string]int{"https://bridge.example.com": http.StatusTeapot, "http://localhost:3000": http.StatusTeapot, "https://evil.example": http.StatusForbidden}
+	origins := map[string]int{
+		"https://bridge.example.com":     http.StatusTeapot,
+		"http://localhost:3000":          http.StatusTeapot,
+		"http://127.0.0.1:8765":          http.StatusTeapot,
+		"https://evil.example":           http.StatusForbidden,
+		"http://localhost:80@evil.com":   http.StatusForbidden,
+		"http://localhost:3000/extra":    http.StatusForbidden,
+		"http://localhost:3000?q=1":      http.StatusForbidden,
+		"http://localhost:evil":          http.StatusForbidden,
+		"https://localhost:3000":         http.StatusForbidden,
+	}
 	for origin, want := range origins {
 		request := newPost("127.0.0.1:8765", authorization)
 		request.Header.Set("Origin", origin)
@@ -80,10 +94,17 @@ func TestHTTPGateAllowsOnlyLoopbackAndTheTunnelHost(t *testing.T) {
 			t.Errorf("origin %q: %d, want %d", origin, response.Code, want)
 		}
 	}
+	for _, contentType := range []string{"text/plain", "application/json-evil", ""} {
+		request := newPost("127.0.0.1:8765", authorization)
+		request.Header.Set("Content-Type", contentType)
+		if response := serveGated(settings, request); response.Code != http.StatusBadRequest {
+			t.Errorf("content-type %q POST: %d, want 400", contentType, response.Code)
+		}
+	}
 	request := newPost("127.0.0.1:8765", authorization)
-	request.Header.Set("Content-Type", "text/plain")
-	if response := serveGated(settings, request); response.Code != http.StatusBadRequest {
-		t.Errorf("text/plain POST: %d", response.Code)
+	request.Header.Set("Content-Type", "APPLICATION/JSON; charset=utf-8")
+	if response := serveGated(settings, request); response.Code != http.StatusTeapot {
+		t.Errorf("application/json with charset POST: %d, want 418", response.Code)
 	}
 }
 

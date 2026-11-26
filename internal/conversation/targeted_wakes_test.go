@@ -52,7 +52,10 @@ func stressDaemon(t *testing.T) (*wire.Client, func()) {
 	}
 	t.Cleanup(stop)
 	socket := filepath.Join(dataDir, "core.sock")
-	client := &wire.Client{Connect: func() (net.Conn, error) { return net.Dial("unix", socket) }}
+	client := &wire.Client{Connect: func(ctx context.Context) (net.Conn, error) {
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, "unix", socket)
+	}}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if connection, err := net.Dial("unix", socket); err == nil {
@@ -86,7 +89,7 @@ func (listener *stressListener) has(body string) bool {
 // a new or an old shim does.
 func (listener *stressListener) run(ctx context.Context, t *testing.T, client *wire.Client) {
 	for ctx.Err() == nil {
-		page, err := listener.readOnce(client)
+		page, err := listener.readOnce(ctx, client)
 		if err != nil {
 			if ctx.Err() == nil {
 				t.Errorf("%s: %v", listener.name, err)
@@ -106,14 +109,14 @@ func (listener *stressListener) run(ctx context.Context, t *testing.T, client *w
 }
 
 // readOnce sends one waiting read and returns its page.
-func (listener *stressListener) readOnce(client *wire.Client) (wire.Value, error) {
+func (listener *stressListener) readOnce(ctx context.Context, client *wire.Client) (wire.Value, error) {
 	listener.mutex.Lock()
 	after := listener.cursor
 	listener.mutex.Unlock()
 	if !listener.listen {
-		return client.Exchange(&wire.Read{Workspace: testWorkspace, Token: listener.token, After: after, WaitSeconds: stressWaitSeconds})
+		return client.Exchange(ctx, &wire.Read{Workspace: testWorkspace, Token: listener.token, After: after, WaitSeconds: stressWaitSeconds})
 	}
-	result, err := client.Exchange(&wire.Listen{Workspace: testWorkspace, Token: listener.token, After: after, WaitSeconds: stressWaitSeconds})
+	result, err := client.Exchange(ctx, &wire.Listen{Workspace: testWorkspace, Token: listener.token, After: after, WaitSeconds: stressWaitSeconds})
 	page, _ := result.Get("page")
 	return page, err
 }
@@ -124,7 +127,7 @@ func stressPost(t *testing.T, client *wire.Client, token, body, kind, to string)
 	if to != "" {
 		post.To = &to
 	}
-	if _, err := client.Exchange(post); err != nil {
+	if _, err := client.Exchange(context.Background(), post); err != nil {
 		t.Errorf("post %s: %v", body, err)
 	}
 }
@@ -139,14 +142,14 @@ func TestTargetedWakesLoseNoMessageUnderLoad(t *testing.T) {
 	for index := range stressListeners + stressWriters {
 		names = append(names, wire.Slot{Name: fmt.Sprintf("Member %02d", index)})
 	}
-	created, err := client.Exchange(&wire.Create{Workspace: testWorkspace, Brief: "Stress", Initiator: "Lead", Invitees: names})
+	created, err := client.Exchange(context.Background(), &wire.Create{Workspace: testWorkspace, Brief: "Stress", Initiator: "Lead", Invitees: names})
 	if err != nil {
 		t.Fatal(err)
 	}
 	leadToken := text(created, "token")
 	tokens := map[string]string{}
 	for _, slot := range names {
-		joined, err := client.Exchange(&wire.Join{Workspace: testWorkspace, Code: text(created, "invitations", slot.Name)})
+		joined, err := client.Exchange(context.Background(), &wire.Join{Workspace: testWorkspace, Code: text(created, "invitations", slot.Name)})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -45,19 +45,35 @@ func (assignments *AssignmentStore) WorkspaceKeys() ([]string, error) {
 	return store.WorkspaceKeys(assignments.dataDir)
 }
 
-// write runs work in a write transaction of a workspace store.
-func (assignments *AssignmentStore) write(ctx context.Context, workspace string, work func(tx *sql.Tx) error) error {
+// write runs work in a write transaction of a workspace store and flushes any buffered
+// ledger syncs after commit.
+func (assignments *AssignmentStore) write(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) error) error {
 	workspaceStore, err := store.Open(ctx, assignments.dataDir, workspace)
 	if err != nil {
 		return err
 	}
-	return workspaceStore.Write(ctx, work)
+	ctx, syncs := withLedgerSync(ctx)
+	if err := workspaceStore.Write(ctx, func(tx *sql.Tx) error {
+		return work(ctx, tx)
+	}); err != nil {
+		return err
+	}
+	return syncs.flush(ctx, assignments.book)
+}
+
+// read runs work in a read transaction of a workspace store.
+func (assignments *AssignmentStore) read(ctx context.Context, workspace string, work func(tx *sql.Tx) error) error {
+	workspaceStore, err := store.Open(ctx, assignments.dataDir, workspace)
+	if err != nil {
+		return err
+	}
+	return workspaceStore.Read(ctx, work)
 }
 
 // Pending reads the pending runs of one store, ordered by deadline.
 func (assignments *AssignmentStore) Pending(ctx context.Context, workspace string) ([]fresh.Run, error) {
 	var runs []fresh.Run
-	err := assignments.write(ctx, workspace, func(tx *sql.Tx) error {
+	err := assignments.read(ctx, workspace, func(tx *sql.Tx) error {
 		var err error
 		runs, err = pendingRuns(ctx, tx, workspace)
 		return err
@@ -70,7 +86,7 @@ func (assignments *AssignmentStore) Pending(ctx context.Context, workspace strin
 func (assignments *AssignmentStore) ClaimQueued(ctx context.Context, workspace, assignmentID string, rejected bool, now time.Time) (*fresh.Run, string, error) {
 	var claimed *fresh.Run
 	terminal := ""
-	err := assignments.write(ctx, workspace, func(tx *sql.Tx) error {
+	err := assignments.write(ctx, workspace, func(ctx context.Context, tx *sql.Tx) error {
 		runs, err := pendingRuns(ctx, tx, workspace)
 		if err != nil {
 			return err
@@ -97,7 +113,7 @@ func (assignments *AssignmentStore) ClaimQueued(ctx context.Context, workspace, 
 // Record saves a state change with optional plugin usage and its event.
 func (assignments *AssignmentStore) Record(ctx context.Context, run fresh.Run, state string, result fresh.RunResult, now time.Time) (bool, error) {
 	added := false
-	err := assignments.write(ctx, run.Workspace, func(tx *sql.Tx) error {
+	err := assignments.write(ctx, run.Workspace, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
 		added, err = recordRunState(ctx, tx, assignments.book, run, state, result, now.Unix())
 		return err
@@ -111,7 +127,7 @@ func (assignments *AssignmentStore) ReportUnconfirmed(ctx context.Context, run f
 	if operation == fresh.ToolCancel {
 		body = "The bridge could not confirm cancellation of the fresh run for " + run.Label + ". It will retry."
 	}
-	return assignments.write(ctx, run.Workspace, func(tx *sql.Tx) error {
+	return assignments.write(ctx, run.Workspace, func(ctx context.Context, tx *sql.Tx) error {
 		return recordEvent(ctx, tx, run.Room, run.Slot, body, now.Unix())
 	})
 }

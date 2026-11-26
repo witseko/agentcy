@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // workspaceKeyPattern matches a workspace key: the SHA-256 hex digest that
@@ -19,6 +21,7 @@ var workspaceKeyPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var openStores = struct {
 	sync.Mutex
 	byPath map[string]*Store
+	flight singleflight.Group
 }{byPath: map[string]*Store{}}
 
 // Open returns the store of a workspace key inside dataDir, the directory that
@@ -41,21 +44,46 @@ func OpenLedger(ctx context.Context, dataDir string) (*Store, error) {
 	return cachedOpen(ctx, path, LedgerSchemaVersion, ledgerSchema, ErrUnsupportedLedgerVersion)
 }
 
-// cachedOpen returns the cached store of path or opens it. The cache lock is held while
-// opening, so concurrent first opens in one process share one *Store. A failed open is
-// not cached.
+// cachedOpen returns the cached store of path or opens it. Concurrent first opens for
+// the same path share one open via singleflight without holding the global cache lock
+// across disk I/O or SQLite busy retries. A failed open is not cached.
 func cachedOpen(ctx context.Context, path string, version int, schema string, unsupported error) (*Store, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	openStores.Lock()
-	defer openStores.Unlock()
 	if store, found := openStores.byPath[path]; found {
+		openStores.Unlock()
 		return store, nil
 	}
-	store, err := openDatabase(ctx, path, version, schema, unsupported)
+	openStores.Unlock()
+
+	value, err, _ := openStores.flight.Do(path, func() (any, error) {
+		openStores.Lock()
+		if store, found := openStores.byPath[path]; found {
+			openStores.Unlock()
+			return store, nil
+		}
+		openStores.Unlock()
+
+		opened, err := openDatabase(ctx, path, version, schema, unsupported)
+		if err != nil {
+			return nil, err
+		}
+		openStores.Lock()
+		if existing, found := openStores.byPath[path]; found {
+			openStores.Unlock()
+			_ = opened.close()
+			return existing, nil
+		}
+		openStores.byPath[path] = opened
+		openStores.Unlock()
+		return opened, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	openStores.byPath[path] = store
-	return store, nil
+	return value.(*Store), nil
 }
 
 // CloseAll closes every cached store and empties the cache. Call it at shutdown, after

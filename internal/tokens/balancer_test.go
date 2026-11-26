@@ -350,3 +350,33 @@ func TestBalancerMatchesPython(t *testing.T) {
 		t.Errorf("only %d unbalanced cases; the generator misses the recommendation paths", unbalanced)
 	}
 }
+
+// TestEvaluateBalanceRoundingBoundaryDoesNotPanic guards against 23.1 - 3.1 == 19.999999999999996
+// rounding to gap 20.0 while unrounded difference fell below threshold 20.
+func TestEvaluateBalanceRoundingBoundaryDoesNotPanic(t *testing.T) {
+	settings := mustParse(t, `{"imbalance_gap_percent": 20, "default_initial_tokens": 1000}`)
+	claude := BuildMemberUsage(reported("claude-sonnet-4-6", SourceReported, 231, 0), settings, map[string]int64{"claude-sonnet-4-6": 231})
+	gemini := BuildMemberUsage(reported("gemini-2.5-pro", SourceReported, 31, 0), settings, map[string]int64{"gemini-2.5-pro": 31})
+	if claude.Budget.UsedPercent != 23.1 || gemini.Budget.UsedPercent != 3.1 {
+		t.Fatalf("unexpected used percentages: %v vs %v", claude.Budget.UsedPercent, gemini.Budget.UsedPercent)
+	}
+	balance := EvaluateBalance([]BalanceMember{
+		balanceMember("Claude", "lead", "replied", claude),
+		balanceMember("Gemini", "worker", "replied", gemini),
+	}, settings)
+	if balance == nil || balance.Balanced {
+		t.Fatalf("expected unbalanced guidance at exact 20.0 gap, got %+v", balance)
+	}
+	if !reflect.DeepEqual(balance.Overloaded, []string{"Claude"}) || !reflect.DeepEqual(balance.Preferred, []string{"Gemini"}) {
+		t.Errorf("unexpected overloaded/preferred: %+v", balance)
+	}
+}
+
+func TestBudgetUsageGuardsNonPositiveInitial(t *testing.T) {
+	if got := budgetUsage(0, 100, nil, "m"); got != nil {
+		t.Errorf("budgetUsage(0, ...) = %+v, want nil", got)
+	}
+	if got := budgetUsage(-5, 100, nil, "m"); got != nil {
+		t.Errorf("budgetUsage(-5, ...) = %+v, want nil", got)
+	}
+}
