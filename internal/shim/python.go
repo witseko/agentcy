@@ -49,12 +49,32 @@ func writePythonValue(builder *strings.Builder, value wire.Value) {
 	}
 }
 
+// pythonShortEscape returns json.dumps's two-character escape of a character, or "".
+func pythonShortEscape(character rune) string {
+	switch character {
+	case '"':
+		return `\"`
+	case '\\':
+		return `\\`
+	case '\n':
+		return `\n`
+	case '\r':
+		return `\r`
+	case '\t':
+		return `\t`
+	case '\b':
+		return `\b`
+	case '\f':
+		return `\f`
+	}
+	return ""
+}
+
 // writePythonString writes a string with json.dumps's ensure_ascii escaping.
 func writePythonString(builder *strings.Builder, text string) {
-	shortForms := map[rune]string{'"': `\"`, '\\': `\\`, '\n': `\n`, '\r': `\r`, '\t': `\t`, '\b': `\b`, '\f': `\f`}
 	builder.WriteByte('"')
 	for _, character := range text {
-		if escaped, found := shortForms[character]; found {
+		if escaped := pythonShortEscape(character); escaped != "" {
 			builder.WriteString(escaped)
 			continue
 		}

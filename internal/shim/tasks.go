@@ -25,7 +25,6 @@ const (
 	mcpTaskKey          = "mcp_task"
 	taskPollIntervalMs  = 5000
 	unknownMcpTask      = "Failed to retrieve task: Task not found"
-	modernEra           = "2026-07-28"
 	missingCapability   = -32021
 	isoTimeLayout       = "2006-01-02T15:04:05Z"
 	resultTypeComplete  = "complete"
@@ -169,7 +168,7 @@ func (shim *shimServer) taskMethod(ctx context.Context, session *mcp.ServerSessi
 		params = &TaskParams{}
 	}
 	meta := params.GetMeta()
-	if sessionEra(session, meta) < modernEra {
+	if !isModernEra(sessionEra(session, meta)) {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "Method not found", Data: json.RawMessage(strconv.Quote(method))}
 	}
 	if !metaDeclaresExtension(meta, tasksExtension) {
@@ -206,7 +205,7 @@ func completeBody(body wire.Value) wire.Value {
 // error.
 func (shim *shimServer) callTaskCore(ctx context.Context, request wire.Request) (wire.Value, error) {
 	unknown := &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: unknownMcpTask}
-	if request.Validate() != nil {
+	if wire.Validate(request) != nil {
 		return wire.Value{}, unknown
 	}
 	view, err := shim.core.Exchange(ctx, request)

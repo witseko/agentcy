@@ -93,8 +93,13 @@ func (value Value) Has(key string) bool {
 	return found
 }
 
-// Set gives key a value: in place when the key exists, else as the last member.
+// Set gives key a value: in place when the key exists, else as the last member. Like
+// Delete, it does nothing on a value that is not an object, so a result of an unexpected
+// shape cannot crash the caller.
 func (value Value) Set(key string, member Value) {
+	if value.Kind != Object {
+		return
+	}
 	for index, candidate := range value.Members.keys {
 		if candidate == key {
 			value.Members.values[index] = member

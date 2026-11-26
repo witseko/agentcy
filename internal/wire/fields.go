@@ -299,48 +299,24 @@ func isHiddenCharacter(character rune) bool {
 	return !assigned
 }
 
-// CheckLiteral accepts one of the allowed texts exactly.
+// CheckLiteral accepts one of the allowed texts exactly. The message lists the allowed
+// texts as pydantic does: 'a', 'a' or 'b', or 'a', 'b' or 'c'. With no allowed text,
+// every value is rejected.
 func CheckLiteral(value Value, allowed []string) (string, *FieldError) {
 	if value.Kind == String && slices.Contains(allowed, value.Text) {
 		return value.Text, nil
+	}
+	if len(allowed) == 0 {
+		return "", problem("No input is allowed", "literal_error")
 	}
 	quoted := make([]string, len(allowed))
 	for index, text := range allowed {
 		quoted[index] = "'" + text + "'"
 	}
-	expected := strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
+	expected := quoted[0]
+	if len(quoted) > 1 {
+		last := len(quoted) - 1
+		expected = strings.Join(quoted[:last], ", ") + " or " + quoted[last]
+	}
 	return "", problem("Input should be "+expected, "literal_error")
-}
-
-// CheckModelName validates a model name such as "claude-opus-4".
-func CheckModelName(text string) *FieldError {
-	return CheckPattern(text, modelNamePattern, modelNamePatternText)
-}
-
-// CheckConversationID validates a 24-digit lowercase hex conversation ID.
-func CheckConversationID(text string) *FieldError {
-	return CheckPattern(text, conversationPattern, conversationPatternText)
-}
-
-// ParseSlots reads and validates an invitees list: each item is a name or an invitation
-// object without unknown fields. Error locations are relative to the list.
-func ParseSlots(value Value) ([]Slot, []FieldError) {
-	reader := newFieldReader(NewObject())
-	reader.object.Set("invitees", value)
-	slots := reader.slots("invitees")
-	if len(reader.errors.fields) > 0 {
-		return nil, relativeErrors(reader.errors.fields)
-	}
-	var check checker
-	check.slots(slots)
-	return slots, relativeErrors(check.errors.fields)
-}
-
-// relativeErrors drops the leading "invitees." from error locations.
-func relativeErrors(fields []FieldError) []FieldError {
-	for index := range fields {
-		location := strings.TrimPrefix(fields[index].Location, "invitees")
-		fields[index].Location = strings.TrimPrefix(location, ".")
-	}
-	return fields
 }

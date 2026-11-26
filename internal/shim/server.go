@@ -143,7 +143,7 @@ func (shim *shimServer) build(implementation *mcp.Implementation, golden, legacy
 		}
 		schema, _ := entry.Get("inputSchema")
 		description := textField(entry, "description")
-		server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: json.RawMessage(schema.Compact())}, toolHandler(name, function))
+		server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: json.RawMessage(schema.Compact())}, shim.toolHandler(name, function))
 	}
 	if len(entries) != len(shim.tools) {
 		return nil, fmt.Errorf("golden tool list has %d tools, the shim has %d", len(entries), len(shim.tools))
@@ -190,21 +190,32 @@ func serverInfoValue(implementation *mcp.Implementation) wire.Value {
 	return info
 }
 
-// toolOutcome passes the raw wire.Value returned by a tool function back to shapeResults
-// without serializing and re-parsing indented JSON to detect MCP tasks.
-type toolOutcome struct {
-	value    wire.Value
-	hasValue bool
+// toolExchange carries one tools/call between callTool and the tool handler. callTool
+// parses the arguments and verifies the requestState once; the handler returns the tool's
+// raw wire.Value, so that callTool can detect an MCP task without re-parsing JSON text.
+type toolExchange struct {
+	arguments wire.Value
+	// requestStateToken is the requestState that callTool verified, and requestState the
+	// state sealed in it. Both are "" when the call carries none.
+	requestStateToken string
+	requestState      string
+	value             wire.Value
+	hasValue          bool
 }
 
-type toolOutcomeKey struct{}
+type toolExchangeKey struct{}
 
 // toolHandler adapts a tool function to the SDK: the result becomes one indented JSON
 // text block, and an error becomes an error result in the Python shim's words.
-func toolHandler(name string, function toolFunction) mcp.ToolHandler {
+func (shim *shimServer) toolHandler(name string, function toolFunction) mcp.ToolHandler {
 	return func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		raw := argumentsValue(request.Params.Arguments)
-		result, err := function(toolCall{ctx: ctx, request: request, arguments: newArgumentReader(raw), raw: raw})
+		exchange, viaCallTool := ctx.Value(toolExchangeKey{}).(*toolExchange)
+		if !viaCallTool {
+			exchange = &toolExchange{arguments: argumentsValue(request.Params.Arguments)}
+		}
+		call := toolCall{ctx: ctx, request: request, tool: name, arguments: exchange.arguments}
+		call.requestState = shim.handlerRequestState(request.Params, exchange)
+		result, err := function(call)
 		var ask *askUser
 		if errors.As(err, &ask) {
 			return ask.result, nil
@@ -212,13 +223,31 @@ func toolHandler(name string, function toolFunction) mcp.ToolHandler {
 		if err != nil {
 			return textResult("Error executing tool "+name+": "+err.Error(), true), nil
 		}
-		if outcome, ok := ctx.Value(toolOutcomeKey{}).(*toolOutcome); ok && outcome != nil {
-			outcome.value = result
-			outcome.hasValue = true
+		if viaCallTool {
+			exchange.value = result
+			exchange.hasValue = true
 			return &mcp.CallToolResult{}, nil
 		}
 		return textResult(result.Indented(), false), nil
 	}
+}
+
+// handlerRequestState returns the verified state of one handler run. callTool verified
+// the client's requestState. For a handshake-era client, the SDK runs the handler again
+// inside the same call with the requestState that this process sealed in the first run,
+// and only that token is verified here. A token that fails counts as none.
+func (shim *shimServer) handlerRequestState(params *mcp.CallToolParamsRaw, exchange *toolExchange) string {
+	if params.RequestState == "" {
+		return ""
+	}
+	if params.RequestState == exchange.requestStateToken {
+		return exchange.requestState
+	}
+	state, err := shim.signer.verify(params.RequestState, params.Name, exchange.arguments)
+	if err != nil {
+		return ""
+	}
+	return state
 }
 
 // textResult builds a tool result with one text block.
@@ -274,7 +303,7 @@ func (shim *shimServer) addSkillMethods(server *mcp.Server) error {
 // skillCacheHints adds the 2026-07-28 cache hints, which older eras do not define. The
 // skills are the same for every caller and change only with a new release.
 func skillCacheHints(body wire.Value, era string) wire.Value {
-	if era < modernEra {
+	if !isModernEra(era) {
 		return body
 	}
 	body.Set("ttlMs", wire.IntValue(skillCacheTTL))

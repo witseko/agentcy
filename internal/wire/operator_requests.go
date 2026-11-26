@@ -2,16 +2,10 @@ package wire
 
 // OperatorRequest is one operator request to the core, sent by a local interface for the
 // human such as the terminal UI. Each action has its own struct; the fields mirror the
-// pydantic models in src/agentcy/conversations/operator_models.py.
+// pydantic models in src/agentcy/conversations/operator_models.py. Every operator
+// request is also a Request, so Validate and Encode work on it.
 type OperatorRequest interface {
-	// Action returns the request's "action" value.
-	Action() string
-	// Validate checks every field, strips names and texts in place, and applies the rules
-	// that span several fields. It returns a *ValidationError.
-	Validate() error
-	// Encode returns the request as an ordered JSON object with every field, in the field
-	// order of the Python model's dump.
-	Encode() Value
+	Request
 	// OperatorKey returns the key that the request carries. Compare it in constant time.
 	OperatorKey() string
 }

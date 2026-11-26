@@ -183,13 +183,13 @@ func allowedOrigin(settings HTTPSettings, origin string) bool {
 // eraRouter sends 2026-07-28 requests to a stateless handler and older ones to a
 // stateful one. The SDK serves 2026-07-28 over HTTP only statelessly, while a 2025-11-25
 // elicitation needs the session of a stateful handler. Every 2026-07-28 request carries
-// the MCP-Protocol-Version header.
+// the MCP-Protocol-Version header; routesToModernHandler decides on it.
 func eraRouter(server *mcp.Server) http.Handler {
 	serverFor := func(*http.Request) *mcp.Server { return server }
 	stateful := mcp.NewStreamableHTTPHandler(serverFor, &mcp.StreamableHTTPOptions{DisableLocalhostProtection: true})
 	stateless := mcp.NewStreamableHTTPHandler(serverFor, &mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: true})
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("MCP-Protocol-Version") >= modernEra {
+		if routesToModernHandler(request.Header.Get("MCP-Protocol-Version")) {
 			stateless.ServeHTTP(writer, request)
 			return
 		}

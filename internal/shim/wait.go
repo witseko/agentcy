@@ -89,6 +89,12 @@ func (state *listenState) teamUnchanged(digest, fingerprint string, hasMessages 
 	return false
 }
 
+// listener is one caller's entry in the listen state, keyed by its token digest.
+type listener struct {
+	state  *listenState
+	digest string
+}
+
 // tokenDigest returns the SHA-256 hex digest of a member token.
 func tokenDigest(token string) string {
 	digest := sha256.Sum256([]byte(token))
@@ -98,11 +104,12 @@ func tokenDigest(token string) string {
 // readMember reads once from the core and, for a waiting read, uses the latest room state
 // for guidance. Port of read_member in src/agentcy/mcp/server.py. A waiting read is one
 // listen exchange that returns the page and the status (port plan fix L2); against a
-// core without listen it costs two or three exchanges, as in the Python shim.
+// core without listen it costs two or three exchanges, as in the Python shim. The caller
+// has validated a read with these values, so every request built here is valid.
 func readMember(ctx context.Context, core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, error) {
 	digest := tokenDigest(token)
 	if waitSeconds == 0 {
-		page, err := exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after})
+		page, err := core.Exchange(ctx, &wire.Read{Workspace: workspace, Token: token, After: after})
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -118,7 +125,7 @@ func readMember(ctx context.Context, core Exchanger, state *listenState, workspa
 	}
 	status := progress.StatusFromValue(statusValue)
 	if needsFreshPage(page, status) {
-		page, err = exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after})
+		page, err = core.Exchange(ctx, &wire.Read{Workspace: workspace, Token: token, After: after})
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -137,7 +144,7 @@ func readMember(ctx context.Context, core Exchanger, state *listenState, workspa
 // with one listen exchange, or with a read and a status when the core predates listen.
 func waitForPageAndStatus(ctx context.Context, core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, wire.Value, error) {
 	if !state.usesOldCore() {
-		result, err := exchangeValid(ctx, core, &wire.Listen{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+		result, err := core.Exchange(ctx, &wire.Listen{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
 		if err == nil {
 			page, _ := result.Get("page")
 			status, _ := result.Get("status")
@@ -148,11 +155,11 @@ func waitForPageAndStatus(ctx context.Context, core Exchanger, state *listenStat
 		}
 		state.markOldCore()
 	}
-	page, err := exchangeValid(ctx, core, &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+	page, err := core.Exchange(ctx, &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
 	if err != nil {
 		return wire.Value{}, wire.Value{}, err
 	}
-	status, err := exchangeValid(ctx, core, &wire.Status{Workspace: workspace, Token: token})
+	status, err := core.Exchange(ctx, &wire.Status{Workspace: workspace, Token: token})
 	return page, status, err
 }
 
@@ -207,13 +214,14 @@ func finishWait(page wire.Value, status progress.Status, statusValue wire.Value,
 	retired := progress.IsRetired(caller)
 	messages := messagesOf(page).Items
 	hasMessages := len(messages) > 0
-	count := updateSilentWait(page, status, me, retired, state, digest)
+	callerListener := listener{state: state, digest: digest}
+	count := updateSilentWait(page, status, retired, callerListener)
 	for _, field := range contextFields {
 		page.Delete(field)
 	}
 	if status.Open && !retired {
 		if caller.Role != progress.RoleWorker {
-			attachTeamFields(page, status, statusValue, me, hasMessages, state, digest)
+			attachTeamFields(page, status, statusValue, hasMessages, callerListener)
 		} else {
 			attachWorkerFields(page, status, me, unreadOther)
 		}
@@ -243,14 +251,14 @@ func finishWait(page wire.Value, status progress.Status, statusValue wire.Value,
 
 // updateSilentWait resets or increments the caller's quiet-wait count and attaches
 // waiting_on to a quiet page outside the sealed round.
-func updateSilentWait(page wire.Value, status progress.Status, me string, retired bool, state *listenState, digest string) int {
+func updateSilentWait(page wire.Value, status progress.Status, retired bool, caller listener) int {
 	if messagesOf(page).Truthy() || !status.Open || retired {
-		state.resetWaits(digest)
+		caller.state.resetWaits(caller.digest)
 		return 0
 	}
-	count := state.countWait(digest)
+	count := caller.state.countWait(caller.digest)
 	if status.Round != roundSealed {
-		if pending := progress.LeadWaitingOn(status, me); len(pending) > 0 {
+		if pending := progress.LeadWaitingOn(status, status.Participant); len(pending) > 0 {
 			page.Set("waiting_on", wire.TextList(pending))
 		}
 	}
@@ -281,9 +289,9 @@ func containsNumber(list wire.Value, message wire.Value) bool {
 
 // attachTeamFields attaches the lead's team snapshot, or team_unchanged on a quiet wait
 // that saw the same team, and an imbalanced token balance without its prose.
-func attachTeamFields(page wire.Value, status progress.Status, statusValue wire.Value, me string, hasMessages bool, state *listenState, digest string) {
-	snapshot := teamSnapshot(statusValue, me)
-	if state.teamUnchanged(digest, teamFingerprint(snapshot), hasMessages) {
+func attachTeamFields(page wire.Value, status progress.Status, statusValue wire.Value, hasMessages bool, caller listener) {
+	snapshot := teamSnapshot(statusValue, status.Participant)
+	if caller.state.teamUnchanged(caller.digest, teamFingerprint(snapshot), hasMessages) {
 		page.Set("team_unchanged", wire.BoolValue(true))
 	} else {
 		page.Set("team", snapshot)
@@ -364,13 +372,4 @@ func attachWorkerFields(page wire.Value, status progress.Status, me string, unre
 		entries = append(entries, entry)
 	}
 	page.Set("peer_blockers", wire.ListValue(entries))
-}
-
-// exchangeValid validates a request built by the shim, then sends it. A validation
-// failure has the text pydantic gives when the Python shim builds the model.
-func exchangeValid(ctx context.Context, core Exchanger, request wire.Request) (wire.Value, error) {
-	if err := request.Validate(); err != nil {
-		return wire.Value{}, err
-	}
-	return core.Exchange(ctx, request)
 }

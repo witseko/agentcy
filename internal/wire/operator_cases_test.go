@@ -43,7 +43,7 @@ func TestDecodeIncomingReplaysEveryOperatorCase(t *testing.T) {
 		if keyMatches != (entry.Error == nil) || (entry.Error != nil && *entry.Error != OperatorKeyRejected) {
 			t.Errorf("%s: key match %v, but the core answers %v", entry.Name, keyMatches, entry.Error)
 		}
-		checkNormalised(t, entry, incoming.Operator.Encode())
+		checkNormalised(t, entry, Encode(incoming.Operator))
 	}
 }
 
@@ -84,8 +84,8 @@ func TestDecodeIncomingAcceptsEveryOperatorExample(t *testing.T) {
 		}
 		actions[example.Action] = true
 	}
-	if len(actions) != len(operatorDecoders) {
-		t.Errorf("examples cover %d actions, decoders know %d", len(actions), len(operatorDecoders))
+	if len(actions) != len(operatorRequests) {
+		t.Errorf("examples cover %d actions, decoders know %d", len(actions), len(operatorRequests))
 	}
 }
 
@@ -98,9 +98,9 @@ func TestOperatorEncodeRoundTrips(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", entry.Name, err)
 		}
-		encoded := first.Operator.Encode().Compact()
+		encoded := Encode(first.Operator).Compact()
 		second, err := DecodeIncoming([]byte(encoded))
-		if err != nil || second.Operator.Encode().Compact() != encoded {
+		if err != nil || Encode(second.Operator).Compact() != encoded {
 			t.Errorf("%s: re-decoding %s gave error %v", entry.Name, encoded, err)
 		}
 	}

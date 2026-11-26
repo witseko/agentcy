@@ -15,154 +15,151 @@ type toolFunction func(call toolCall) (wire.Value, error)
 
 // toolCall is one tools/call request as a tool function sees it.
 type toolCall struct {
-	ctx       context.Context
-	request   *mcp.CallToolRequest
-	arguments *argumentReader
-	// raw is the arguments object as sent, for binding a requestState to the call.
-	raw wire.Value
+	ctx     context.Context
+	request *mcp.CallToolRequest
+	// tool is the called tool's name, which titles argument errors.
+	tool string
+	// arguments is the arguments object as sent, parsed once per call. It also binds a
+	// requestState to the call.
+	arguments wire.Value
+	// requestState is the state sealed in the call's verified requestState, or "" when the
+	// call carries none.
+	requestState string
 }
 
 // errNoCheckout is the tool error of launch_participant on a shim without a checkout.
 var errNoCheckout = errors.New("This bridge has no configured checkout")
 
+// sameNames binds each argument to the request field of the same name.
+func sameNames(names ...string) []wire.Argument {
+	bindings := make([]wire.Argument, len(names))
+	for index, name := range names {
+		bindings[index] = wire.Argument{Name: name, Field: name}
+	}
+	return bindings
+}
+
+// The arguments of each tool, in the order of the tool function's signature in
+// src/agentcy/mcp/server.py and fresh_server.py, bound to the request fields they fill.
+// A tool without arguments of its own, such as the fresh worker's status, binds none.
+var (
+	createArguments = []wire.Argument{
+		{Name: "brief", Field: "brief"},
+		{Name: "your_name", Field: "initiator"},
+		{Name: "invitees", Field: "invitees", NullIsAbsent: true},
+		{Name: "open_invite", Field: "open_invite"},
+		{Name: "sealed", Field: "sealed"},
+		{Name: "deadline_minutes", Field: "deadline_minutes"},
+		{Name: "your_model", Field: "initiator_model"},
+		{Name: "your_token_budget", Field: "initiator_token_budget"},
+	}
+	inviteArguments     = sameNames("token", "name", "role", "model", "token_budget", "reinvite")
+	openInviteArguments = sameNames("token", "enabled")
+	nameArguments       = sameNames("token", "name")
+	setRoleArguments    = sameNames("token", "name", "role")
+	tokenArguments      = sameNames("token")
+	joinArguments       = sameNames("code", "name", "model", "token_budget")
+	usageArguments      = sameNames("token", "input_tokens", "output_tokens", "model")
+	postArguments       = sameNames("token", "submission_id", "body", "kind", "to", "reply_to", "due_minutes")
+	freshPostArguments  = sameNames("submission_id", "body", "kind", "to", "reply_to")
+	readArguments       = sameNames("token", "after", "wait_seconds")
+	freshReadArguments  = sameNames("after", "wait_seconds")
+	launchArguments     = []wire.Argument{
+		{Name: "token", Field: "token"},
+		{Name: "name", Field: "name"},
+		{Name: "plugin", Field: "plugin", TypeOnly: true},
+	}
+	closeArguments      = sameNames("token", "summary")
+	reopenArguments     = sameNames("token", "note")
+	listClosedArguments = sameNames("archived")
+	readClosedArguments = sameNames("conversation", "after")
+)
+
 // memberTools returns the tool functions of the main shim by tool name. Each is a port
 // of the tool of the same name in src/agentcy/mcp/server.py.
 func (shim *shimServer) memberTools() map[string]toolFunction {
 	return map[string]toolFunction{
-		"create_conversation":       shim.createConversation,
-		"invite_participant":        shim.inviteParticipant,
-		"open_invite":               shim.openInvite,
-		"retire_participant":        shim.retireParticipant,
-		"set_participant_role":      shim.setParticipantRole,
-		"list_plugins":              shim.listPlugins,
-		"join_conversation":         shim.joinConversation,
-		"report_usage":              shim.reportUsage,
+		"create_conversation":       shim.sender(func() wire.Request { return &wire.Create{Workspace: shim.workspace} }, createArguments),
+		"invite_participant":        shim.sender(func() wire.Request { return &wire.Invite{Workspace: shim.workspace} }, inviteArguments),
+		"open_invite":               shim.sender(func() wire.Request { return &wire.OpenInvite{Workspace: shim.workspace} }, openInviteArguments),
+		"retire_participant":        shim.sender(func() wire.Request { return &wire.Retire{Workspace: shim.workspace} }, nameArguments),
+		"set_participant_role":      shim.sender(func() wire.Request { return &wire.SetRole{Workspace: shim.workspace} }, setRoleArguments),
+		"list_plugins":              shim.sender(func() wire.Request { return &wire.Plugins{Workspace: shim.workspace} }, tokenArguments),
+		"join_conversation":         shim.sender(func() wire.Request { return &wire.Join{Workspace: shim.workspace} }, joinArguments),
+		"report_usage":              shim.sender(func() wire.Request { return &wire.ReportUsage{Workspace: shim.workspace} }, usageArguments),
 		"post_message":              shim.postMessage,
 		"read_messages":             shim.readMessages,
 		"launch_participant":        shim.launchParticipant,
 		"conversation_status":       shim.conversationStatus,
-		"release_proposals":         shim.releaseProposals,
+		"release_proposals":         shim.sender(func() wire.Request { return &wire.Release{Workspace: shim.workspace} }, tokenArguments),
 		"close_conversation":        shim.closeConversation,
-		"reopen_conversation":       shim.reopenConversation,
-		"list_closed_conversations": shim.listClosedConversations,
-		"read_closed_conversation":  shim.readClosedConversation,
+		"reopen_conversation":       shim.sender(func() wire.Request { return &wire.Reopen{Workspace: shim.workspace} }, reopenArguments),
+		"list_closed_conversations": shim.sender(func() wire.Request { return &wire.ListClosed{Workspace: shim.workspace} }, listClosedArguments),
+		"read_closed_conversation":  shim.sender(func() wire.Request { return &wire.ReadClosed{Workspace: shim.workspace} }, readClosedArguments),
 	}
 }
 
-// send validates the tool arguments, then validates and sends the request.
-func (shim *shimServer) send(call toolCall, tool string, request wire.Request) (wire.Value, error) {
-	if err := call.arguments.err(tool); err != nil {
+// sender returns a tool that fills a new request from the tool arguments and sends it.
+func (shim *shimServer) sender(newRequest func() wire.Request, bindings []wire.Argument) toolFunction {
+	return func(call toolCall) (wire.Value, error) {
+		return shim.send(call, newRequest(), bindings)
+	}
+}
+
+// send fills request from the tool arguments, validates the fields that the arguments
+// did not fill, and sends the request.
+func (shim *shimServer) send(call toolCall, request wire.Request, bindings []wire.Argument) (wire.Value, error) {
+	if err := wire.ReadArguments(request, call.tool, call.arguments, bindings); err != nil {
 		return wire.Value{}, err
 	}
-	return exchangeValid(call.ctx, shim.core, request)
+	return exchangeRest(call.ctx, shim.core, request, bindings)
 }
 
-func (shim *shimServer) createConversation(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Create{Workspace: shim.workspace}
-	request.Brief = arguments.body("brief")
-	request.Initiator = arguments.label("your_name")
-	request.Invitees = arguments.slots("invitees")
-	request.OpenInvite = arguments.flag("open_invite", false)
-	request.Sealed = arguments.flag("sealed", false)
-	request.DeadlineMinutes = arguments.optionalStrictInt("deadline_minutes", wire.DeadlineRange)
-	request.InitiatorModel = arguments.optionalModel("your_model")
-	request.InitiatorTokenBudget = arguments.optionalStrictInt("your_token_budget", wire.BudgetRange)
-	return shim.send(call, "create_conversation", request)
-}
-
-func (shim *shimServer) inviteParticipant(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Invite{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Name = arguments.label("name")
-	request.Role = arguments.optionalLiteral("role", wire.InviteRoles)
-	request.Model = arguments.optionalModel("model")
-	request.TokenBudget = arguments.optionalStrictInt("token_budget", wire.BudgetRange)
-	request.Reinvite = arguments.flag("reinvite", false)
-	return shim.send(call, "invite_participant", request)
-}
-
-func (shim *shimServer) openInvite(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.OpenInvite{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Enabled = arguments.flag("enabled", true)
-	return shim.send(call, "open_invite", request)
-}
-
-func (shim *shimServer) retireParticipant(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Retire{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Name = arguments.label("name")
-	return shim.send(call, "retire_participant", request)
-}
-
-func (shim *shimServer) setParticipantRole(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.SetRole{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Name = arguments.label("name")
-	request.Role = arguments.requiredLiteral("role", wire.AssignableRoles)
-	return shim.send(call, "set_participant_role", request)
-}
-
-func (shim *shimServer) listPlugins(call toolCall) (wire.Value, error) {
-	request := &wire.Plugins{Workspace: shim.workspace, Token: call.arguments.key("token")}
-	return shim.send(call, "list_plugins", request)
-}
-
-func (shim *shimServer) joinConversation(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Join{Workspace: shim.workspace}
-	request.Code = arguments.key("code")
-	request.Name = arguments.optionalLabel("name")
-	request.Model = arguments.optionalModel("model")
-	request.TokenBudget = arguments.optionalStrictInt("token_budget", wire.BudgetRange)
-	return shim.send(call, "join_conversation", request)
-}
-
-func (shim *shimServer) reportUsage(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.ReportUsage{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.InputTokens = arguments.requiredStrictInt("input_tokens", wire.CountRange)
-	request.OutputTokens = arguments.requiredStrictInt("output_tokens", wire.CountRange)
-	request.Model = arguments.optionalModel("model")
-	return shim.send(call, "report_usage", request)
-}
-
-// postWithToken parses the shared post_message fields, sends the post for token, and
-// returns the core result. withDue enables due_minutes (main shim only).
-func (shim *shimServer) postWithToken(call toolCall, token string, withDue bool) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Post{Workspace: shim.workspace, Token: token}
-	request.SubmissionID = arguments.key("submission_id")
-	request.Body = arguments.body("body")
-	request.Kind = arguments.literal("kind", "note", wire.PostKinds)
-	request.To = arguments.optionalLabel("to")
-	request.ReplyTo = arguments.optionalStrictInt("reply_to", wire.MessageRange)
-	if withDue {
-		request.DueMinutes = arguments.optionalStrictInt("due_minutes", wire.DueRange)
-	}
-	return shim.send(call, "post_message", request)
-}
-
-// readWithToken parses the shared read_messages arguments and reads for token.
-func (shim *shimServer) readWithToken(call toolCall, token string) (wire.Value, error) {
-	arguments := call.arguments
-	after := arguments.cursor("after")
-	waitSeconds := arguments.strictInt("wait_seconds", 0, wire.WaitRange)
-	if err := arguments.err("read_messages"); err != nil {
+// exchangeRest validates the fields of request that bindings did not check, then sends
+// it. A validation failure has the text pydantic gives when the Python shim builds the
+// model.
+func exchangeRest(ctx context.Context, core Exchanger, request wire.Request, bindings []wire.Argument) (wire.Value, error) {
+	if err := wire.ValidateRest(request, bindings); err != nil {
 		return wire.Value{}, err
 	}
-	return readMember(call.ctx, shim.core, shim.state, shim.workspace, token, after, waitSeconds)
+	return core.Exchange(ctx, request)
 }
 
-// statusWithToken fetches conversation status for token and removes the caller's own name.
-func (shim *shimServer) statusWithToken(call toolCall, token string) (wire.Value, error) {
-	status, err := exchangeValid(call.ctx, shim.core, &wire.Status{Workspace: shim.workspace, Token: token})
+// postMessage posts and then forgets the poster's quiet waits.
+func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
+	request := &wire.Post{Workspace: shim.workspace}
+	result, err := shim.send(call, request, postArguments)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	shim.state.resetWaits(tokenDigest(request.Token))
+	return result, nil
+}
+
+// readMessages reads after the cursor and optionally waits for activity.
+func (shim *shimServer) readMessages(call toolCall) (wire.Value, error) {
+	return shim.readFor(call, &wire.Read{Workspace: shim.workspace}, readArguments)
+}
+
+// readFor fills a read from the tool arguments, validates it, and reads for its token.
+func (shim *shimServer) readFor(call toolCall, request *wire.Read, bindings []wire.Argument) (wire.Value, error) {
+	if err := wire.ReadArguments(request, call.tool, call.arguments, bindings); err != nil {
+		return wire.Value{}, err
+	}
+	if err := wire.ValidateRest(request, bindings); err != nil {
+		return wire.Value{}, err
+	}
+	return readMember(call.ctx, shim.core, shim.state, request.Workspace, request.Token, request.After, request.WaitSeconds)
+}
+
+// conversationStatus returns the status without the caller's own name.
+func (shim *shimServer) conversationStatus(call toolCall) (wire.Value, error) {
+	return shim.statusFor(call, &wire.Status{Workspace: shim.workspace}, tokenArguments)
+}
+
+// statusFor fetches conversation status and removes the caller's own name.
+func (shim *shimServer) statusFor(call toolCall, request *wire.Status, bindings []wire.Argument) (wire.Value, error) {
+	status, err := shim.send(call, request, bindings)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -170,29 +167,9 @@ func (shim *shimServer) statusWithToken(call toolCall, token string) (wire.Value
 	return status, nil
 }
 
-// postMessage posts and then forgets the poster's quiet waits.
-func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
-	token := call.arguments.key("token")
-	result, err := shim.postWithToken(call, token, true)
-	if err != nil {
-		return wire.Value{}, err
-	}
-	shim.state.resetWaits(tokenDigest(token))
-	return result, nil
-}
-
-func (shim *shimServer) readMessages(call toolCall) (wire.Value, error) {
-	token := call.arguments.key("token")
-	return shim.readWithToken(call, token)
-}
-
 func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
 	request := &wire.Launch{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Name = arguments.label("name")
-	request.Plugin = arguments.plain("plugin")
-	if err := arguments.err("launch_participant"); err != nil {
+	if err := wire.ReadArguments(request, call.tool, call.arguments, launchArguments); err != nil {
 		return wire.Value{}, err
 	}
 	if shim.directory == "" {
@@ -200,55 +177,17 @@ func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
 	}
 	request.Directory = shim.directory
 	request.McpTask = wantsMcpTask(call.request)
-	return exchangeValid(call.ctx, shim.core, request)
-}
-
-// conversationStatus returns the status without the caller's own name.
-func (shim *shimServer) conversationStatus(call toolCall) (wire.Value, error) {
-	token := call.arguments.key("token")
-	if err := call.arguments.err("conversation_status"); err != nil {
-		return wire.Value{}, err
-	}
-	return shim.statusWithToken(call, token)
-}
-
-func (shim *shimServer) releaseProposals(call toolCall) (wire.Value, error) {
-	request := &wire.Release{Workspace: shim.workspace, Token: call.arguments.key("token")}
-	return shim.send(call, "release_proposals", request)
+	return exchangeRest(call.ctx, shim.core, request, launchArguments)
 }
 
 // closeConversation asks the user to confirm when the client can ask, then closes.
 func (shim *shimServer) closeConversation(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
 	request := &wire.Close{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Summary = arguments.optionalBody("summary")
-	if err := arguments.err("close_conversation"); err != nil {
+	if err := wire.ReadArguments(request, call.tool, call.arguments, closeArguments); err != nil {
 		return wire.Value{}, err
 	}
-	if err := shim.confirmClose(call.request, call.raw); err != nil {
+	if err := shim.confirmClose(call); err != nil {
 		return wire.Value{}, err
 	}
-	return exchangeValid(call.ctx, shim.core, request)
-}
-
-func (shim *shimServer) reopenConversation(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Reopen{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
-	request.Note = arguments.optionalBody("note")
-	return shim.send(call, "reopen_conversation", request)
-}
-
-func (shim *shimServer) listClosedConversations(call toolCall) (wire.Value, error) {
-	request := &wire.ListClosed{Workspace: shim.workspace, Archived: call.arguments.optionalFlag("archived")}
-	return shim.send(call, "list_closed_conversations", request)
-}
-
-func (shim *shimServer) readClosedConversation(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.ReadClosed{Workspace: shim.workspace}
-	request.Conversation = arguments.conversation("conversation")
-	request.After = arguments.cursor("after")
-	return shim.send(call, "read_closed_conversation", request)
+	return exchangeRest(call.ctx, shim.core, request, closeArguments)
 }

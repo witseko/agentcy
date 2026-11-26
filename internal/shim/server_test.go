@@ -242,7 +242,7 @@ func TestPostStripsTextAndSendsDefaults(t *testing.T) {
 	if text, isError := toolText(t, result); isError || text != "{\n  \"message_id\": 4\n}" {
 		t.Errorf("result %s", result)
 	}
-	sent := core.requests[0].Encode().Compact()
+	sent := wire.Encode(core.requests[0]).Compact()
 	if !strings.Contains(sent, `"body":"hi","kind":"note","to":null`) {
 		t.Errorf("sent %s", sent)
 	}

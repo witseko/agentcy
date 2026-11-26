@@ -79,7 +79,7 @@ func TestDecodeRequestReplaysEveryMemberCase(t *testing.T) {
 		if !entry.Valid {
 			continue
 		}
-		checkNormalised(t, entry, request.Encode())
+		checkNormalised(t, entry, Encode(request))
 	}
 }
 

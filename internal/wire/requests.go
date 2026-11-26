@@ -1,16 +1,13 @@
 package wire
 
 // Request is one member request to the core. Each action has its own struct; the fields
-// mirror the pydantic models in src/agentcy/conversations/models.py.
+// mirror the pydantic models in src/agentcy/conversations/models.py. Validate, Encode
+// and ReadArguments work on any request.
 type Request interface {
 	// Action returns the request's "action" value.
 	Action() string
-	// Validate checks every field, strips names and texts in place, and applies the rules
-	// that span several fields. It returns a *ValidationError.
-	Validate() error
-	// Encode returns the request as an ordered JSON object with every field, in the field
-	// order of the Python model's dump.
-	Encode() Value
+	// schema describes the request's fields, bound to this struct.
+	schema() requestSchema
 }
 
 // The post kinds and roles that the models accept.

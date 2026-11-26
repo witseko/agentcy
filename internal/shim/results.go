@@ -45,7 +45,7 @@ func (shim *shimServer) newResult(body wire.Value) *orderedResult {
 // isModern reports whether a request uses the 2026-07-28 protocol era.
 func isModern(request mcp.Request) bool {
 	versioned, ok := request.(interface{ ProtocolVersion() string })
-	return ok && versioned.ProtocolVersion() >= modernEra
+	return ok && isModernEra(versioned.ProtocolVersion())
 }
 
 // shapeResults is a receiving middleware that gives every result the shape and member
@@ -171,13 +171,15 @@ func (shim *shimServer) callTool(ctx context.Context, method string, request mcp
 	if _, known := shim.tools[params.Name]; !known {
 		return shim.newResult(toolResultBody("Unknown tool: "+params.Name, true, modern)), nil
 	}
+	exchange := &toolExchange{arguments: argumentsValue(params.Arguments)}
 	if params.RequestState != "" {
-		if _, err := shim.signer.verify(params.RequestState, params.Name, argumentsValue(params.Arguments)); err != nil {
+		state, err := shim.signer.verify(params.RequestState, params.Name, exchange.arguments)
+		if err != nil {
 			return nil, invalidRequestStateError()
 		}
+		exchange.requestStateToken, exchange.requestState = params.RequestState, state
 	}
-	outcome := &toolOutcome{}
-	result, err := next(context.WithValue(ctx, toolOutcomeKey{}, outcome), method, request)
+	result, err := next(context.WithValue(ctx, toolExchangeKey{}, exchange), method, request)
 	if err != nil {
 		return nil, err
 	}
@@ -188,13 +190,13 @@ func (shim *shimServer) callTool(ctx context.Context, method string, request mcp
 	if toolResult.InputRequests != nil {
 		return shim.newResult(inputRequiredBody(toolResult)), nil
 	}
-	if outcome.hasValue {
-		if task, isTask, err := taskResultFromValue(params.Name, outcome.value); err != nil {
+	if exchange.hasValue {
+		if task, isTask, err := taskResultFromValue(params.Name, exchange.value); err != nil {
 			return nil, err
 		} else if isTask {
 			return shim.newResult(task), nil
 		}
-		return shim.newResult(toolResultBody(outcome.value.Indented(), false, modern)), nil
+		return shim.newResult(toolResultBody(exchange.value.Indented(), false, modern)), nil
 	}
 	text := ""
 	if len(toolResult.Content) == 1 {

@@ -92,7 +92,7 @@ func (client *Client) exchangeOnce(ctx context.Context, request Request) (Value,
 	if err := connection.SetDeadline(time.Now().Add(exchangeTimeout)); err != nil {
 		return Value{}, err
 	}
-	if err := WriteLine(connection, []byte(request.Encode().Compact())); err != nil {
+	if err := WriteLine(connection, []byte(Encode(request).Compact())); err != nil {
 		if ctx.Err() != nil {
 			return Value{}, ctx.Err()
 		}

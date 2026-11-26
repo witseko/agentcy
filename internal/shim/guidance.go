@@ -200,7 +200,11 @@ func hasOverdueTask(tasks []progress.Task) bool {
 
 // leadTaskGuidance names each open task and chooses whether to work, listen, or report.
 func leadTaskGuidance(wait waitContext, owners []progress.Member) string {
-	members := wait.status.Members
+	return openTasksSummary(owners) + freeTeammatesNote(wait.status.Members, owners, wait.me) + leadTaskAction(wait, owners)
+}
+
+// openTasksSummary names each open task and its owner, with help when one is overdue.
+func openTasksSummary(owners []progress.Member) string {
 	var descriptions []string
 	overdue := false
 	for _, owner := range owners {
@@ -213,27 +217,36 @@ func leadTaskGuidance(wait waitContext, owners []progress.Member) string {
 	if overdue {
 		summary += " " + overdueLeadHelp
 	}
-	idleNote := freeTeammatesNote(members, owners, wait.me)
+	return summary
+}
+
+// leadTaskAction tells a lead with open tasks to handle messages, work, listen, or report.
+func leadTaskAction(wait waitContext, owners []progress.Member) string {
 	if wait.hasMessages {
-		return summary + idleNote + " " + nextAfterMessages
+		return " " + nextAfterMessages
 	}
 	working, hasBlockedTask := progress.TaskAvailability(owners)
 	if slices.Contains(working, wait.me) {
-		return summary + idleNote + " Continue your tasks. Reply to each task with kind='done' or 'blocker'."
+		return " Continue your tasks. Reply to each task with kind='done' or 'blocker'."
 	}
-	otherWorking := progress.WorkingPeersWithoutTasks(members, owners, wait.me)
+	otherWorking := progress.WorkingPeersWithoutTasks(wait.status.Members, owners, wait.me)
 	if (len(working) > 0 || len(otherWorking) > 0) && wait.silentWaits < leadActiveIdleWaits {
-		checkin := ""
-		if wait.silentWaits >= leadCheckinWaits {
-			candidates := append(withoutText(working, wait.me), otherWorking...)
-			checkin = " " + checkinNudge(members, candidates, owners)
-		}
-		return fmt.Sprintf("%s%s To keep listening, %s.%s", summary, idleNote, listenText, checkin)
+		return fmt.Sprintf(" To keep listening, %s.", listenText) + leadTaskCheckin(wait, working, otherWorking, owners)
 	}
 	if hasBlockedTask && wait.silentWaits < leadIdleWaits {
-		return fmt.Sprintf("%s%s If a teammate is checking a blocker, %s. If you need your user's help, stop listening and report the open tasks.", summary, idleNote, listenText)
+		return fmt.Sprintf(" If a teammate is checking a blocker, %s. If you need your user's help, stop listening and report the open tasks.", listenText)
 	}
-	return summary + idleNote + " Stop listening and tell your user which tasks are still open."
+	return " Stop listening and tell your user which tasks are still open."
+}
+
+// leadTaskCheckin nudges a lead who waited quietly for a while to check in on a working
+// teammate.
+func leadTaskCheckin(wait waitContext, working, otherWorking []string, owners []progress.Member) string {
+	if wait.silentWaits < leadCheckinWaits {
+		return ""
+	}
+	candidates := append(withoutText(working, wait.me), otherWorking...)
+	return " " + checkinNudge(wait.status.Members, candidates, owners)
 }
 
 // endedFreshRuns names the members other than the caller, without open tasks, whose
@@ -253,7 +266,6 @@ func endedFreshRuns(status progress.Status, owners []progress.Member, me string)
 func leadGuidance(wait waitContext) string {
 	status := wait.status
 	owners := progress.TaskOwners(status)
-	members := status.Members
 	ended := endedFreshRuns(status, owners, wait.me)
 	summary := ""
 	if len(ended) > 0 {
@@ -263,24 +275,35 @@ func leadGuidance(wait waitContext) string {
 		return summary + leadTaskGuidance(wait, owners)
 	}
 	pending := progress.LeadWaitingOn(status, wait.me)
-	idleNote := freeTeammatesNote(members, owners, wait.me)
+	idleNote := freeTeammatesNote(status.Members, owners, wait.me)
 	if wait.hasMessages {
-		if len(pending) == 0 && len(ended) == 0 && idleNote != "" {
-			return summary + "All other members are done. Handle these messages, assign any follow-up tasks with kind='task', or verify the evidence and report one conclusion to your user."
-		}
-		separator := ""
-		if idleNote != "" {
-			separator = " "
-		}
-		return summary + strings.TrimLeft(idleNote, " \t\n\r\v\f") + separator + nextAfterMessages
+		return summary + leadMessageGuidance(pending, ended, idleNote)
 	}
 	if len(pending) > 0 {
-		return summary + leadPendingGuidance(members, pending, wait.silentWaits, idleNote)
+		return summary + leadPendingGuidance(status.Members, pending, wait.silentWaits, idleNote)
 	}
 	if len(ended) > 0 {
 		return summary + "Relaunch with launch_participant, reassign to a free teammate, or take over; Stop listening if you cannot recover it, verify the evidence, and report what remains open."
 	}
-	if status.OpenInvite && !hasOtherMembers(members, wait.me) {
+	return leadIdleGuidance(wait)
+}
+
+// leadMessageGuidance guides a lead without open tasks who received messages.
+func leadMessageGuidance(pending, ended []string, idleNote string) string {
+	if len(pending) == 0 && len(ended) == 0 && idleNote != "" {
+		return "All other members are done. Handle these messages, assign any follow-up tasks with kind='task', or verify the evidence and report one conclusion to your user."
+	}
+	separator := ""
+	if idleNote != "" {
+		separator = " "
+	}
+	return strings.TrimLeft(idleNote, " \t\n\r\v\f") + separator + nextAfterMessages
+}
+
+// leadIdleGuidance guides a lead on a quiet wait when nobody is pending: wait for open
+// invite joiners, or report the conclusion.
+func leadIdleGuidance(wait waitContext) string {
+	if wait.status.OpenInvite && !hasOtherMembers(wait.status.Members, wait.me) {
 		if wait.silentWaits >= leadIdleWaits {
 			return "No teammates have joined yet via the open invite. Stop listening and tell your user."
 		}

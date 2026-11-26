@@ -45,3 +45,13 @@ func TestSetReplacesInPlaceAndDeleteRemoves(t *testing.T) {
 		t.Errorf("got %s", got)
 	}
 }
+
+func TestSetAndDeleteIgnoreValuesThatAreNotObjects(t *testing.T) {
+	for _, value := range []Value{{}, NullValue(), TextValue("x"), IntValue(1), BoolValue(true), ListValue(nil)} {
+		before := value.Compact()
+		value.Set("a", IntValue(1))
+		if _, removed := value.Delete("a"); removed || value.Compact() != before {
+			t.Errorf("Set changed %s into %s", before, value.Compact())
+		}
+	}
+}

@@ -66,7 +66,7 @@ func (worker *freshWorker) join(call toolCall) (wire.Value, error) {
 		return joined, nil
 	}
 	worker.mutex.Unlock()
-	joined, err := exchangeValid(call.ctx, worker.shim.core, &wire.Join{Workspace: worker.shim.workspace, Code: worker.code})
+	joined, err := exchangeRest(call.ctx, worker.shim.core, &wire.Join{Workspace: worker.shim.workspace, Code: worker.code}, nil)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -87,7 +87,7 @@ func (worker *freshWorker) post(call toolCall) (wire.Value, error) {
 	if err != nil {
 		return wire.Value{}, err
 	}
-	result, err := worker.shim.postWithToken(call, token, false)
+	result, err := worker.shim.send(call, &wire.Post{Workspace: worker.shim.workspace, Token: token}, freshPostArguments)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -101,7 +101,7 @@ func (worker *freshWorker) read(call toolCall) (wire.Value, error) {
 	if err != nil {
 		return wire.Value{}, err
 	}
-	return worker.shim.readWithToken(call, token)
+	return worker.shim.readFor(call, &wire.Read{Workspace: worker.shim.workspace, Token: token}, freshReadArguments)
 }
 
 // status returns member activity, launch states and open tasks.
@@ -110,5 +110,5 @@ func (worker *freshWorker) status(call toolCall) (wire.Value, error) {
 	if err != nil {
 		return wire.Value{}, err
 	}
-	return worker.shim.statusWithToken(call, token)
+	return worker.shim.statusFor(call, &wire.Status{Workspace: worker.shim.workspace, Token: token}, nil)
 }

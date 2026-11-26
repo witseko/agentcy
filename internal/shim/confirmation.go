@@ -56,28 +56,25 @@ func declaresFormElicitation(request *mcp.CallToolRequest) bool {
 
 // confirmClose returns nil when the user confirmed the close or cannot be asked, an
 // *askUser when the question must go out, and a *userRefusal on a decline or cancel.
-// An answer counts only together with a requestState that this process sealed for the
-// same call; any other answer is discarded and the question is asked again.
-func (shim *shimServer) confirmClose(request *mcp.CallToolRequest, arguments wire.Value) error {
-	if !declaresFormElicitation(request) {
+// An answer counts only together with a verified requestState that this process sealed
+// for the same call; any other answer is discarded and the question is asked again.
+func (shim *shimServer) confirmClose(call toolCall) error {
+	if !declaresFormElicitation(call.request) {
 		return nil
 	}
-	params := request.Params
-	if answer, found := params.InputResponses[confirmInputID]; found && params.RequestState != "" {
-		state, err := shim.signer.verify(params.RequestState, params.Name, arguments)
-		if err == nil && state == confirmState {
-			return confirmationAnswer(answer)
-		}
+	params := call.request.Params
+	if answer, found := params.InputResponses[confirmInputID]; found && call.requestState == confirmState {
+		return confirmationAnswer(answer)
 	}
 	schema := legacyConfirmSchema
-	if isModern(request) {
+	if isModern(call.request) {
 		schema = modernConfirmSchema
 	}
 	return &askUser{result: &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			confirmInputID: &mcp.ElicitParams{Mode: "form", Message: confirmQuestion, RequestedSchema: schema},
 		},
-		RequestState: shim.signer.seal(params.Name, arguments, confirmState),
+		RequestState: shim.signer.seal(params.Name, call.arguments, confirmState),
 	}}
 }
 
