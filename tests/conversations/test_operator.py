@@ -83,14 +83,20 @@ def test_create_invites_every_slot_and_adds_the_human(conversation_db: Connectio
     assert invitations["Lead"]["join_prompt"] == (
         "Review retries - co-lead (Lead): "
         + repository.LEAD_JOIN_PROMPT.replace("CODE", invitations["Lead"]["code"])
+        + " "
+        + repository.rename_request("Review retries - co-lead (Lead)")
     )
     assert invitations["Worker"]["join_prompt"] == (
         "Review retries - worker (Worker): "
         + repository.JOIN_PROMPT.replace("CODE", invitations["Worker"]["code"])
+        + " "
+        + repository.rename_request("Review retries - worker (Worker)")
     )
     assert invitations["Partner"]["join_prompt"] == (
         "Review retries - co-lead (Partner): "
         + repository.LEAD_JOIN_PROMPT.replace("CODE", invitations["Partner"]["code"])
+        + " "
+        + repository.rename_request("Review retries - co-lead (Partner)")
     )
     assert created["roster"] == {
         "Lead": "co-lead",
@@ -422,12 +428,16 @@ def test_invite_adds_and_reissues_with_ready_prompts(conversation_db: Connection
     assert reissued["join_prompt"] == (
         "Review retries - worker (Analyst): "
         + repository.JOIN_PROMPT.replace("CODE", reissued["code"])
+        + " "
+        + repository.rename_request("Review retries - worker (Analyst)")
     )
     lead_code = run(conversation_db, actions.InviteParticipant, name="Lead", **fields)
     assert lead_code["role"] == "lead"
     assert lead_code["join_prompt"] == (
         "Review retries - lead (Lead): "
         + repository.LEAD_JOIN_PROMPT.replace("CODE", lead_code["code"])
+        + " "
+        + repository.rename_request("Review retries - lead (Lead)")
     )
     events = [message["body"] for message in show(conversation_db, conversation)["messages"]]
     assert events[0] == "Invited Analyst as worker."

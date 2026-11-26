@@ -87,8 +87,11 @@ def test_late_invite_returns_a_prompt_and_the_joiner_reads_full_history(
     assert invitation["participant"] == "Analyst"
     assert invitation["role"] == "worker"
     template = team["join_prompt"]
-    assert template == f"Review: {repository.JOIN_PROMPT}"
-    assert invitation["join_prompt"] == f"Review - worker (Analyst): {repository.JOIN_PROMPT}"
+    assert template == f"Review: {repository.JOIN_PROMPT} {repository.rename_request('Review')}"
+    heading = "Review - worker (Analyst)"
+    assert invitation["join_prompt"] == (
+        f"{heading}: {repository.JOIN_PROMPT} {repository.rename_request(heading)}"
+    )
     assert template.count("CODE") == 1
     assert invitation["join_prompt"].count("CODE") == 1
     assert team["invitations"]["Worker"] not in template
@@ -144,7 +147,10 @@ def test_late_co_lead_can_invite_and_reissue_preserves_the_role(
     """Share leadership with a new co-lead and preserve it when replacing the code."""
     team = create(conversation_db)
     invited = apply(conversation_db, "invite", token=team["token"], name="Partner", role="co-lead")
-    assert invited["join_prompt"] == f"Review - co-lead (Partner): {repository.LEAD_JOIN_PROMPT}"
+    heading = "Review - co-lead (Partner)"
+    assert invited["join_prompt"] == (
+        f"{heading}: {repository.LEAD_JOIN_PROMPT} {repository.rename_request(heading)}"
+    )
     renewed = apply(conversation_db, "invite", token=team["token"], name="PARTNER")
     assert renewed["role"] == "co-lead"
     assert renewed["join_prompt"] == invited["join_prompt"]
@@ -195,10 +201,16 @@ def test_join_prompt_truncates_multiline_briefs_and_keeps_code_placeholder(
         brief=f"{first_line}\nSecond line stays out of the title.",
         invitees=["Worker"],
     )
-    assert team["join_prompt"] == f"{short}: {repository.JOIN_PROMPT}"
+    assert (
+        team["join_prompt"]
+        == f"{short}: {repository.JOIN_PROMPT} {repository.rename_request(short)}"
+    )
     assert "report brief progress updates to the lead periodically" in team["join_prompt"]
     invitation = apply(conversation_db, "invite", token=team["token"], name="Analyst")
-    assert invitation["join_prompt"] == f"{short} - worker (Analyst): {repository.JOIN_PROMPT}"
+    heading = f"{short} - worker (Analyst)"
+    assert invitation["join_prompt"] == (
+        f"{heading}: {repository.JOIN_PROMPT} {repository.rename_request(heading)}"
+    )
 
 
 def test_reinvite_replaces_a_joined_chat_and_keeps_its_history(

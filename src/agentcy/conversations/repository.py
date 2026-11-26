@@ -99,8 +99,9 @@ def join_prompt(
 ) -> str:
     """Prefix a join prompt with a '<shared job> - <role> (<name>)' heading.
 
-    Desktop agent apps name a new session from its first message, so the heading tells the
-    human which job the session works on and which part it plays.
+    The heading tells the human which job the session works on and which part it plays.
+    Desktop agent apps title a new session with their own summary of the first message and
+    drop the heading, so the prompt also asks the agent to rename its session to the heading.
     """
     body = template.replace("CODE", code) if code is not None else template
     heading = session_title(brief)
@@ -110,7 +111,12 @@ def join_prompt(
         heading = f"{heading} ({participant})" if heading else participant
     if not heading:
         return body
-    return f"{heading}: {body}"
+    return f"{heading}: {body} {rename_request(heading)}"
+
+
+def rename_request(heading: str) -> str:
+    """Ask the joining agent to title its session with the prompt heading."""
+    return f'If your app lets you rename this session, set its title to "{heading}".'
 
 
 def digest(value: str) -> str:
