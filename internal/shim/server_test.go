@@ -400,17 +400,31 @@ func TestFreshWorkerRequiresAJoinAndHidesTheToken(t *testing.T) {
 	}
 }
 
-func TestWaitingReadUsesTwoOrThreeExchanges(t *testing.T) {
-	core := &fakeCore{answers: map[string]string{
-		"read":   `{"messages": [], "more": false, "cursor": 0, "wake": false}`,
-		"status": `{"open": false, "participant": "W", "members": {"W": {"role": "worker", "state": "replied"}}}`,
-	}}
-	client := connectRaw(t, newTestServer(t, core), false, `{}`)
-	result, _ := client.call("tools/call", `{"name":"read_messages","arguments":{"token":"t","wait_seconds":1}}`)
-	if got := strings.Join(core.actions(), ","); got != "read,status,read" {
-		t.Errorf("exchanges %s", got)
+// A waiting read whose page missed a close reads a fresh page: after one listen against
+// a core with listen, and after the listen rejection, a read and a status against an
+// older core.
+func TestWaitingReadRereadsAPageThatMissedAClose(t *testing.T) {
+	page := `{"messages": [], "more": false, "cursor": 0, "wake": false}`
+	status := `{"open": false, "participant": "W", "members": {"W": {"role": "worker", "state": "replied"}}}`
+	cases := []struct {
+		name     string
+		failures map[string]error
+		want     string
+	}{
+		{"core with listen", nil, "listen,read"},
+		{"core without listen", map[string]error{"listen": oldCoreRejection}, "listen,read,status,read"},
 	}
-	if text, _ := toolText(t, result); !strings.Contains(text, nextAfterClose) {
-		t.Errorf("text %q", text)
+	for _, test := range cases {
+		core := &fakeCore{failures: test.failures, answers: map[string]string{
+			"read": page, "status": status, "listen": `{"page": ` + page + `, "status": ` + status + `}`,
+		}}
+		client := connectRaw(t, newTestServer(t, core), false, `{}`)
+		result, _ := client.call("tools/call", `{"name":"read_messages","arguments":{"token":"t","wait_seconds":1}}`)
+		if got := strings.Join(core.actions(), ","); got != test.want {
+			t.Errorf("%s: exchanges %s, want %s", test.name, got, test.want)
+		}
+		if text, _ := toolText(t, result); !strings.Contains(text, nextAfterClose) {
+			t.Errorf("%s: text %q", test.name, text)
+		}
 	}
 }

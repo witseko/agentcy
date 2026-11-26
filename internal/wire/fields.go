@@ -66,13 +66,15 @@ type IntRange struct {
 
 // The ranges of the integer fields.
 var (
-	CursorRange   = IntRange{Minimum: 0, Maximum: MaxCursor}
-	WaitRange     = IntRange{Minimum: 0, Maximum: MaxWaitSeconds}
-	MessageRange  = IntRange{Minimum: 1, Maximum: math.MaxInt64}
-	DueRange      = IntRange{Minimum: 1, Maximum: MaxDueMinutes}
-	DeadlineRange = IntRange{Minimum: 1, Maximum: MaxDeadlineMinutes}
-	CountRange    = IntRange{Minimum: 0, Maximum: MaxTokenCount}
-	BudgetRange   = IntRange{Minimum: 0, Maximum: MaxTokenCount, Exclusive: true}
+	CursorRange = IntRange{Minimum: 0, Maximum: MaxCursor}
+	WaitRange   = IntRange{Minimum: 0, Maximum: MaxWaitSeconds}
+	// ListenWaitRange is the wait of a listen, which is always a waiting read.
+	ListenWaitRange = IntRange{Minimum: 1, Maximum: MaxWaitSeconds}
+	MessageRange    = IntRange{Minimum: 1, Maximum: math.MaxInt64}
+	DueRange        = IntRange{Minimum: 1, Maximum: MaxDueMinutes}
+	DeadlineRange   = IntRange{Minimum: 1, Maximum: MaxDeadlineMinutes}
+	CountRange      = IntRange{Minimum: 0, Maximum: MaxTokenCount}
+	BudgetRange     = IntRange{Minimum: 0, Maximum: MaxTokenCount, Exclusive: true}
 )
 
 // problem builds a FieldError without a location.

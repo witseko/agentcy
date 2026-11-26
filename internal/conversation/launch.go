@@ -60,7 +60,7 @@ func (handler *Handler) configuredPlugin(name string) (*fresh.Plugin, error) {
 
 // memberPlugins lists the plugins for an active lead of an open conversation.
 func (handler *Handler) memberPlugins(ctx context.Context, request *wire.Plugins) (core.Outcome, error) {
-	_, err := handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		_, err := launchAuthority(ctx, tx, request.Token)
 		return wire.Value{}, err
 	})
@@ -77,7 +77,7 @@ func (handler *Handler) launch(ctx context.Context, request *wire.Launch, now in
 	var queued queuedLaunch
 	var directory string
 	var plugin *fresh.Plugin
-	_, err := handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, err := launchAuthority(ctx, tx, request.Token)
 		if err != nil {
 			return wire.Value{}, err
@@ -119,7 +119,7 @@ func (handler *Handler) operatorLaunch(ctx context.Context, workspace string, re
 		return core.Outcome{}, err
 	}
 	var queued queuedLaunch
-	_, err = handler.writeResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
+	_, err = handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		var queueErr error
 		queued, queueErr = operatorQueue(ctx, tx, request, queueRequest{
 			workspace: workspace, name: request.Name, plugin: request.Plugin,

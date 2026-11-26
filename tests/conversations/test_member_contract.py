@@ -13,6 +13,10 @@ from agentcy.conversations.models import MemberRequest, contract_schema
 from agentcy.mcp.core import REQUEST, rejects_operator_key
 
 PROTOCOL = Path(__file__).parents[2] / "protocol"
+# Actions that only the Go core accepts. They are in the committed schema and cases, but
+# not in the Python models: the Python core rejects them, which is what makes a Go shim
+# fall back to the older requests (protocol/README.md, "Go core only").
+GO_ONLY_ACTIONS = {"listen": "Listen"}
 REQUEST_MODELS = {
     get_args(model.model_fields["action"].annotation)[0]: model for model in get_args(MemberRequest)
 }
@@ -29,10 +33,18 @@ def case_line(case: dict) -> bytes:
     return text.encode() + b"\n"
 
 
+def python_schema(schema: dict) -> dict:
+    """Return the committed schema without the Go-only actions."""
+    go_only = set(GO_ONLY_ACTIONS.values())
+    schema["$defs"] = {name: value for name, value in schema["$defs"].items() if name not in go_only}
+    schema["oneOf"] = [ref for ref in schema["oneOf"] if ref["$ref"].split("/")[-1] not in go_only]
+    return schema
+
+
 def test_committed_schema_matches_the_models() -> None:
     """Fail when a model changes without regenerating protocol/member.v1.schema.json."""
     committed = json.loads((PROTOCOL / "member.v1.schema.json").read_bytes())
-    assert committed == contract_schema()
+    assert python_schema(committed) == contract_schema()
 
 
 def test_schema_is_valid_and_lists_every_action() -> None:
@@ -40,7 +52,7 @@ def test_schema_is_valid_and_lists_every_action() -> None:
     schema = json.loads((PROTOCOL / "member.v1.schema.json").read_bytes())
     Draft202012Validator.check_schema(schema)
     assert len(REQUEST_MODELS) == 19
-    assert len(schema["oneOf"]) == len(REQUEST_MODELS)
+    assert len(schema["oneOf"]) == len(REQUEST_MODELS) + len(GO_ONLY_ACTIONS)
 
 
 def test_cases_cover_every_action_and_field() -> None:
@@ -70,6 +82,10 @@ def test_valid_examples_satisfy_the_schema() -> None:
 def test_case_matches_the_core_validator(case: dict) -> None:
     """Replay one case through the parser the core uses and compare the decision and result."""
     line = case_line(case)
+    if case["action"] in GO_ONLY_ACTIONS:
+        with pytest.raises(ValidationError):
+            REQUEST.validate_json(line)
+        return
     try:
         parsed = REQUEST.validate_json(line)
         member = models.REQUEST.validate_json(line)

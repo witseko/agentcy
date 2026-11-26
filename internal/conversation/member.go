@@ -20,6 +20,9 @@ func (handler *Handler) Member(ctx context.Context, request wire.Request, now ti
 		for _, room := range outcome.Notify {
 			handler.wakeFreshRuns(room.Workspace)
 		}
+		for _, added := range outcome.Added {
+			handler.wakeFreshRuns(added.Room.Workspace)
+		}
 	}
 	return outcome, err
 }
@@ -28,12 +31,12 @@ func (handler *Handler) Member(ctx context.Context, request wire.Request, now ti
 func (handler *Handler) member(ctx context.Context, request wire.Request, unix int64) (core.Outcome, error) {
 	switch typed := request.(type) {
 	case *wire.Create:
-		result, err := handler.writeResult(ctx, typed.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+		result, err := handler.writeResult(ctx, typed.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return create(ctx, tx, typed, unix)
 		})
 		return core.Outcome{Result: result}, err
 	case *wire.Join:
-		result, err := handler.writeResult(ctx, typed.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+		result, err := handler.writeResult(ctx, typed.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return join(ctx, tx, handler.book, typed, unix)
 		})
 		if err != nil {
@@ -62,26 +65,68 @@ func (handler *Handler) member(ctx context.Context, request wire.Request, unix i
 }
 
 // participantRequest applies a request of an authenticated member and wakes its room,
-// except for a status, which writes nothing that others wait for.
+// except for a status, which writes nothing that others wait for. A read, and a post
+// that is not a proposal, wake only the waiting reads that the added messages concern,
+// unless the request released a sealed round (port plan fix L3).
 func (handler *Handler) participantRequest(ctx context.Context, request wire.Request, now int64) (core.Outcome, error) {
 	token, workspace := memberCredentials(request)
 	var room string
-	result, err := handler.writeResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
-		member, err := refreshParticipant(ctx, tx, token, releasesRound(request), now)
+	var added []core.Message
+	targeted := addsOnlyMessages(request)
+	result, err := handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		member, released, err := refreshParticipantReleasing(ctx, tx, token, releasesRound(request), now)
 		if err != nil {
 			return wire.Value{}, err
 		}
 		room = member.Room
-		return handler.applyParticipant(ctx, tx, member, request, now)
+		targeted = targeted && !released
+		if !targeted {
+			return handler.applyParticipant(ctx, tx, member, request, now)
+		}
+		lastMessage, err := lastRoomMessage(ctx, tx, room)
+		if err != nil {
+			return wire.Value{}, err
+		}
+		result, err := handler.applyParticipant(ctx, tx, member, request, now)
+		if err != nil {
+			return wire.Value{}, err
+		}
+		added, err = addedMessages(ctx, tx, room, lastMessage)
+		return result, err
 	})
 	if err != nil {
 		return core.Outcome{}, err
 	}
 	outcome := core.Outcome{Result: result}
-	if _, isStatus := request.(*wire.Status); !isStatus {
-		outcome.Notify = []core.Room{{Workspace: workspace, Conversation: room}}
+	changed := core.Room{Workspace: workspace, Conversation: room}
+	switch {
+	case isStatusRequest(request):
+	case targeted:
+		outcome.Added = []core.AddedMessages{{Room: changed, Messages: added}}
+	default:
+		outcome.Notify = []core.Room{changed}
 	}
 	return outcome, nil
+}
+
+// addsOnlyMessages reports the requests whose only change that a waiting read can see is
+// the messages they add, unless they release a sealed round: a read records activity and
+// usage, and a post that is not a proposal adds at most one message and its receipt.
+// Every other write wakes the whole room.
+func addsOnlyMessages(request wire.Request) bool {
+	switch typed := request.(type) {
+	case *wire.Read:
+		return true
+	case *wire.Post:
+		return typed.Kind != kindProposal
+	}
+	return false
+}
+
+// isStatusRequest reports a status request.
+func isStatusRequest(request wire.Request) bool {
+	_, isStatus := request.(*wire.Status)
+	return isStatus
 }
 
 // applyParticipant dispatches one request of an authenticated member (apply in
@@ -166,7 +211,7 @@ func (handler *Handler) listClosed(ctx context.Context, request *wire.ListClosed
 	if !store.Exists(handler.dataDir, request.Workspace) {
 		return core.Outcome{Result: singleField("conversations", wire.ListValue(nil))}, nil
 	}
-	result, err := handler.readResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+	result, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		return listClosed(ctx, tx, request.Archived)
 	})
 	return core.Outcome{Result: result}, err
@@ -177,7 +222,7 @@ func (handler *Handler) readClosed(ctx context.Context, request *wire.ReadClosed
 	if !store.Exists(handler.dataDir, request.Workspace) {
 		return core.Outcome{}, reject(unknownClosed)
 	}
-	result, err := handler.readResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+	result, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		return readClosed(ctx, tx, request.Conversation, request.After)
 	})
 	return core.Outcome{Result: result}, err
@@ -188,7 +233,7 @@ func (handler *Handler) mcpTask(ctx context.Context, workspace, taskID string, a
 	if !store.Exists(handler.dataDir, workspace) {
 		return core.Outcome{}, reject(unknownMcpTask)
 	}
-	result, err := handler.writeResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
+	result, err := handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		return action(ctx, tx, taskID)
 	})
 	return core.Outcome{Result: result}, err

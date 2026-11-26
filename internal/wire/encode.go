@@ -119,6 +119,14 @@ func (request *Read) Encode() Value {
 	)
 }
 
+// Encode returns the ordered dump of a listen request.
+func (request *Listen) Encode() Value {
+	return memberObject(request.Workspace, request.Token, request.Action(),
+		field{"after", IntValue(request.After)},
+		field{"wait_seconds", IntValue(request.WaitSeconds)},
+	)
+}
+
 // Encode returns the ordered dump of a close request.
 func (request *Close) Encode() Value {
 	return memberObject(request.Workspace, request.Token, request.Action(), field{"summary", optionalText(request.Summary)})

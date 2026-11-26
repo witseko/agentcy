@@ -44,11 +44,11 @@ func (handler *Handler) operator(ctx context.Context, request wire.OperatorReque
 	unix := now.Unix()
 	var result wire.Value
 	if readsOnly(request) {
-		result, err = handler.readResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
+		result, err = handler.readResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return handler.applyOperatorRead(ctx, tx, request, unix)
 		})
 	} else {
-		result, err = handler.writeResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
+		result, err = handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return handler.applyOperatorWrite(ctx, tx, workspace, request, unix)
 		})
 	}

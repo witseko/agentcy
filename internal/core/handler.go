@@ -27,8 +27,8 @@ import (
 //     call ReadPage again after each wake instead.
 type Handler interface {
 	// Member applies one validated member request and returns its result and the rooms to
-	// wake. It is never called for a read with WaitSeconds above zero: the daemon runs
-	// those through OpenWait, ReadPage, and RecordDelivery.
+	// wake. It is never called for a read with WaitSeconds above zero or for a listen: the
+	// daemon runs those through OpenWait, ReadPage, and RecordDelivery or FinishListen.
 	//
 	// Port of Core.apply in core.py: after a committed write, Notify names the room of the
 	// authenticated member, or of the joined conversation for "join". For "launch",
@@ -54,12 +54,17 @@ type Handler interface {
 	// must no longer carry it (repository.refresh_participant releases the round), or the
 	// wait polls without sleeping until its own deadline, as in Python.
 	// Port of read_page in concurrency.py.
-	ReadPage(ctx context.Context, request *wire.Read, now time.Time) (wire.Value, error)
+	ReadPage(ctx context.Context, request *wire.Read, now time.Time) (WaitPage, error)
 
 	// RecordDelivery records the estimated input tokens of a page that a waiting read
 	// delivers. The daemon calls it once per waiting read, only for a ready page with at
 	// least one message. Port of _record_delivered_usage in concurrency.py.
 	RecordDelivery(ctx context.Context, request *wire.Read, page wire.Value, now time.Time) error
+
+	// FinishListen ends a listen request after its waiting read: it records the delivery
+	// of page when deliver is true, as RecordDelivery does, and returns the caller's
+	// status, as a status request does, both in one transaction.
+	FinishListen(ctx context.Context, request *wire.Read, page wire.Value, deliver bool, now time.Time) (wire.Value, error)
 
 	// HasActiveWork reports whether any workspace store has an open conversation or a
 	// pending assignment, stores of earlier processes included. The daemon exits after an
@@ -78,9 +83,44 @@ type Room struct {
 type Outcome struct {
 	// Result is sent as {"result": Result}. It is usually an object.
 	Result wire.Value
-	// Notify lists the rooms whose waiting reads wake. The daemon wakes them after the
+	// Notify lists the rooms whose waiting reads all wake. The daemon wakes them after the
 	// method returns, which must be after the write committed, and before it replies.
 	Notify []Room
+	// Added lists rooms whose only change that a waiting read can see is the messages
+	// listed (port plan fix L3). Only the waiting reads that one of the messages concerns
+	// wake. A write that might have changed anything else in a room names it in Notify.
+	Added []AddedMessages
+}
+
+// AddedMessages is every message that one committed write added to a room.
+type AddedMessages struct {
+	Room     Room
+	Messages []Message
+}
+
+// Message is what a waiting read needs to know about an added message to decide whether
+// it must read its page again.
+type Message struct {
+	ID           int64
+	Author       int64
+	Recipient    int64
+	HasRecipient bool
+	// Kind is "" for a message without a kind.
+	Kind string
+}
+
+// WakeFilter decides whether an added message makes a waiting read's page ready. It must
+// give exactly the answer that reading the page again would give, and must be a
+// comparable value that is safe to call from any goroutine.
+type WakeFilter interface {
+	Wakes(message Message) bool
+}
+
+// WaitPage is one page of a waiting read and the filter for the reader as it read it.
+type WaitPage struct {
+	Page wire.Value
+	// Filter is nil when every added message must wake the read.
+	Filter WakeFilter
 }
 
 // WaitStart is what a waiting read needs before its first page.

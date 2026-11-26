@@ -267,6 +267,14 @@ var decoders = map[string]func(*fieldReader) Request{
 			WaitSeconds: reader.strictInt("wait_seconds", 0, WaitRange),
 		}
 	},
+	"listen": func(reader *fieldReader) Request {
+		return &Listen{
+			Workspace:   reader.text("workspace"),
+			Token:       reader.text("token"),
+			After:       reader.laxInt("after", 0, CursorRange),
+			WaitSeconds: reader.strictInt("wait_seconds", 0, ListenWaitRange),
+		}
+	},
 	"close": func(reader *fieldReader) Request {
 		return &Close{Workspace: reader.text("workspace"), Token: reader.text("token"), Summary: reader.optionalText("summary")}
 	},

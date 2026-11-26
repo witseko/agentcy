@@ -168,6 +168,15 @@ func (request *Read) Validate() error {
 	return check.errors.result("Read")
 }
 
+// Validate checks a listen request.
+func (request *Listen) Validate() error {
+	var check checker
+	check.member(request.Workspace, request.Token)
+	check.number("after", request.After, CursorRange)
+	check.number("wait_seconds", request.WaitSeconds, ListenWaitRange)
+	return check.errors.result("Listen")
+}
+
 // Validate checks a close request.
 func (request *Close) Validate() error {
 	var check checker

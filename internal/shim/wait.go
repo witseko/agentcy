@@ -3,6 +3,8 @@ package shim
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"strings"
 	"sync"
 
 	"github.com/witseko/agentcy/internal/progress"
@@ -23,6 +25,9 @@ type listenState struct {
 	silentWaits map[string]int
 	// lastTeams is nil for the fresh worker, which never omits the team snapshot.
 	lastTeams map[string]string
+	// oldCore is set once the core rejected a listen request: it predates listen, so this
+	// process sends a read and a status instead for the rest of its life.
+	oldCore bool
 }
 
 // newListenState returns an empty state; withTeams enables the team snapshot memory.
@@ -80,23 +85,23 @@ func tokenDigest(token string) string {
 }
 
 // readMember reads once from the core and, for a waiting read, uses the latest room state
-// for guidance. A waiting read costs two or three exchanges, as in the Python shim.
-// Port of read_member in src/agentcy/mcp/server.py.
+// for guidance. Port of read_member in src/agentcy/mcp/server.py. A waiting read is one
+// listen exchange that returns the page and the status (port plan fix L2); against a
+// core without listen it costs two or three exchanges, as in the Python shim.
 func readMember(core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, error) {
-	request := &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds}
-	page, err := exchangeValid(core, request)
-	if err != nil {
-		return wire.Value{}, err
-	}
 	digest := tokenDigest(token)
 	if waitSeconds == 0 {
+		page, err := exchangeValid(core, &wire.Read{Workspace: workspace, Token: token, After: after})
+		if err != nil {
+			return wire.Value{}, err
+		}
 		page.Delete("_task_blockers")
 		if messagesOf(page).Truthy() {
 			state.resetWaits(digest)
 		}
 		return page, nil
 	}
-	statusValue, err := exchangeValid(core, &wire.Status{Workspace: workspace, Token: token})
+	page, statusValue, err := waitForPageAndStatus(core, state, workspace, token, after, waitSeconds)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -115,6 +120,50 @@ func readMember(core Exchanger, state *listenState, workspace, token string, aft
 		page.Set("more", wire.BoolValue(false))
 	}
 	return finishWait(page, status, statusValue, state, digest, unreadOther), nil
+}
+
+// waitForPageAndStatus runs a waiting read and returns its page and the caller's status:
+// with one listen exchange, or with a read and a status when the core predates listen.
+func waitForPageAndStatus(core Exchanger, state *listenState, workspace, token string, after, waitSeconds int64) (wire.Value, wire.Value, error) {
+	if !state.usesOldCore() {
+		result, err := exchangeValid(core, &wire.Listen{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+		if err == nil {
+			page, _ := result.Get("page")
+			status, _ := result.Get("status")
+			return page, status, nil
+		}
+		if !rejectsAsInvalid(err) {
+			return wire.Value{}, wire.Value{}, err
+		}
+		state.markOldCore()
+	}
+	page, err := exchangeValid(core, &wire.Read{Workspace: workspace, Token: token, After: after, WaitSeconds: waitSeconds})
+	if err != nil {
+		return wire.Value{}, wire.Value{}, err
+	}
+	status, err := exchangeValid(core, &wire.Status{Workspace: workspace, Token: token})
+	return page, status, err
+}
+
+// rejectsAsInvalid recognizes the core's answer to an action it does not know. The shim
+// validated the request, so this rejection means the core predates the action.
+func rejectsAsInvalid(err error) bool {
+	var rejection *wire.CoreError
+	return errors.As(err, &rejection) && strings.HasPrefix(rejection.Message, wire.InvalidArguments)
+}
+
+// usesOldCore reports whether a core rejected listen during this process.
+func (state *listenState) usesOldCore() bool {
+	state.mutex.Lock()
+	defer state.mutex.Unlock()
+	return state.oldCore
+}
+
+// markOldCore remembers that the core predates listen.
+func (state *listenState) markOldCore() {
+	state.mutex.Lock()
+	defer state.mutex.Unlock()
+	state.oldCore = true
 }
 
 // needsFreshPage reports a status change that the waiting page missed: the room closed,

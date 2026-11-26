@@ -37,7 +37,7 @@ var ErrInvalidResponse = errors.New("Invalid bridge response")
 
 // idempotentActions may be sent a second time after a transient disconnect.
 var idempotentActions = map[string]bool{
-	"read": true, "status": true, "plugins": true, "post": true, "close": true,
+	"read": true, "listen": true, "status": true, "plugins": true, "post": true, "close": true,
 	"reopen": true, "release": true, "report_usage": true, "mcp_task_status": true,
 	"mcp_task_cancel": true,
 }

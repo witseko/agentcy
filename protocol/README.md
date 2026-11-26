@@ -88,9 +88,9 @@ Three files pin the request side of the protocol:
 
 | File | Content |
 | --- | --- |
-| [member.v1.schema.json](member.v1.schema.json) | JSON schema of the 19 request actions, generated from the models in `agentcy.conversations.models`. It shows fields, types, and limits. It cannot show the rules below, so use the cases for them. |
+| [member.v1.schema.json](member.v1.schema.json) | JSON schema of the 20 request actions: the 19 generated from the models in `agentcy.conversations.models`, plus `listen`, added by hand (see "Go core only" below). It shows fields, types, and limits. It cannot show the rules below, so use the cases for them. |
 | [member.v1.cases.json](member.v1.cases.json) | Accept and reject cases, derived by running the real validator, never written by hand. |
-| `tests/conversations/test_member_contract.py` | Fails when the schema drifts from the models, and replays every case against the validator the core uses. |
+| `tests/conversations/test_member_contract.py` | Fails when the schema drifts from the models, and replays every case against the validator the core uses. `internal/wire/cases_test.go` replays them against the Go validator. |
 
 Each case is `{"action", "name", "request" or "raw", "valid", "normalised"}`. `action` is the
 action under test, or `protocol` for the request as a whole. `request` is a parsed JSON value.
@@ -130,6 +130,27 @@ checks decides that string:
 
 `version` accepts the integer 1 and every JSON value that Python treats as equal to 1: `1.0`,
 `1e0`, and `true`. It rejects `"1"`. `directory` must start with `/` and must not hold NUL.
+
+### Go core only: `listen`
+
+`listen` exists only in the Go core (`agentcy core`); the Python core does not know it.
+It takes the fields of `read`, but `wait_seconds` is required and runs from 1 to 45. The
+core runs the waiting read exactly as `read` with that wait, then builds the caller's
+status, and answers `{"page": <the read result>, "status": <the status result>}`. A shim
+sends one exchange instead of a read and a status.
+
+It is additive. Old shims never send it and keep working against the Go core. A Go shim
+that gets `Invalid bridge arguments` for a `listen` (the answer of the Python core, or of
+an older Go core, to an unknown action) falls back to `read` and `status` for the rest of
+its process. The Python contract test checks that the Python validator rejects every
+`listen` case.
+
+The `listen` cases were derived from the `read` cases by renaming the action, giving each
+case without a wait a `wait_seconds` of 45 unless the case is about the missing wait, and
+adding the cases for the 1 second lower bound. Their decisions and normalised dumps come
+from the Go validator (`wire.DecodeRequest`). The `listen` entry of the schema was written by
+hand from the `read` entry. Regenerating the schema from the Python models drops it, so add
+it back.
 
 Regenerate the schema after a model change:
 `uv run python -m agentcy.conversations.models > protocol/member.v1.schema.json`

@@ -31,15 +31,15 @@ WHERE message.room = ? AND message.kind IN (?, ?, ?) GROUP BY message.author, me
 
 // memberActivity summarizes each author's posts. Both queries read only the
 // message_room_kind index.
-func memberActivity(ctx context.Context, tx *sql.Tx, room string) (map[int64]*authorActivity, error) {
-	activity := map[int64]*authorActivity{}
+func memberActivity(ctx context.Context, tx *sql.Tx, room string) (map[int64]authorActivity, error) {
+	activity := map[int64]authorActivity{}
 	rows, err := tx.QueryContext(ctx, selectPostCounts, room, eventKind)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var author int64
-		entry := &authorActivity{}
+		var entry authorActivity
 		if err := rows.Scan(&author, &entry.count, &entry.latestID); err != nil {
 			rows.Close()
 			return nil, err
@@ -64,6 +64,7 @@ func memberActivity(ctx context.Context, tx *sql.Tx, room string) (map[int64]*au
 		if entry.markerID == 0 || latestID > entry.markerID {
 			entry.marker = kind
 			entry.markerID = latestID
+			activity[author] = entry
 		}
 	}
 	return activity, rows.Err()
@@ -170,14 +171,11 @@ WHERE participant.room = ? ORDER BY participant.id`
 // statusMembers loads every slot of a room in member-ID order with its activity and
 // open tasks.
 func statusMembers(ctx context.Context, tx *sql.Tx, room string, now int64) ([]*statusMember, error) {
-	tasksByOwner, err := openTasks(ctx, tx, room, now)
+	state, err := roomState(ctx, tx, room)
 	if err != nil {
 		return nil, err
 	}
-	activity, err := memberActivity(ctx, tx, room)
-	if err != nil {
-		return nil, err
-	}
+	tasksByOwner := openTasksOf(state.board, now)
 	rows, err := tx.QueryContext(ctx, selectStatusSlots, room)
 	if err != nil {
 		return nil, err
@@ -189,9 +187,7 @@ func statusMembers(ctx context.Context, tx *sql.Tx, room string, now int64) ([]*
 		if err := rows.Scan(&member.id, &member.label, &member.role, &member.retired, &member.joined, &member.seen, &member.launchState); err != nil {
 			return nil, err
 		}
-		if entry, found := activity[member.id]; found {
-			member.activity = *entry
-		}
+		member.activity = state.activity[member.id]
 		member.openTasks = tasksByOwner[member.id]
 		members = append(members, member)
 	}

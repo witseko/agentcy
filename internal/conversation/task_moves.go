@@ -141,10 +141,11 @@ const insertDeprecate = `INSERT INTO message (room, author, body, created, kind,
 // deprecateOpenTasks ends every unfinished task of the actor's conversation as
 // deprecated, with one deprecate message from the actor per task, oldest first.
 func deprecateOpenTasks(ctx context.Context, tx *sql.Tx, actor *participant, now int64) error {
-	board, err := readTasks(ctx, tx, actor.Room, 0)
+	state, err := roomState(ctx, tx, actor.Room)
 	if err != nil {
 		return err
 	}
+	board := state.board
 	var unfinished []int64
 	for _, id := range board.order {
 		if !board.tasks[id].done {

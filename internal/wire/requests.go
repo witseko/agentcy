@@ -76,6 +76,21 @@ type Read struct {
 	WaitSeconds int64
 }
 
+// Listen is a waiting read that also returns the caller's status (port plan fix L2).
+// Only the Go core knows it: a shim falls back to read and status when the core rejects
+// it as Invalid bridge arguments.
+type Listen struct {
+	Workspace   string
+	Token       string
+	After       int64
+	WaitSeconds int64
+}
+
+// Read returns the waiting read that the listen performs.
+func (request *Listen) Read() *Read {
+	return &Read{Workspace: request.Workspace, Token: request.Token, After: request.After, WaitSeconds: request.WaitSeconds}
+}
+
 // Close closes a conversation and optionally records its outcome.
 type Close struct {
 	Workspace string
@@ -196,6 +211,9 @@ func (*Post) Action() string { return "post" }
 
 // Action returns "read".
 func (*Read) Action() string { return "read" }
+
+// Action returns "listen".
+func (*Listen) Action() string { return "listen" }
 
 // Action returns "close".
 func (*Close) Action() string { return "close" }

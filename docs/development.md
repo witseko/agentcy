@@ -73,6 +73,36 @@ To add a scenario:
 
 Do not put text in a request that looks like a generated value: a run of 24, 32 or 64 characters from `0-9a-f`, or a run of 43 URL-safe characters. Normalization would replace it.
 
+## Performance
+
+`bench/` measures one shim and daemon pair (see [bench/README.md](../bench/README.md)). The numbers below were taken on 2026-11-26 on an Apple M1 (8 cores, macOS, Darwin 27.2.0, Go 1.27.4) with nothing else running, with the default flags: one conversation of 100,000 messages (99,800 written with the `sqlite3` CLI, 200 posted through the socket), 1,000 warm samples per operation, and a 60 s load scenario with 20 listening shims, one 1 Hz `operator_show` poller, and one writer every 5 s. "Go after M5" shows both runs of the final build.
+
+| Number | Python shim and core | Go shim and core before M5 | Go after M5 (run 1 / run 2) |
+| --- | --- | --- | --- |
+| Member read p95 (ms) | 1.71 | 0.33 | 0.44 / 0.37 |
+| Member status p50 / p95 (ms) | 37.5 / 42.1 | 48.7 / 49.2 | 0.30 / 0.51, 0.30 / 0.49 |
+| `operator_show` tail p50 / p95 (ms) | 59.6 / 62.1 | 55.1 / 55.5 | 0.70 / 0.95, 0.69 / 0.94 |
+| `operator_search` p50 / p95 (ms) | 23.6 / 33.6 | 8.9 / 25.6 | 9.9 / 25.7, 10.7 / 25.8 |
+| Member post p95 (ms) | 1.42 | 0.72 | 0.69 / 0.74 |
+| Shim start, cold max (ms) | 907 | 74.3 | 74.5 / 74.1 |
+| Shim start, warm max (ms) | 461 | 21.1 | 20.1 / 20.6 |
+| Load CPU seconds, total (daemon) | 13.97 (13.65) | 17.35 (17.15) | 1.11 (0.86) / 1.43 (1.04) |
+| Load peak RSS, total (daemon), MB | 2,145 (114) | 487 (53) | 472 (41) / 473 (40) |
+| `git` processes in the load window | 60 | 1 | 1 / 1 |
+| Wake latency p50 / p95 (ms) | 2,453 / 2,820 | 2,542 / 2,984 | 2,017 / 2,031, 2,019 / 2,031 |
+
+Most of the remaining peak RSS belongs to the 20 shims, about 21 MB each. The one `git` process per window is the 60 s refresh of the cached workspace key (plan fix L7), not one per request. The daemon holds each wake for the 2 s settle window, so wake latency cannot go below about 2 s.
+
+Cold start bound: a shim with no daemon running reaches its first tool result in at most 75 ms on this machine (5 runs). After a daemon start, the first status or `operator_show` of each room replays all of its messages once to fill the room cache, which takes about as long as every status took before M5 (about 50 ms at 100,000 messages); later calls read only new messages.
+
+Reproduce:
+
+```bash
+make build
+AGENTCY_CORE_CMD="$PWD/bin/agentcy core" AGENTCY_BIN="$PWD/bin/agentcy" \
+  go run -tags bench ./bench -json "$TMPDIR/bench-go.json"
+```
+
 ## Release binaries
 
 Each GitHub release holds one terminal UI binary for each platform, named `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The repository holds no binaries. `make tui` downloads the one for your machine when Go is not installed.

@@ -33,7 +33,10 @@ type fakeHandler struct {
 	openWait       func(request *wire.Read) (WaitStart, error)
 	readPage       func(request *wire.Read) (wire.Value, error)
 	recordDelivery func(page wire.Value) error
+	finishListen   func(page wire.Value, deliver bool) (wire.Value, error)
 	hasActiveWork  func() (bool, error)
+	// filter is the wake filter of every page; nil wakes for every added message.
+	filter WakeFilter
 }
 
 // resultNaming returns {"handled": action}.
@@ -64,11 +67,19 @@ func (fake *fakeHandler) OpenWait(_ context.Context, request *wire.Read, _ time.
 	return WaitStart{Room: testRoom}, nil
 }
 
-func (fake *fakeHandler) ReadPage(_ context.Context, request *wire.Read, _ time.Time) (wire.Value, error) {
-	if fake.readPage != nil {
-		return fake.readPage(request)
+func (fake *fakeHandler) ReadPage(_ context.Context, request *wire.Read, _ time.Time) (WaitPage, error) {
+	if fake.readPage == nil {
+		return WaitPage{Page: pageWith(0), Filter: fake.filter}, nil
 	}
-	return pageWith(0), nil
+	page, err := fake.readPage(request)
+	return WaitPage{Page: page, Filter: fake.filter}, err
+}
+
+func (fake *fakeHandler) FinishListen(_ context.Context, _ *wire.Read, page wire.Value, deliver bool, _ time.Time) (wire.Value, error) {
+	if fake.finishListen != nil {
+		return fake.finishListen(page, deliver)
+	}
+	return resultNaming("status").Result, nil
 }
 
 func (fake *fakeHandler) RecordDelivery(_ context.Context, _ *wire.Read, page wire.Value, _ time.Time) error {

@@ -87,23 +87,31 @@ func recordActivity(ctx context.Context, tx *sql.Tx, member *participant, now in
 // publishes a sealed round whose deadline passed before a read, post or status observes
 // it (refresh_participant in Python).
 func refreshParticipant(ctx context.Context, tx *sql.Tx, token string, releasesRound bool, now int64) (*participant, error) {
+	member, _, err := refreshParticipantReleasing(ctx, tx, token, releasesRound, now)
+	return member, err
+}
+
+// refreshParticipantReleasing is refreshParticipant that also reports whether it
+// released the sealed round.
+func refreshParticipantReleasing(ctx context.Context, tx *sql.Tx, token string, releasesRound bool, now int64) (*participant, bool, error) {
 	member, err := authenticate(ctx, tx, token)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !member.Open || member.Retired {
-		return member, nil
+		return member, false, nil
 	}
 	if err := recordActivity(ctx, tx, member, now); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !releasesRound || !member.sealed() || now < member.RoundDeadline.Int64 {
-		return member, nil
+		return member, false, nil
 	}
 	if err := releaseRound(ctx, tx, member, now); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return authenticate(ctx, tx, token)
+	member, err = authenticate(ctx, tx, token)
+	return member, true, err
 }
 
 // nullableInt returns an integer value or JSON null.

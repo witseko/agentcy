@@ -252,8 +252,8 @@ FROM message
 WHERE message.room = ? AND message.kind = ? AND message.reply_to = ?))`
 
 // readTasks replays the task events of a room, or only those of one task when taskID is
-// above zero, and returns the board (read_tasks in tasks.py). Port plan fix L4 caches
-// this per room later; keep every caller going through this one function.
+// above zero, and returns the board (read_tasks in tasks.py). The room's unfinished tasks
+// come from roomState, which caches them; only it and the checks of one task call this.
 func readTasks(ctx context.Context, tx *sql.Tx, room string, taskID int64) (*taskBoard, error) {
 	query := selectRoomTaskEvents
 	arguments := []any{room}
@@ -331,10 +331,16 @@ func (summary taskSummary) value() wire.Value {
 // blocker, due and overdue flags (open_tasks in tasks.py). Tasks without an owner are
 // grouped under owner zero.
 func openTasks(ctx context.Context, tx *sql.Tx, room string, now int64) (map[int64][]taskSummary, error) {
-	board, err := readTasks(ctx, tx, room, 0)
+	state, err := roomState(ctx, tx, room)
 	if err != nil {
 		return nil, err
 	}
+	return openTasksOf(state.board, now), nil
+}
+
+// openTasksOf groups the unfinished tasks of a board by owner. Overdue flags use now, so
+// a cached board gives current flags.
+func openTasksOf(board *taskBoard, now int64) map[int64][]taskSummary {
 	byOwner := map[int64][]taskSummary{}
 	for _, id := range board.order {
 		state := board.tasks[id]
@@ -344,7 +350,7 @@ func openTasks(ctx context.Context, tx *sql.Tx, room string, now int64) (map[int
 		summary := taskSummary{id: id, blocked: state.blocked, due: state.due, overdue: state.overdue(now)}
 		byOwner[state.owner.Int64] = append(byOwner[state.owner.Int64], summary)
 	}
-	return byOwner, nil
+	return byOwner
 }
 
 // taskSummaryList returns summaries as a JSON list.

@@ -7,20 +7,50 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// waitForRead waits on committed room changes and settles a newly arrived burst. Port of
-// wait_for_read in concurrency.py:
+// waitForRead runs a waiting read and records the delivery of the page it returns.
+func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire.Value, error) {
+	page, err := server.waitForPage(ctx, request)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	if !pageDelivers(page) {
+		return page, nil
+	}
+	return page, server.handler.RecordDelivery(ctx, request, page, server.settings.now())
+}
+
+// listen runs a waiting read and returns its page together with the caller's status
+// (port plan fix L2), so a shim needs one exchange instead of a read and a status.
+func (server *server) listen(ctx context.Context, request *wire.Listen) (wire.Value, error) {
+	read := request.Read()
+	page, err := server.waitForPage(ctx, read)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	status, err := server.handler.FinishListen(ctx, read, page, pageDelivers(page), server.settings.now())
+	if err != nil {
+		return wire.Value{}, err
+	}
+	result := wire.NewObject()
+	result.Set("page", page)
+	result.Set("status", status)
+	return result, nil
+}
+
+// waitForPage waits on committed room changes and settles a newly arrived burst. Port of
+// wait_for_read in concurrency.py, without its delivery record:
 //
 //   - A ready first page returns at once.
-//   - Otherwise the read sleeps until a notify, its deadline, or the sealed round deadline,
+//   - Otherwise the read sleeps until a wake, its deadline, or the sealed round deadline,
 //     whichever comes first, and reads the page again after each wake.
 //   - After the first ready page it keeps reading for up to the settle window, unless the
 //     page is closed, retired, or full.
-//   - Without a ready page it returns the last page at its deadline.
+//   - Without a ready page it returns the last page at its deadline. Every sleep ends with
+//     a new read, so that page also shows messages that did not wake the read.
 //
 // Deadlines use the real clock, not Options.Now. No store connection is held while it
-// sleeps. A shutdown ends the wait with the current
-// page.
-func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire.Value, error) {
+// sleeps. A shutdown ends the wait with the current page.
+func (server *server) waitForPage(ctx context.Context, request *wire.Read) (wire.Value, error) {
 	start, err := server.handler.OpenWait(ctx, request, server.settings.now())
 	if err != nil {
 		return wire.Value{}, err
@@ -29,13 +59,9 @@ func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire
 	defer listener.leave()
 	deadline := time.Now().Add(time.Duration(request.WaitSeconds) * time.Second)
 	roundDeadline := start.RoundDeadline
-	changed := listener.changed()
-	page, err := server.handler.ReadPage(ctx, request, server.settings.now())
-	if err != nil {
-		return wire.Value{}, err
-	}
-	if pageIsReady(page) {
-		return page, server.recordDelivery(ctx, request, page)
+	page, err := server.readPage(ctx, request, listener)
+	if err != nil || pageIsReady(page) {
+		return page, err
 	}
 	for {
 		remaining := time.Until(deadline)
@@ -45,34 +71,42 @@ func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire
 		if roundDeadline != nil {
 			remaining = min(remaining, max(0, time.Until(time.Unix(*roundDeadline, 0))))
 		}
-		server.sleep(ctx, changed, remaining)
-		changed = listener.changed()
-		if page, err = server.handler.ReadPage(ctx, request, server.settings.now()); err != nil {
+		server.sleep(ctx, listener.changed(), remaining)
+		if page, err = server.readPage(ctx, request, listener); err != nil {
 			return wire.Value{}, err
 		}
 		roundDeadline = pageRoundDeadline(page)
 		if pageIsReady(page) {
-			settled, err := server.settle(ctx, request, listener, changed, page)
-			if err != nil {
-				return wire.Value{}, err
-			}
-			return settled, server.recordDelivery(ctx, request, settled)
+			return server.settle(ctx, request, listener, page)
 		}
 	}
 }
 
+// readPage reads one page and narrows the listener's wakes to the reader as it read.
+func (server *server) readPage(ctx context.Context, request *wire.Read, listener *listener) (wire.Value, error) {
+	listener.beginRead()
+	waitPage, err := server.handler.ReadPage(ctx, request, server.settings.now())
+	if err != nil {
+		return wire.Value{}, err
+	}
+	listener.setFilter(waitPage.Filter)
+	return waitPage.Page, nil
+}
+
 // settle collects a short burst, returning at once when the page is closed, retired, or
-// full. Port of settle in concurrency.py.
-func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, changed <-chan struct{}, page wire.Value) (wire.Value, error) {
+// full. Port of settle in concurrency.py. Every added message wakes the read while it
+// settles, as every write did in Python, so the settled page shows the whole burst and a
+// burst that fills the page ends the settle at once.
+func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, page wire.Value) (wire.Value, error) {
+	listener.startSettle()
 	deadline := time.Now().Add(server.settings.settleWindow)
 	for !pageEndsSettle(page) && !server.stopping(ctx) {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			break
 		}
-		server.sleep(ctx, changed, remaining)
-		changed = listener.changed()
-		next, err := server.handler.ReadPage(ctx, request, server.settings.now())
+		server.sleep(ctx, listener.changed(), remaining)
+		next, err := server.readPage(ctx, request, listener)
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -81,12 +115,10 @@ func (server *server) settle(ctx context.Context, request *wire.Read, listener *
 	return page, nil
 }
 
-// recordDelivery records token usage once, for a ready page that delivers messages.
-func (server *server) recordDelivery(ctx context.Context, request *wire.Read, page wire.Value) error {
-	if !pageIsReady(page) || pageMessages(page).Len() == 0 {
-		return nil
-	}
-	return server.handler.RecordDelivery(ctx, request, page, server.settings.now())
+// pageDelivers reports a ready page with at least one message, whose token usage a
+// waiting read records once.
+func pageDelivers(page wire.Value) bool {
+	return pageIsReady(page) && pageMessages(page).Len() > 0
 }
 
 // sleep returns after duration, when changed closes, or when the daemon stops. A zero

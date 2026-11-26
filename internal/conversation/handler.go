@@ -15,14 +15,16 @@ import (
 )
 
 // Handler implements core.Handler: it opens the workspace stores and runs each request
-// in one transaction. It holds no conversation state between requests apart from the
-// cached settings files and workspace keys, and is safe for concurrent use.
+// in one transaction. Between requests it keeps only caches: the settings files, the
+// workspace keys, and the derived task and activity state of recent rooms (roomCache),
+// which every use checks against the store. It is safe for concurrent use.
 type Handler struct {
 	dataDir       string
 	book          *usageBook
 	plugins       *fresh.SettingsFile
 	workspaceKeys *paths.WorkspaceKeyCache
 	freshRuns     FreshRuns
+	rooms         *roomCache
 }
 
 // FreshRuns is the fresh-run worker as the rules see it. *fresh.Worker implements it.
@@ -46,6 +48,7 @@ func NewHandler(dataDir string, environment []string, logger *log.Logger, freshR
 		plugins:       fresh.NewSettingsFile(dataDir),
 		workspaceKeys: paths.NewWorkspaceKeyCache(environment, nil),
 		freshRuns:     freshRuns,
+		rooms:         newRoomCache(),
 	}
 }
 
@@ -54,32 +57,40 @@ var _ core.Handler = (*Handler)(nil)
 
 // writeResult runs work in a write transaction of a workspace store, creating the store
 // when it is missing, as Python's transaction() does.
-func (handler *Handler) writeResult(ctx context.Context, workspace string, work func(tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
+func (handler *Handler) writeResult(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
 	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
 	if err != nil {
 		return wire.Value{}, err
 	}
+	ctx, rooms := withRoomCache(ctx, handler.rooms, workspaceStore.Path())
 	var result wire.Value
 	err = workspaceStore.Write(ctx, func(tx *sql.Tx) error {
 		var workErr error
-		result, workErr = work(tx)
+		result, workErr = work(ctx, tx)
 		return workErr
 	})
+	if err == nil {
+		rooms.publish()
+	}
 	return result, err
 }
 
 // readResult runs work in a read transaction of a workspace store that exists.
-func (handler *Handler) readResult(ctx context.Context, workspace string, work func(tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
+func (handler *Handler) readResult(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
 	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
 	if err != nil {
 		return wire.Value{}, err
 	}
+	ctx, rooms := withRoomCache(ctx, handler.rooms, workspaceStore.Path())
 	var result wire.Value
 	err = workspaceStore.Read(ctx, func(tx *sql.Tx) error {
 		var workErr error
-		result, workErr = work(tx)
+		result, workErr = work(ctx, tx)
 		return workErr
 	})
+	if err == nil {
+		rooms.publish()
+	}
 	return result, err
 }
 
@@ -87,7 +98,7 @@ func (handler *Handler) readResult(ctx context.Context, workspace string, work f
 // round deadline (the first transaction of wait_for_read).
 func (handler *Handler) OpenWait(ctx context.Context, request *wire.Read, now time.Time) (core.WaitStart, error) {
 	var member *participant
-	_, err := handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		var authErr error
 		member, authErr = authenticate(ctx, tx, request.Token)
 		return wire.Value{}, authErr
@@ -104,21 +115,35 @@ func (handler *Handler) OpenWait(ctx context.Context, request *wire.Read, now ti
 }
 
 // ReadPage refreshes the participant and loads one page without recording usage
-// (read_page in concurrency.py).
-func (handler *Handler) ReadPage(ctx context.Context, request *wire.Read, now time.Time) (wire.Value, error) {
-	return handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
+// (read_page in concurrency.py). The filter describes the reader as it read the page.
+func (handler *Handler) ReadPage(ctx context.Context, request *wire.Read, now time.Time) (core.WaitPage, error) {
+	var filter readerFilter
+	page, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, err := refreshParticipant(ctx, tx, request.Token, true, now.Unix())
 		if err != nil {
 			return wire.Value{}, err
 		}
+		filter = newReaderFilter(member, request.After)
 		page, _, err := readPage(ctx, tx, member, request.After)
 		return page, err
 	})
+	if err != nil {
+		return core.WaitPage{}, err
+	}
+	return core.WaitPage{Page: page, Filter: filter}, nil
 }
 
 // RecordDelivery records the estimated input tokens of a page that a waiting read
 // delivers (_record_delivered_usage in concurrency.py).
 func (handler *Handler) RecordDelivery(ctx context.Context, request *wire.Read, page wire.Value, now time.Time) error {
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		return wire.Value{}, handler.recordDelivery(ctx, tx, request, page, now.Unix())
+	})
+	return err
+}
+
+// recordDelivery records the estimated input tokens of a delivered page in tx.
+func (handler *Handler) recordDelivery(ctx context.Context, tx *sql.Tx, request *wire.Read, page wire.Value, now int64) error {
 	messages, _ := page.Get("messages")
 	bodies := make([]string, 0, len(messages.Items))
 	for _, message := range messages.Items {
@@ -126,14 +151,31 @@ func (handler *Handler) RecordDelivery(ctx context.Context, request *wire.Read, 
 		bodies = append(bodies, body.StringOf())
 	}
 	brief, _ := page.Get("brief")
-	_, err := handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
-		member, err := authenticate(ctx, tx, request.Token)
+	member, err := authenticate(ctx, tx, request.Token)
+	if err != nil {
+		return err
+	}
+	return recordReadUsage(ctx, tx, handler.book, member, request.Workspace, bodies, brief.StringOf(), now)
+}
+
+// FinishListen records the delivery of a listen's page, when deliver is true, and
+// returns the caller's status in one transaction. The steps are those of a delivery
+// record followed by a status request, which is what the shim sent before listen.
+func (handler *Handler) FinishListen(ctx context.Context, request *wire.Read, page wire.Value, deliver bool, now time.Time) (wire.Value, error) {
+	unix := now.Unix()
+	return handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		if deliver {
+			if err := handler.recordDelivery(ctx, tx, request, page, unix); err != nil {
+				return wire.Value{}, err
+			}
+		}
+		member, err := refreshParticipant(ctx, tx, request.Token, true, unix)
 		if err != nil {
 			return wire.Value{}, err
 		}
-		return wire.Value{}, recordReadUsage(ctx, tx, handler.book, member, request.Workspace, bodies, brief.StringOf(), now.Unix())
+		result, _, err := status(ctx, tx, handler.book, member, unix)
+		return result, err
 	})
-	return err
 }
 
 // HasActiveWork reports whether any workspace store has an open conversation or a
@@ -145,7 +187,7 @@ func (handler *Handler) HasActiveWork(ctx context.Context, now time.Time) (bool,
 	}
 	for _, key := range keys {
 		active := false
-		_, err := handler.writeResult(ctx, key, func(tx *sql.Tx) (wire.Value, error) {
+		_, err := handler.writeResult(ctx, key, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			pending, err := hasPendingAssignment(ctx, tx)
 			if err != nil || pending {
 				active = pending
