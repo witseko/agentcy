@@ -10,7 +10,6 @@ import (
 	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/fresh"
 	"github.com/witseko/agentcy/internal/paths"
-	"github.com/witseko/agentcy/internal/store"
 )
 
 // runCore serves the core daemon: `agentcy core`. It is the port of main in
@@ -26,17 +25,18 @@ func runCore(arguments []string) int {
 		return fail(err)
 	}
 	logger := log.New(os.Stderr, "agentcy core: ", log.LstdFlags)
+	shared := conversation.NewShared(dataDir, logger)
 	worker := fresh.NewWorker(fresh.WorkerConfig{
-		Store:    conversation.NewAssignmentStore(dataDir, logger),
+		Store:    conversation.NewAssignmentStore(shared),
 		Provider: &fresh.Client{DataDir: dataDir, Binary: ownExecutable()},
-		Plugins:  fresh.NewSettingsFile(dataDir).Plugin,
+		Plugins:  shared.Plugins.Plugin,
 		Logger:   logger,
 	})
-	handler := conversation.NewHandler(dataDir, os.Environ(), logger, worker)
+	handler := conversation.NewHandler(shared, os.Environ(), worker)
 	runErr := core.Run(context.Background(), handler, core.Options{
 		DataDir: dataDir, Log: os.Stderr, Background: freshRunsInBackground(worker),
 	})
-	if err := errors.Join(runErr, store.CloseAll()); err != nil {
+	if err := errors.Join(runErr, shared.Stores.Close()); err != nil {
 		return fail(err)
 	}
 	return 0

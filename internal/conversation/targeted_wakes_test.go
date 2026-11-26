@@ -35,7 +35,7 @@ func stressDaemon(t *testing.T) (*wire.Client, func()) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
-	handler := NewHandler(dataDir, nil, log.New(io.Discard, "", 0), nil)
+	handler := NewHandler(newTestShared(t, dataDir, log.New(io.Discard, "", 0)), nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {

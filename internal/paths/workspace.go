@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 )
@@ -115,19 +116,9 @@ func withoutVariables(environment []string, names []string) []string {
 	kept := make([]string, 0, len(environment))
 	for _, entry := range environment {
 		key, _, _ := strings.Cut(entry, "=")
-		if !containsString(names, key) {
+		if !slices.Contains(names, key) {
 			kept = append(kept, entry)
 		}
 	}
 	return kept
-}
-
-// containsString reports whether values holds value.
-func containsString(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
 }

@@ -20,7 +20,7 @@ import (
 // workspace keys, and the derived task and activity state of recent rooms (roomCache),
 // which every use checks against the store. It is safe for concurrent use.
 type Handler struct {
-	dataDir       string
+	stores        *store.Registry
 	book          *usageBook
 	plugins       *fresh.SettingsFile
 	workspaceKeys *paths.WorkspaceKeyCache
@@ -39,19 +39,48 @@ type FreshRuns interface {
 	Wake(workspace string)
 }
 
-// NewHandler returns the handler for the checked data directory dataDir. environment is
-// the process environment in os.Environ form, used to find Git for workspace keys, and
-// logger receives the warnings that Python logs. freshRuns is the fresh-run worker; with
-// nil every launch is refused as not ready.
-func NewHandler(dataDir string, environment []string, logger *log.Logger, freshRuns FreshRuns) *Handler {
+// Shared holds the process-wide resources that the handler, the assignment store and
+// the fresh-run worker use together: one store registry and one loader per settings
+// file, so every part sees the same open stores and cached settings.
+type Shared struct {
+	// Stores opens the workspace stores and the token ledger.
+	Stores *store.Registry
+	// Tokens loads tokens.json.
+	Tokens *tokens.SettingsFile
+	// Plugins loads plugins.json.
+	Plugins *fresh.SettingsFile
+	// Logger receives the warnings that Python logs.
+	Logger *log.Logger
+}
+
+// NewShared returns the shared resources of the checked data directory dataDir. The
+// caller closes Stores at shutdown.
+func NewShared(dataDir string, logger *log.Logger) Shared {
+	return Shared{
+		Stores:  store.NewRegistry(dataDir),
+		Tokens:  tokens.NewSettingsFile(dataDir),
+		Plugins: fresh.NewSettingsFile(dataDir),
+		Logger:  logger,
+	}
+}
+
+// newUsageBook returns the usage book on the shared ledger and tokens.json loader.
+func (shared Shared) newUsageBook() *usageBook {
+	return &usageBook{stores: shared.Stores, settings: shared.Tokens, logger: shared.Logger}
+}
+
+// NewHandler returns the handler on the shared resources. environment is the process
+// environment in os.Environ form, used to find Git for workspace keys. freshRuns is the
+// fresh-run worker; with nil every launch is refused as not ready.
+func NewHandler(shared Shared, environment []string, freshRuns FreshRuns) *Handler {
 	return &Handler{
-		dataDir:       dataDir,
-		book:          &usageBook{dataDir: dataDir, settings: tokens.NewSettingsFile(dataDir), logger: logger},
-		plugins:       fresh.NewSettingsFile(dataDir),
+		stores:        shared.Stores,
+		book:          shared.newUsageBook(),
+		plugins:       shared.Plugins,
 		workspaceKeys: paths.NewWorkspaceKeyCache(environment, nil),
 		freshRuns:     freshRuns,
 		rooms:         newRoomCache(),
-		logger:        logger,
+		logger:        shared.Logger,
 	}
 }
 
@@ -70,7 +99,7 @@ const unsupportedStoreHelp = "%s in %s.sqlite3: this core opens schema version %
 // refused with store.ErrUnsupportedVersion as the client's message, and logged with the
 // steps that fix it.
 func (handler *Handler) openStore(ctx context.Context, workspace string) (*store.Store, error) {
-	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
+	workspaceStore, err := handler.stores.Open(ctx, workspace)
 	if errors.Is(err, store.ErrUnsupportedVersion) {
 		handler.logger.Printf(unsupportedStoreHelp, store.ErrUnsupportedVersion, workspace, store.SchemaVersion)
 		return nil, reject(store.ErrUnsupportedVersion.Error())
@@ -187,7 +216,8 @@ func (handler *Handler) recordDelivery(ctx context.Context, tx *sql.Tx, request 
 	if err != nil {
 		return err
 	}
-	return recordReadUsage(ctx, tx, handler.book, member, request.Workspace, bodies, brief.StringOf(), now)
+	scope := writeScope{tx: tx, book: handler.book, workspace: request.Workspace, now: now}
+	return recordReadUsage(ctx, scope, member, bodies, brief.StringOf())
 }
 
 // FinishListen records the delivery of a listen's page, when deliver is true, and
@@ -213,7 +243,7 @@ func (handler *Handler) FinishListen(ctx context.Context, request *wire.Read, pa
 // HasActiveWork reports whether any workspace store has an open conversation or a
 // pending assignment (Core.handle_timeout in core.py).
 func (handler *Handler) HasActiveWork(ctx context.Context, now time.Time) (bool, error) {
-	keys, err := store.WorkspaceKeys(handler.dataDir)
+	keys, err := handler.stores.WorkspaceKeys()
 	if err != nil {
 		return false, err
 	}

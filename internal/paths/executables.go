@@ -49,18 +49,18 @@ func FindOnPath(name, pathValue string, pathSet bool) string {
 		if strings.HasSuffix(directory, "/") {
 			candidate = directory + name
 		}
-		if isExecutableFile(candidate) {
+		if IsExecutableFile(candidate) {
 			return candidate
 		}
 	}
 	return ""
 }
 
-// isExecutableFile reports whether path exists, is not a directory, and is executable by
-// the current user.
-func isExecutableFile(path string) bool {
+// IsExecutableFile reports whether path, after following symbolic links, is a regular
+// file that the current user may execute.
+func IsExecutableFile(path string) bool {
 	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
+	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
 	const executeAccess = 1 // X_OK from unistd.h

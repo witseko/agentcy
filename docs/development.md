@@ -164,7 +164,7 @@ The global guides have no Go guide, so the core follows these rules on top of `c
 - Format with `gofmt` and keep `go vet` clean, also with the `conformance`, `e2e`, and `bench` build tags.
 - Give every package, type, and non-trivial function a doc comment that says what it does.
 - Return errors as values. Wrap them with `%w` where a caller checks them with `errors.Is` or `errors.As`. Panic only on a programming error.
-- Keep no global state outside the documented places, such as the store cache in `internal/store`. Pass dependencies in.
+- Keep no mutable global state. Create shared resources, such as the store registry in `internal/store`, once in the daemon and pass them in.
 - Pass `now` into code that reads the time, so tests can fix it.
 - Use ordered values (`wire.Value`, slices of fields), not maps, for anything that reaches JSON. Field order is part of the protocol.
 - In the core, run every process with an argument slice and an explicit `cmd.Env`. Never use a shell. Find programs with `paths.FindOnPath`, not `exec.LookPath`, which also accepts relative `PATH` entries.

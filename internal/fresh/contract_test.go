@@ -3,9 +3,11 @@ package fresh
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -43,16 +45,6 @@ func loadSchema(t *testing.T) map[string]schemaDefinition {
 	return schema.Defs
 }
 
-// sortedNames returns the keys of a property map in order.
-func sortedNames[V any](properties map[string]V) []string {
-	names := make([]string, 0, len(properties))
-	for name := range properties {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // jsonFields returns the JSON names of a struct type and the ones that are required
 // (not omitempty), sorted.
 func jsonFields(value any) (all []string, required []string) {
@@ -81,8 +73,8 @@ func TestRequestStructsMatchTheSchema(t *testing.T) {
 		wanted := definitions[definition]
 		sortedRequired := append([]string(nil), wanted.Required...)
 		sort.Strings(sortedRequired)
-		if !reflect.DeepEqual(all, sortedNames(wanted.Properties)) || !reflect.DeepEqual(required, sortedRequired) {
-			t.Errorf("%s: fields %v required %v, schema %v required %v", definition, all, required, sortedNames(wanted.Properties), sortedRequired)
+		if !reflect.DeepEqual(all, slices.Sorted(maps.Keys(wanted.Properties))) || !reflect.DeepEqual(required, sortedRequired) {
+			t.Errorf("%s: fields %v required %v, schema %v required %v", definition, all, required, slices.Sorted(maps.Keys(wanted.Properties)), sortedRequired)
 		}
 	}
 }
@@ -102,10 +94,10 @@ func TestResultParsersMatchTheSchema(t *testing.T) {
 	if _, err := parseRunResult(mustParse(t, full)); err != nil {
 		t.Errorf("every schema property: %v", err)
 	}
-	if names := sortedNames(definitions["run_result"].Properties); strings.Join(names, ",") != "exit_code,input_tokens,output_tokens,state" {
+	if names := slices.Sorted(maps.Keys(definitions["run_result"].Properties)); strings.Join(names, ",") != "exit_code,input_tokens,output_tokens,state" {
 		t.Errorf("run_result properties %v", names)
 	}
-	if names := sortedNames(definitions["capabilities_result"].Properties); strings.Join(names, ",") != "cost_cap,token_cap,version" {
+	if names := slices.Sorted(maps.Keys(definitions["capabilities_result"].Properties)); strings.Join(names, ",") != "cost_cap,token_cap,version" {
 		t.Errorf("capabilities_result properties %v", names)
 	}
 }

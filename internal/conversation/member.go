@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/witseko/agentcy/internal/core"
-	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -205,10 +204,11 @@ func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member
 		opened, err := setOpenInvite(ctx, tx, member, typed.Workspace, typed.Enabled, now)
 		return opened.value(), err
 	case *wire.Post:
-		return postInRound(ctx, tx, handler.book, member, submissionRequest{
+		scope := writeScope{tx: tx, book: handler.book, workspace: typed.Workspace, now: now}
+		return postInRound(ctx, scope, member, submissionRequest{
 			submissionID: typed.SubmissionID, body: typed.Body, kind: typed.Kind, to: typed.To,
 			replyTo: typed.ReplyTo, dueMinutes: typed.DueMinutes,
-		}, typed.Workspace, now)
+		})
 	case *wire.Read:
 		return read(ctx, tx, handler.book, member, typed, now)
 	case *wire.Close:
@@ -223,7 +223,7 @@ func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member
 
 // listClosed lists the closed conversations without creating a store.
 func (handler *Handler) listClosed(ctx context.Context, request *wire.ListClosed) (core.Outcome, error) {
-	if !store.Exists(handler.dataDir, request.Workspace) {
+	if !handler.stores.Exists(request.Workspace) {
 		return core.Outcome{Result: singleField("conversations", wire.ListValue(nil))}, nil
 	}
 	result, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
@@ -234,7 +234,7 @@ func (handler *Handler) listClosed(ctx context.Context, request *wire.ListClosed
 
 // readClosed reads a closed conversation without creating a store.
 func (handler *Handler) readClosed(ctx context.Context, request *wire.ReadClosed) (core.Outcome, error) {
-	if !store.Exists(handler.dataDir, request.Workspace) {
+	if !handler.stores.Exists(request.Workspace) {
 		return core.Outcome{}, reject(unknownClosed)
 	}
 	result, err := handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
@@ -245,7 +245,7 @@ func (handler *Handler) readClosed(ctx context.Context, request *wire.ReadClosed
 
 // mcpTask reads or cancels the fresh run behind an MCP task without creating a store.
 func (handler *Handler) mcpTask(ctx context.Context, workspace, taskID string, readOnly bool, action func(context.Context, *sql.Tx, string) (wire.Value, error)) (core.Outcome, error) {
-	if !store.Exists(handler.dataDir, workspace) {
+	if !handler.stores.Exists(workspace) {
 		return core.Outcome{}, reject(unknownMcpTask)
 	}
 	run := handler.writeResult

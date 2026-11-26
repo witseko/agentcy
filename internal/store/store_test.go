@@ -19,20 +19,26 @@ import (
 // testKey is a valid workspace key for tests.
 var testKey = strings.Repeat("ab", 32)
 
-// newDataDir returns a fresh private data directory and closes every cached store when
-// the test ends.
+// newDataDir returns a fresh private data directory.
 func newDataDir(t *testing.T) string {
 	t.Helper()
 	directory := filepath.Join(t.TempDir(), "home")
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	return directory
+}
+
+// newRegistry returns a registry for dataDir and closes its stores when the test ends.
+func newRegistry(t *testing.T, dataDir string) *Registry {
+	t.Helper()
+	registry := NewRegistry(dataDir)
 	t.Cleanup(func() {
-		if err := CloseAll(); err != nil {
+		if err := registry.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	return directory
+	return registry
 }
 
 // openRaw opens path outside the store cache with the same PRAGMAs, for setting up and
@@ -121,7 +127,7 @@ func compareRows(t *testing.T, got, want [][]any) {
 // testdata/dump_python_schema.py.
 func TestNewStoreMatchesPythonSchema(t *testing.T) {
 	directory := newDataDir(t)
-	store, err := Open(context.Background(), directory, testKey)
+	store, err := newRegistry(t, directory).Open(context.Background(), testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +143,7 @@ func TestNewStoreMatchesPythonSchema(t *testing.T) {
 
 func TestNewLedgerMatchesPythonSchema(t *testing.T) {
 	directory := newDataDir(t)
-	ledger, err := OpenLedger(context.Background(), directory)
+	ledger, err := newRegistry(t, directory).OpenLedger(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +161,7 @@ func TestNewLedgerMatchesPythonSchema(t *testing.T) {
 // messages.
 func TestFullTextTriggersFire(t *testing.T) {
 	ctx := context.Background()
-	store, err := Open(ctx, newDataDir(t), testKey)
+	store, err := newRegistry(t, newDataDir(t)).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +214,7 @@ func TestOtherVersionsAreRefused(t *testing.T) {
 		if _, err := openRaw(t, path).Exec("PRAGMA user_version=" + strconv.Itoa(version)); err != nil {
 			t.Fatal(err)
 		}
-		_, err := Open(ctx, directory, testKey)
+		_, err := newRegistry(t, directory).Open(ctx, testKey)
 		if !errors.Is(err, ErrUnsupportedVersion) || err.Error() != "Unsupported bridge database version" {
 			t.Errorf("version %d: err = %v", version, err)
 		}
@@ -220,7 +226,7 @@ func TestOtherVersionsAreRefused(t *testing.T) {
 	if _, err := openRaw(t, filepath.Join(directory, LedgerFilename)).Exec("PRAGMA user_version=2"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := OpenLedger(ctx, directory)
+	_, err := newRegistry(t, directory).OpenLedger(ctx)
 	if err == nil || err.Error() != "Unsupported token ledger database version" {
 		t.Errorf("ledger err = %v", err)
 	}
@@ -229,10 +235,10 @@ func TestOtherVersionsAreRefused(t *testing.T) {
 func TestInvalidWorkspaceKeysAreRefused(t *testing.T) {
 	directory := newDataDir(t)
 	for _, key := range []string{"", "../" + testKey[3:], strings.ToUpper(testKey), testKey + "0", testKey[1:]} {
-		if _, err := Open(context.Background(), directory, key); !errors.Is(err, ErrInvalidWorkspaceKey) {
+		if _, err := newRegistry(t, directory).Open(context.Background(), key); !errors.Is(err, ErrInvalidWorkspaceKey) {
 			t.Errorf("Open(%q) err = %v", key, err)
 		}
-		if Exists(directory, key) {
+		if NewRegistry(directory).Exists(key) {
 			t.Errorf("Exists(%q) = true", key)
 		}
 	}
@@ -243,14 +249,15 @@ func TestInvalidWorkspaceKeysAreRefused(t *testing.T) {
 
 func TestOpenReturnsTheCachedStore(t *testing.T) {
 	directory := newDataDir(t)
-	if Exists(directory, testKey) {
+	registry := newRegistry(t, directory)
+	if registry.Exists(testKey) {
 		t.Fatal("store exists before Open")
 	}
 	var group sync.WaitGroup
 	stores := make([]*Store, 8)
 	for index := range stores {
 		group.Go(func() {
-			store, err := Open(context.Background(), directory, testKey)
+			store, err := registry.Open(context.Background(), testKey)
 			if err != nil {
 				t.Error(err)
 			}
@@ -263,7 +270,7 @@ func TestOpenReturnsTheCachedStore(t *testing.T) {
 			t.Fatal("Open returned different stores for one key")
 		}
 	}
-	if !Exists(directory, testKey) {
+	if !registry.Exists(testKey) {
 		t.Error("Exists = false after Open")
 	}
 }
@@ -303,7 +310,7 @@ func TestPathsWithSpecialCharacters(t *testing.T) {
 		if err := os.Mkdir(directory, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		store, err := Open(ctx, directory, testKey)
+		store, err := newRegistry(t, directory).Open(ctx, testKey)
 		if err != nil {
 			t.Fatalf("%q: %v", name, err)
 		}
@@ -334,7 +341,7 @@ func TestPathsWithSpecialCharacters(t *testing.T) {
 
 func TestWriteIsVisibleToRead(t *testing.T) {
 	ctx := context.Background()
-	store, err := Open(ctx, newDataDir(t), testKey)
+	store, err := newRegistry(t, newDataDir(t)).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +415,7 @@ func holdWriteLock(t *testing.T, path, id string, hold time.Duration) <-chan str
 // waited out, a long one ends in "database is locked".
 func TestWriteWaitsForAnotherWriter(t *testing.T) {
 	ctx := context.Background()
-	store, err := Open(ctx, newDataDir(t), testKey)
+	store, err := newRegistry(t, newDataDir(t)).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,11 +454,11 @@ func TestNewFilesArePrivate(t *testing.T) {
 	defer syscall.Umask(previous)
 	ctx := context.Background()
 	directory := newDataDir(t)
-	store, err := Open(ctx, directory, testKey)
+	store, err := newRegistry(t, directory).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := OpenLedger(ctx, directory)
+	ledger, err := newRegistry(t, directory).OpenLedger(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +488,7 @@ func TestWorkspaceKeysSkipsOtherFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	keys, err := WorkspaceKeys(directory)
+	keys, err := NewRegistry(directory).WorkspaceKeys()
 	if err != nil {
 		t.Fatal(err)
 	}

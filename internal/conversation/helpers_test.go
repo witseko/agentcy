@@ -11,7 +11,6 @@ import (
 
 	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/store"
-	"github.com/witseko/agentcy/internal/tokens"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -28,16 +27,28 @@ type fixture struct {
 	book  *usageBook
 }
 
+// newTestShared returns the shared resources of dataDir and closes their stores when
+// the test ends.
+func newTestShared(t *testing.T, dataDir string, logger *log.Logger) Shared {
+	t.Helper()
+	shared := NewShared(dataDir, logger)
+	t.Cleanup(func() {
+		if err := shared.Stores.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return shared
+}
+
 // newFixture opens a new store in a private temp data directory.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	dataDir := t.TempDir()
-	opened, err := store.Open(context.Background(), dataDir, testWorkspace)
+	shared := newTestShared(t, t.TempDir(), log.New(io.Discard, "", 0))
+	opened, err := shared.Stores.Open(context.Background(), testWorkspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	book := &usageBook{dataDir: dataDir, settings: tokens.NewSettingsFile(dataDir), logger: log.New(io.Discard, "", 0)}
-	return &fixture{t: t, store: opened, book: book}
+	return &fixture{t: t, store: opened, book: shared.newUsageBook()}
 }
 
 // write runs work in a write transaction and returns its result. A refusal is returned
@@ -121,7 +132,7 @@ func (f *fixture) post(token string, submission submissionRequest, now int64) (w
 		if err != nil {
 			return wire.Value{}, err
 		}
-		return postInRound(ctx, tx, f.book, member, submission, testWorkspace, now)
+		return postInRound(ctx, writeScope{tx: tx, book: f.book, workspace: testWorkspace, now: now}, member, submission)
 	})
 }
 

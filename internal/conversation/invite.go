@@ -112,9 +112,42 @@ func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteR
 	if err := checkName(request.name); err != nil {
 		return inviteOutcome{}, err
 	}
-	slots, err := inviteSlots(ctx, tx, actor.Room)
+	slot, err := invitationSlot(ctx, tx, actor, request)
 	if err != nil {
 		return inviteOutcome{}, err
+	}
+	scope := writeScope{tx: tx, workspace: request.workspace, now: now}
+	wanted := wantedSlot(slot, request)
+	slotID, code, event, err := storeInvitation(ctx, scope, actor, slot, wanted, request.reinvite)
+	if err != nil {
+		return inviteOutcome{}, err
+	}
+	if wanted.role == roleCoLead {
+		if _, err := tx.ExecContext(ctx, "UPDATE participant SET role=? WHERE participant.room = ? AND participant.role = ?", roleCoLead, actor.Room, roleLead); err != nil {
+			return inviteOutcome{}, err
+		}
+	}
+	if err := recordEvent(ctx, tx, actor.Room, actor.ID, event, now); err != nil {
+		return inviteOutcome{}, err
+	}
+	roleName := roleLabel(wanted.role)
+	return inviteOutcome{
+		slotID: slotID,
+		label:  wanted.label,
+		role:   roleName,
+		code:   code,
+		joinPrompt: formatJoinPrompt(actor.Brief, joinPromptOptions{
+			participant: wanted.label, role: roleName, template: roleJoinTemplate(roleName),
+		}),
+	}, nil
+}
+
+// invitationSlot finds the existing slot that the invite names, or nil for a new slot,
+// and refuses an invite that the slot or the participant cap does not allow.
+func invitationSlot(ctx context.Context, tx *sql.Tx, actor *participant, request inviteRequest) (*existingSlot, error) {
+	slots, err := inviteSlots(ctx, tx, actor.Room)
+	if err != nil {
+		return nil, err
 	}
 	var slot *existingSlot
 	for index := range slots {
@@ -123,60 +156,42 @@ func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteR
 			break
 		}
 	}
-	if slot == nil && request.reinvite {
-		return inviteOutcome{}, reject(unknownParticipant)
-	}
-	if slot == nil && len(slots) >= maxParticipants {
-		return inviteOutcome{}, rejectf(participantCapTemplate, maxParticipants)
-	}
 	if slot != nil {
-		if err := checkReissue(ctx, tx, actor, *slot, request.reinvite); err != nil {
-			return inviteOutcome{}, err
-		}
+		return slot, checkReissue(ctx, tx, actor, *slot, request.reinvite)
 	}
-	label := request.name
-	role := int64(roleWorker)
+	if request.reinvite {
+		return nil, reject(unknownParticipant)
+	}
+	if len(slots) >= maxParticipants {
+		return nil, rejectf(participantCapTemplate, maxParticipants)
+	}
+	return nil, nil
+}
+
+// wantedSlot returns the label and role that the invited slot gets. An existing slot
+// keeps its label, and its role unless the request names one.
+func wantedSlot(slot *existingSlot, request inviteRequest) teamSlot {
+	wanted := teamSlot{label: request.name, role: roleWorker, model: request.model, tokenBudget: request.tokenBudget}
 	if request.role != nil && *request.role == "co-lead" {
-		role = roleCoLead
+		wanted.role = roleCoLead
 	}
 	if slot != nil {
-		label = slot.label
+		wanted.label = slot.label
 		if request.role == nil {
-			role = slot.role
+			wanted.role = slot.role
 		}
 	}
-	slotID, code, event, err := storeInvitation(ctx, tx, actor, slot, teamSlot{label: label, role: role, model: request.model, tokenBudget: request.tokenBudget}, request, now)
-	if err != nil {
-		return inviteOutcome{}, err
-	}
-	if role == roleCoLead {
-		if _, err := tx.ExecContext(ctx, "UPDATE participant SET role=? WHERE participant.room = ? AND participant.role = ?", roleCoLead, actor.Room, roleLead); err != nil {
-			return inviteOutcome{}, err
-		}
-	}
-	if err := recordEvent(ctx, tx, actor.Room, actor.ID, event, now); err != nil {
-		return inviteOutcome{}, err
-	}
-	roleName := roleLabel(role)
-	return inviteOutcome{
-		slotID: slotID,
-		label:  label,
-		role:   roleName,
-		code:   code,
-		joinPrompt: formatJoinPrompt(actor.Brief, joinPromptOptions{
-			participant: label, role: roleName, template: roleJoinTemplate(roleName),
-		}),
-	}, nil
+	return wanted
 }
 
 // storeInvitation inserts a new slot, or gives an existing one a new code, and returns
 // the slot ID, code, and event text.
-func storeInvitation(ctx context.Context, tx *sql.Tx, actor *participant, slot *existingSlot, wanted teamSlot, request inviteRequest, now int64) (int64, string, string, error) {
+func storeInvitation(ctx context.Context, scope writeScope, actor *participant, slot *existingSlot, wanted teamSlot, reinvite bool) (int64, string, string, error) {
 	if slot == nil {
-		id, code, err := insertInvitation(ctx, tx, actor.Room, request.workspace, wanted, now)
+		id, code, err := insertInvitation(ctx, scope.tx, actor.Room, scope.workspace, wanted, scope.now)
 		return id, code, "Invited " + wanted.label + " as " + roleLabel(wanted.role) + ".", err
 	}
-	code := newJoinCode(request.workspace, now)
+	code := newJoinCode(scope.workspace, scope.now)
 	query := "UPDATE participant SET role=?, invite_hash=?, expires=?"
 	arguments := []any{wanted.role, code.hash, code.expires}
 	if wanted.model != nil {
@@ -187,16 +202,16 @@ func storeInvitation(ctx context.Context, tx *sql.Tx, actor *participant, slot *
 		query += ", token_budget=?"
 		arguments = append(arguments, *wanted.tokenBudget)
 	}
-	if request.reinvite {
+	if reinvite {
 		query += ", token_hash=?, seen=?, retired=?"
 		arguments = append(arguments, nil, nil, 0)
 	}
 	query += " WHERE participant.id = ?"
-	if _, err := tx.ExecContext(ctx, query, append(arguments, slot.id)...); err != nil {
+	if _, err := scope.tx.ExecContext(ctx, query, append(arguments, slot.id)...); err != nil {
 		return 0, "", "", err
 	}
 	event := "Reissued the invitation for " + wanted.label + " as " + roleLabel(wanted.role) + "."
-	if request.reinvite {
+	if reinvite {
 		event = "Reinvited " + wanted.label + " as " + roleLabel(wanted.role) + "."
 	}
 	return slot.id, code.code, event, nil

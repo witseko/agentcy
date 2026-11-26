@@ -141,14 +141,14 @@ func recentDuplicate(ctx context.Context, tx *sql.Tx, author int64, content post
 const insertFullMessage = `INSERT INTO message (room, author, body, created, kind, recipient, reply_to, due_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 // post stores a message, deduplicating retries with the same text, kind, addressee,
-// reply target and due time (post in repository.py). workspace is "" for the human,
-// whose usage is not recorded.
-func post(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, submission submissionRequest, workspace string, now int64) (wire.Value, error) {
-	content, err := resolveContent(ctx, tx, member.Room, submission)
+// reply target and due time (post in repository.py). scope.workspace is "" for the
+// human, whose usage is not recorded.
+func post(ctx context.Context, scope writeScope, member *participant, submission submissionRequest) (wire.Value, error) {
+	content, err := resolveContent(ctx, scope.tx, member.Room, submission)
 	if err != nil {
 		return wire.Value{}, err
 	}
-	previous, previousID, err := previousSubmission(ctx, tx, member.ID, submission.submissionID)
+	previous, previousID, err := previousSubmission(ctx, scope.tx, member.ID, submission.submissionID)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -158,14 +158,14 @@ func post(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant,
 		}
 		return singleField("message_id", wire.IntValue(previousID)), nil
 	}
-	number, err := recentDuplicate(ctx, tx, member.ID, content, now)
+	number, err := recentDuplicate(ctx, scope.tx, member.ID, content, scope.now)
 	if err != nil {
 		return wire.Value{}, err
 	}
 	var ownedBefore []taskSummary
 	isDone := content.kind.Valid && content.kind.String == kindDone
 	if isDone {
-		byOwner, err := openTasks(ctx, tx, member.Room, now)
+		byOwner, err := openTasks(ctx, scope.tx, member.Room, scope.now)
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -173,32 +173,32 @@ func post(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant,
 	}
 	insert := !number.Valid
 	if !insert {
-		if insert, err = changesBlockedState(ctx, tx, member, content); err != nil {
+		if insert, err = changesBlockedState(ctx, scope.tx, member, content); err != nil {
 			return wire.Value{}, err
 		}
 	}
 	if insert {
-		if number, err = insertMessage(ctx, tx, book, member, content, workspace, now); err != nil {
+		if number, err = insertMessage(ctx, scope, member, content); err != nil {
 			return wire.Value{}, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, insertMessageReceipt, member.ID, submission.submissionID, number.Int64); err != nil {
+	if _, err := scope.tx.ExecContext(ctx, insertMessageReceipt, member.ID, submission.submissionID, number.Int64); err != nil {
 		return wire.Value{}, err
 	}
 	result := singleField("message_id", wire.IntValue(number.Int64))
 	if !isDone || len(ownedBefore) == 0 {
 		return result, nil
 	}
-	return attachDoneWarning(ctx, tx, member, ownedBefore, result, now)
+	return attachDoneWarning(ctx, scope.tx, member, ownedBefore, result, scope.now)
 }
 
 // insertMessage validates a task transition, stores the message and records the
 // author's estimated output tokens.
-func insertMessage(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, content postContent, workspace string, now int64) (sql.NullInt64, error) {
-	if err := validateTransition(ctx, tx, member, content); err != nil {
+func insertMessage(ctx context.Context, scope writeScope, member *participant, content postContent) (sql.NullInt64, error) {
+	if err := validateTransition(ctx, scope.tx, member, content); err != nil {
 		return sql.NullInt64{}, err
 	}
-	inserted, err := tx.ExecContext(ctx, insertFullMessage, member.Room, member.ID, content.body, now,
+	inserted, err := scope.tx.ExecContext(ctx, insertFullMessage, member.Room, member.ID, content.body, scope.now,
 		content.kind, content.recipient, content.replyTo, content.dueMinutes)
 	if err != nil {
 		return sql.NullInt64{}, err
@@ -207,7 +207,7 @@ func insertMessage(ctx context.Context, tx *sql.Tx, book *usageBook, member *par
 	if err != nil {
 		return sql.NullInt64{}, err
 	}
-	if err := recordPostUsage(ctx, tx, book, member, content.body, workspace, now); err != nil {
+	if err := recordPostUsage(ctx, scope, member, content.body); err != nil {
 		return sql.NullInt64{}, err
 	}
 	return sql.NullInt64{Int64: number, Valid: true}, nil
@@ -215,15 +215,15 @@ func insertMessage(ctx context.Context, tx *sql.Tx, book *usageBook, member *par
 
 // recordPostUsage records the bridge-estimated output tokens of a new post by a member
 // other than the human.
-func recordPostUsage(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, body, workspace string, now int64) error {
+func recordPostUsage(ctx context.Context, scope writeScope, member *participant, body string) error {
 	if member.Role == roleHuman {
 		return nil
 	}
-	snapshot, err := tokens.AddEstimated(ctx, tx, member.Room, member.ID, 0, tokens.EstimatePost(body), now)
-	if err != nil || workspace == "" {
+	snapshot, err := tokens.AddEstimated(ctx, scope.tx, member.Room, member.ID, 0, tokens.EstimatePost(body), scope.now)
+	if err != nil || scope.workspace == "" {
 		return err
 	}
-	return book.sync(ctx, workspace, snapshot)
+	return scope.book.sync(ctx, scope.workspace, snapshot)
 }
 
 // attachDoneWarning adds a warning when a done post left the author's open tasks
@@ -244,8 +244,8 @@ FROM submission
 WHERE submission.author = ? AND submission."key" = ?`
 
 // postInRound routes an ordinary message or a proposal through the right submission
-// store (post_in_round in repository.py). workspace is "" for the human.
-func postInRound(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, submission submissionRequest, workspace string, now int64) (wire.Value, error) {
+// store (post_in_round in repository.py). scope.workspace is "" for the human.
+func postInRound(ctx context.Context, scope writeScope, member *participant, submission submissionRequest) (wire.Value, error) {
 	if member.Retired {
 		return wire.Value{}, reject(retiredError)
 	}
@@ -257,7 +257,7 @@ func postInRound(ctx context.Context, tx *sql.Tx, book *usageBook, member *parti
 	}
 	if submission.kind != kindProposal {
 		if member.sealed() {
-			held, err := keyIsHeld(ctx, tx, member.ID, submission.submissionID)
+			held, err := keyIsHeld(ctx, scope.tx, member.ID, submission.submissionID)
 			if err != nil {
 				return wire.Value{}, err
 			}
@@ -265,20 +265,20 @@ func postInRound(ctx context.Context, tx *sql.Tx, book *usageBook, member *parti
 				return wire.Value{}, reject(submissionIDReused)
 			}
 		}
-		return post(ctx, tx, book, member, submission, workspace, now)
+		return post(ctx, scope, member, submission)
 	}
-	result, err := postProposal(ctx, tx, member, submission)
+	result, err := postProposal(ctx, scope.tx, member, submission)
 	if err != nil || !result.Has("proposal_id") {
 		return result, err
 	}
-	complete, err := roundComplete(ctx, tx, member.Room)
+	complete, err := roundComplete(ctx, scope.tx, member.Room)
 	if err != nil || !complete {
 		return result, err
 	}
-	if err := releaseRound(ctx, tx, member, now); err != nil {
+	if err := releaseRound(ctx, scope.tx, member, scope.now); err != nil {
 		return wire.Value{}, err
 	}
-	number, err := firstInteger(ctx, tx, selectReceiptMessageID, member.ID, submission.submissionID)
+	number, err := firstInteger(ctx, scope.tx, selectReceiptMessageID, member.ID, submission.submissionID)
 	if err != nil {
 		return wire.Value{}, err
 	}

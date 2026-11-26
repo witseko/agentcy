@@ -3,6 +3,8 @@ package fresh
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -99,7 +101,7 @@ func (store *fakeStore) WorkspaceKeys() ([]string, error) {
 	for workspace := range store.broken {
 		seen[workspace] = true
 	}
-	return sortedKeys(seen), nil
+	return slices.Sorted(maps.Keys(seen)), nil
 }
 
 // Pending returns copies of the pending runs of a workspace by deadline.

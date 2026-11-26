@@ -250,7 +250,9 @@ func join(ctx context.Context, tx *sql.Tx, book *usageBook, request *wire.Join, 
 		}
 		return wire.Value{}, invalidInvitationError(tagged)
 	}
-	if slot.retired || slot.expires.Int64 <= now {
+	// Python compares expires <= time.time() and would raise on a NULL expiry; a slot
+	// without one is refused as expired here.
+	if slot.retired || !slot.expires.Valid || slot.expires.Int64 <= now {
 		return wire.Value{}, invalidInvitationError(tagged)
 	}
 	if slot.tokenHash.Valid && slot.tokenHash.String != "" {

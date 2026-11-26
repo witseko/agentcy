@@ -96,19 +96,13 @@ func (worker *Worker) inspect(ctx context.Context, run Run, restart bool) error 
 	if !worker.needsInspect(run, restart) {
 		return nil
 	}
-	now := worker.now()
-	terminal := StopReason(run, now)
+	terminal := StopReason(run, worker.now())
 	operation := ToolInspect
 	if terminal != "" {
 		operation = ToolCancel
 	}
 	worker.scheduleInspection(run.ID)
-	result := RunResult{State: StateUnknown}
-	if plugin, err := worker.plugins(run.Plugin); err == nil {
-		if result, err = worker.provider.Operate(ctx, *plugin, operation, run.ID); err != nil {
-			result = RunResult{State: StateUnknown}
-		}
-	}
+	result := worker.operate(ctx, run, operation)
 	if result.State == StateUnknown {
 		return worker.reconcileUnconfirmed(ctx, run, operation)
 	}
@@ -120,6 +114,20 @@ func (worker *Worker) inspect(ctx context.Context, run Run, restart bool) error 
 		state = terminal
 	}
 	return worker.record(ctx, run, state, result)
+}
+
+// operate calls the run's plugin with operation. A plugin that is no longer configured
+// or a failed call gives the unknown state.
+func (worker *Worker) operate(ctx context.Context, run Run, operation string) RunResult {
+	plugin, err := worker.plugins(run.Plugin)
+	if err != nil {
+		return RunResult{State: StateUnknown}
+	}
+	result, err := worker.provider.Operate(ctx, *plugin, operation, run.ID)
+	if err != nil {
+		return RunResult{State: StateUnknown}
+	}
+	return result
 }
 
 // scheduleInspection sets the next routine inspection of a run.

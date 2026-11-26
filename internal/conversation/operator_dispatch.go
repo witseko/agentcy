@@ -183,10 +183,12 @@ func (handler *Handler) applyHumanAction(ctx context.Context, tx *sql.Tx, conver
 	case *wire.OperatorSetRole:
 		return setRole(ctx, tx, &human.participant, typed.Name, typed.Role, now)
 	case *wire.OperatorPost:
-		return postInRound(ctx, tx, handler.book, &human.participant, submissionRequest{
+		// The human's usage is not recorded, so the scope names no workspace.
+		scope := writeScope{tx: tx, book: handler.book, now: now}
+		return postInRound(ctx, scope, &human.participant, submissionRequest{
 			submissionID: typed.SubmissionID, body: typed.Body, kind: typed.Kind, to: typed.To,
 			replyTo: typed.ReplyTo, dueMinutes: typed.DueMinutes,
-		}, "", now)
+		})
 	case *wire.OperatorReopen:
 		return reopenConversation(ctx, tx, &human.participant, typed.Note, now)
 	}

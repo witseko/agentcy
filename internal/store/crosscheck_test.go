@@ -98,7 +98,7 @@ func goBriefs(t *testing.T, store *Store) []any {
 func TestPythonUsesGoCreatedStore(t *testing.T) {
 	ctx := context.Background()
 	home := newDataDir(t)
-	store, err := Open(ctx, home, testKey)
+	store, err := newRegistry(t, home).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestGoOpensPythonCreatedStore(t *testing.T) {
 	ctx := context.Background()
 	home := newDataDir(t)
 	runPythonStore(t, home, testKey, "create")
-	store, err := Open(ctx, home, testKey)
+	store, err := newRegistry(t, home).Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}

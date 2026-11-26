@@ -33,8 +33,9 @@ func openRoom(t *testing.T) (*store.Store, string) {
 	t.Helper()
 	ctx := context.Background()
 	directory := newDataDir(t)
-	t.Cleanup(func() { _ = store.CloseAll() })
-	workspace, err := store.Open(ctx, directory, testKey)
+	stores := store.NewRegistry(directory)
+	t.Cleanup(func() { _ = stores.Close() })
+	workspace, err := stores.Open(ctx, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}

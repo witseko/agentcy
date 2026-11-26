@@ -4,8 +4,8 @@
 // src/agentcy/tokens.
 //
 // Functions that touch a workspace store take the *sql.Tx of a store.Write or store.Read
-// call; ledger functions take the ledger *store.Store from store.OpenLedger and run their
-// own transaction. Time is always passed in as Unix seconds. Results that reach JSON
+// call; ledger functions take the ledger *store.Store from Registry.OpenLedger in package
+// store and run their own transaction. Time is always passed in as Unix seconds. Results that reach JSON
 // have a Value method that keeps Python's field order and spells floats like Python
 // (FloatValue), so 75.0 stays 75.0.
 //

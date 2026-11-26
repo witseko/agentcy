@@ -3,7 +3,11 @@
 // pure functions only.
 package progress
 
-import "github.com/witseko/agentcy/internal/wire"
+import (
+	"slices"
+
+	"github.com/witseko/agentcy/internal/wire"
+)
 
 // The role labels that chat clients see.
 const (
@@ -17,12 +21,7 @@ var PendingStates = []string{"queued", "starting", "running"}
 
 // IsPendingState reports a launch state in which a fresh run is still active.
 func IsPendingState(state string) bool {
-	for _, pending := range PendingStates {
-		if state == pending {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(PendingStates, state)
 }
 
 // Task is one open task of a member.

@@ -4,7 +4,8 @@ import (
 	"context"
 	"io"
 	"log"
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -279,7 +280,7 @@ func (worker *Worker) step(ctx context.Context) {
 		workspaces[job.Workspace] = true
 	}
 	worker.addDueWorkspaces(workspaces)
-	for _, workspace := range sortedKeys(workspaces) {
+	for _, workspace := range slices.Sorted(maps.Keys(workspaces)) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -305,7 +306,7 @@ func (worker *Worker) stepAsync(ctx context.Context, wg *sync.WaitGroup) {
 		})
 	}
 	worker.addDueWorkspaces(workspaces)
-	for _, workspace := range sortedKeys(workspaces) {
+	for _, workspace := range slices.Sorted(maps.Keys(workspaces)) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -457,14 +458,4 @@ func (worker *Worker) runDueLocked(run Run, now time.Time) (time.Time, bool) {
 		}
 	}
 	return due, true
-}
-
-// sortedKeys returns the keys of a set in order, so stores are visited predictably.
-func sortedKeys(set map[string]bool) []string {
-	keys := make([]string, 0, len(set))
-	for key := range set {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }

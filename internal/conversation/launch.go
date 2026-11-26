@@ -7,7 +7,6 @@ import (
 	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/fresh"
 	"github.com/witseko/agentcy/internal/paths"
-	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -152,7 +151,7 @@ func (handler *Handler) dispatch(workspace, directory string, plugin *fresh.Plug
 		Workspace: workspace,
 		Plugin:    *plugin,
 		Start: fresh.StartArguments{
-			AssignmentID: assignmentID.Text, Workspace: directory, BridgeHome: handler.dataDir,
+			AssignmentID: assignmentID.Text, Workspace: directory, BridgeHome: handler.stores.DataDir(),
 			JoinCode: queued.code, Model: plugin.Model, TimeoutSeconds: plugin.TimeoutSeconds,
 			TokenCap: plugin.TokenCap, CostCapMicroUSD: plugin.CostCapMicroUSD,
 		},
@@ -176,5 +175,5 @@ func (handler *Handler) wakeFreshRuns(workspace string) {
 
 // storeExists reports whether a workspace has a store, without creating one.
 func (handler *Handler) storeExists(workspace string) bool {
-	return store.Exists(handler.dataDir, workspace)
+	return handler.stores.Exists(workspace)
 }

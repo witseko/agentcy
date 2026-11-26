@@ -24,13 +24,13 @@ const (
 // bin/, where `make setup` installs both), or on the absolute PATH entries.
 func tuiExecutable() (string, error) {
 	if configured := os.Getenv(tuiVariable); configured != "" {
-		if !filepath.IsAbs(configured) || !isExecutableFile(configured) {
+		if !filepath.IsAbs(configured) || !paths.IsExecutableFile(configured) {
 			return "", errors.New("AGENTCY_TUI must be the absolute path of an executable file")
 		}
 		return configured, nil
 	}
 	if exe := ownExecutable(); exe != "" {
-		if candidate := filepath.Join(filepath.Dir(exe), tuiProgram); isExecutableFile(candidate) {
+		if candidate := filepath.Join(filepath.Dir(exe), tuiProgram); paths.IsExecutableFile(candidate) {
 			return candidate, nil
 		}
 	}
@@ -39,13 +39,6 @@ func tuiExecutable() (string, error) {
 		return found, nil
 	}
 	return "", errors.New(tuiMissing)
-}
-
-// isExecutableFile reports a regular file that the user may execute.
-func isExecutableFile(path string) bool {
-	info, err := os.Stat(path)
-	const executeAccess = 1 // X_OK from unistd.h
-	return err == nil && info.Mode().IsRegular() && syscall.Access(path, executeAccess) == nil
 }
 
 // runUI makes sure the core runs, then replaces this process with the terminal UI.

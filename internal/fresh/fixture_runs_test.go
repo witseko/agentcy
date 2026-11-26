@@ -17,7 +17,6 @@ import (
 	"github.com/witseko/agentcy/internal/conversation"
 	"github.com/witseko/agentcy/internal/fresh"
 	"github.com/witseko/agentcy/internal/paths"
-	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -93,6 +92,7 @@ func (provider *hookedProvider) Operate(ctx context.Context, plugin fresh.Plugin
 type bridge struct {
 	t           *testing.T
 	home        string
+	shared      conversation.Shared
 	directory   string
 	workspace   string
 	clock       *testClock
@@ -112,10 +112,7 @@ func newBridge(t *testing.T) *bridge {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		_ = store.CloseAll()
-		_ = os.RemoveAll(home)
-	})
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	settings, _ := json.Marshal(map[string]any{"plugins": map[string]any{"fixture": map[string]any{
 		"command": []string{python, fixture}, "model": "test/model", "timeout_seconds": 120,
 		"environment": []string{"TEST_FRESH_RESULT"},
@@ -128,13 +125,14 @@ func newBridge(t *testing.T) *bridge {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &bridge{t: t, home: home, directory: directory, workspace: workspace,
-		clock: &testClock{now: time.Now()}, environment: map[string]string{}}
+	logger := log.New(io.Discard, "", 0)
+	b := &bridge{t: t, home: home, shared: conversation.NewShared(home, logger), directory: directory,
+		workspace: workspace, clock: &testClock{now: time.Now()}, environment: map[string]string{}}
+	t.Cleanup(func() { _ = b.shared.Stores.Close() })
 	b.provider = &hookedProvider{inner: &fresh.Client{DataDir: home, LookupEnv: b.lookupEnv}}
 	b.worker = b.newWorker()
 	b.worker.ReconcileForTest(context.Background(), func(string, string) {})
-	logger := log.New(io.Discard, "", 0)
-	b.handler = conversation.NewHandler(home, os.Environ(), logger, b.worker)
+	b.handler = conversation.NewHandler(b.shared, os.Environ(), b.worker)
 	return b
 }
 
@@ -148,9 +146,9 @@ func (b *bridge) lookupEnv(name string) (string, bool) {
 // daemon would. It is not ready until reconciled.
 func (b *bridge) newWorker() *fresh.Worker {
 	return fresh.NewWorker(fresh.WorkerConfig{
-		Store:    conversation.NewAssignmentStore(b.home, log.New(io.Discard, "", 0)),
+		Store:    conversation.NewAssignmentStore(b.shared),
 		Provider: b.provider,
-		Plugins:  fresh.NewSettingsFile(b.home).Plugin,
+		Plugins:  b.shared.Plugins.Plugin,
 		Now:      b.clock.Now,
 	})
 }
@@ -211,7 +209,7 @@ func (b *bridge) state() string {
 // query reads one row from the workspace store.
 func (b *bridge) query(query string, targets ...any) {
 	b.t.Helper()
-	workspaceStore, err := store.Open(context.Background(), b.home, b.workspace)
+	workspaceStore, err := b.shared.Stores.Open(context.Background(), b.workspace)
 	if err != nil {
 		b.t.Fatal(err)
 	}
@@ -411,7 +409,7 @@ func TestLaunchIsLeadOnly(t *testing.T) {
 func TestLaunchWaitsForTheReconciliation(t *testing.T) {
 	b := newBridge(t)
 	b.team(false)
-	b.handler = conversation.NewHandler(b.home, os.Environ(), log.New(io.Discard, "", 0), b.newWorker())
+	b.handler = conversation.NewHandler(b.shared, os.Environ(), b.newWorker())
 	message := b.memberError(&wire.Launch{Workspace: b.workspace, Token: b.lead, Name: "Fresh", Plugin: "fixture", Directory: b.directory})
 	if message != "Fresh-run worker is reconciling earlier runs. Retry shortly" {
 		t.Errorf("error %q", message)

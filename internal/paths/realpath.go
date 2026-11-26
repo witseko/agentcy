@@ -100,23 +100,15 @@ func (r *realPathResolver) step(name string) error {
 // expandLink resolves a symbolic link component using the seen cache and hop cap.
 func (r *realPathResolver) expandLink(link, target string) error {
 	if cached, ok := r.seen[link]; ok {
-		if cached != nil {
-			r.resolved = *cached
-			return nil
+		if cached == nil {
+			return r.stopAtLoop(link)
 		}
-		if r.strict {
-			return &os.PathError{Op: "realpath", Path: link, Err: syscall.ELOOP}
-		}
-		r.resolved = link
+		r.resolved = *cached
 		return nil
 	}
 	r.hops++
 	if r.hops > maxSymlinkHops {
-		if r.strict {
-			return &os.PathError{Op: "realpath", Path: link, Err: syscall.ELOOP}
-		}
-		r.resolved = link
-		return nil
+		return r.stopAtLoop(link)
 	}
 	if strings.HasPrefix(target, "/") {
 		r.resolved = "/"
@@ -126,6 +118,16 @@ func (r *realPathResolver) expandLink(link, target string) error {
 	targetParts := reversedParts(target)
 	r.rest = append(r.rest, targetParts...)
 	r.remaining += len(targetParts)
+	return nil
+}
+
+// stopAtLoop handles a link that cannot be followed: a loop, or one hop too many. Strict
+// mode fails with ELOOP; otherwise the link is kept unresolved.
+func (r *realPathResolver) stopAtLoop(link string) error {
+	if r.strict {
+		return &os.PathError{Op: "realpath", Path: link, Err: syscall.ELOOP}
+	}
+	r.resolved = link
 	return nil
 }
 

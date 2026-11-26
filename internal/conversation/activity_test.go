@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -18,7 +17,7 @@ import (
 func TestHasActiveWorkCountsOpenConversationsAndPendingAssignments(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	handler := NewHandler(dataDir, nil, log.New(io.Discard, "", 0), nil)
+	handler := NewHandler(newTestShared(t, dataDir, log.New(io.Discard, "", 0)), nil, nil)
 	active := func() bool {
 		t.Helper()
 		found, err := handler.HasActiveWork(ctx, time.Unix(startUnix, 0))
@@ -30,7 +29,7 @@ func TestHasActiveWorkCountsOpenConversationsAndPendingAssignments(t *testing.T)
 	if active() {
 		t.Fatal("an empty data directory has active work")
 	}
-	opened, err := store.Open(ctx, dataDir, testWorkspace)
+	opened, err := handler.stores.Open(ctx, testWorkspace)
 	if err != nil {
 		t.Fatal(err)
 	}

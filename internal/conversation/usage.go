@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"log"
@@ -15,9 +16,20 @@ import (
 // usageBook gives the rules access to the user-level token ledger and to tokens.json.
 // It is shared by all requests and safe for concurrent use.
 type usageBook struct {
-	dataDir  string
+	stores   *store.Registry
 	settings *tokens.SettingsFile
 	logger   *log.Logger
+}
+
+// writeScope is what travels together through one write transaction: the transaction,
+// the usage book, the workspace whose ledger rows the write syncs, and the request time
+// in Unix seconds. workspace is "" for a write whose usage is not synced, such as the
+// human's post.
+type writeScope struct {
+	tx        *sql.Tx
+	book      *usageBook
+	workspace string
+	now       int64
 }
 
 // pendingLedgerSync is a slot snapshot waiting for its workspace transaction to commit
@@ -67,7 +79,7 @@ func (book *usageBook) sync(ctx context.Context, workspace string, snapshot *tok
 
 // syncNow writes one slot snapshot directly to the user-level token ledger.
 func (book *usageBook) syncNow(ctx context.Context, workspace string, snapshot *tokens.SlotSnapshot) error {
-	ledger, err := store.OpenLedger(ctx, book.dataDir)
+	ledger, err := book.stores.OpenLedger(ctx)
 	if err != nil {
 		return err
 	}
@@ -80,14 +92,14 @@ func (book *usageBook) spend(ctx context.Context, models []string, sinceByModel 
 	if len(models) == 0 {
 		return map[string]int64{}, nil
 	}
-	info, err := os.Stat(filepath.Join(book.dataDir, store.LedgerFilename))
+	info, err := os.Stat(filepath.Join(book.stores.DataDir(), store.LedgerFilename))
 	if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.Mode().IsRegular()) {
 		return map[string]int64{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := store.OpenLedger(ctx, book.dataDir)
+	ledger, err := book.stores.OpenLedger(ctx)
 	if err != nil {
 		return nil, err
 	}

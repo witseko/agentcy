@@ -1,16 +1,10 @@
 package progress
 
+import "slices"
+
 // isPending reports a launch state that keeps a fresh run active.
 func isPending(launchState *string) bool {
-	if launchState == nil {
-		return false
-	}
-	for _, state := range PendingStates {
-		if *launchState == state {
-			return true
-		}
-	}
-	return false
+	return launchState != nil && IsPendingState(*launchState)
 }
 
 // AwaitingFreshJoin recognizes a launch that still owns an unused invitation and can join.
@@ -73,22 +67,12 @@ func TaskAvailability(owners []Member) ([]string, bool) {
 		for _, task := range member.OpenTasks {
 			if task.Blocked {
 				blocked = true
-			} else if !containsName(working, member.Name) {
+			} else if !slices.Contains(working, member.Name) {
 				working = append(working, member.Name)
 			}
 		}
 	}
 	return working, blocked
-}
-
-// containsName reports whether names holds name.
-func containsName(names []string, name string) bool {
-	for _, candidate := range names {
-		if candidate == name {
-			return true
-		}
-	}
-	return false
 }
 
 // WorkingPeersWithoutTasks finds working peers whose progress is independent of the
@@ -272,7 +256,7 @@ func pendingOwners(status Status, owners []Member, caller string) []string {
 			continue
 		}
 		live = append(live, owner.Name)
-		if containsName(workingOwners, owner.Name) {
+		if slices.Contains(workingOwners, owner.Name) {
 			working = append(working, owner.Name)
 		}
 	}

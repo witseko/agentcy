@@ -18,8 +18,9 @@ import (
 func openLedger(t *testing.T) (*store.Store, string) {
 	t.Helper()
 	directory := newDataDir(t)
-	t.Cleanup(func() { _ = store.CloseAll() })
-	ledger, err := store.OpenLedger(context.Background(), directory)
+	stores := store.NewRegistry(directory)
+	t.Cleanup(func() { _ = stores.Close() })
+	ledger, err := stores.OpenLedger(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

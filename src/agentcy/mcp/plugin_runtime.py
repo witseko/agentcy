@@ -2,6 +2,7 @@
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -11,28 +12,26 @@ BIN_VARIABLE = "AGENTCY_BIN"
 
 
 def agentcy_binary() -> str | None:
-    """Return the agentcy executable named in AGENTCY_BIN, or None if unset.
-
-    Accepts regular files and symlinks to executable regular files.
+    """Return the agentcy executable that the core names in AGENTCY_BIN, or None if unset.
 
     Raises:
-        ValueError: If AGENTCY_BIN is not an absolute path to an executable file.
+        ValueError: If AGENTCY_BIN is not an absolute path to a regular file.
     """
     value = os.environ.get(BIN_VARIABLE)
     if value is None:
         return None
     path = Path(value)
     try:
-        valid = path.is_absolute() and path.is_file() and os.access(path, os.X_OK)
+        regular = path.is_absolute() and stat.S_ISREG(path.lstat().st_mode)
     except OSError:
-        valid = False
-    if not valid:
-        raise ValueError("AGENTCY_BIN must be an absolute path to an executable file")
+        regular = False
+    if not regular:
+        raise ValueError("AGENTCY_BIN must be an absolute path to a regular file")
     return value
 
 
 def valid_binary() -> bool:
-    """Accept an unset AGENTCY_BIN or an absolute path to an executable file."""
+    """Accept an unset AGENTCY_BIN or an absolute path to a regular file."""
     try:
         agentcy_binary()
     except ValueError:
@@ -60,13 +59,9 @@ def sandbox_profile(runtime: Path) -> str:
     private_bridge = json.dumps(str(root))
     socket_path = json.dumps(str(root / "core.sock"))
     # The worker's bridge server runs from AGENTCY_BIN, so it stays readable even when it
-    # is installed inside the bridge directory. Resolve symlinks so Seatbelt literal
-    # matching applies to the target file.
+    # is installed inside the bridge directory.
     executable = agentcy_binary()
-    binary = ""
-    if executable:
-        resolved = str(Path(executable).resolve())
-        binary = f" (require-not (literal {json.dumps(resolved)}))"
+    binary = f" (require-not (literal {json.dumps(executable)}))" if executable else ""
     return (
         f"(version 1) (allow default) "
         f"(deny file-write* (require-all (require-not (subpath {writable})) "

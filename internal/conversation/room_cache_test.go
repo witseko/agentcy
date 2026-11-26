@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -20,7 +19,7 @@ import (
 type cacheHarness struct {
 	t         *testing.T
 	ctx       context.Context
-	dataDir   string
+	shared    Shared
 	directory string
 	workspace string
 	handler   *Handler
@@ -35,9 +34,10 @@ type cacheHarness struct {
 func newCacheHarness(t *testing.T, create wire.Create, joiners ...string) *cacheHarness {
 	t.Helper()
 	h := &cacheHarness{
-		t: t, ctx: context.Background(), dataDir: t.TempDir(), directory: t.TempDir(),
+		t: t, ctx: context.Background(), directory: t.TempDir(),
 		now: startUnix, tokens: map[string]string{},
 	}
+	h.shared = newTestShared(t, t.TempDir(), log.New(io.Discard, "", 0))
 	h.handler = h.newHandler()
 	workspace, err := h.handler.checkoutWorkspace(h.directory)
 	if err != nil {
@@ -57,7 +57,7 @@ func newCacheHarness(t *testing.T, create wire.Create, joiners ...string) *cache
 
 // newHandler returns a Handler on the harness data directory with an empty cache.
 func (h *cacheHarness) newHandler() *Handler {
-	return NewHandler(h.dataDir, nil, log.New(io.Discard, "", 0), nil)
+	return NewHandler(h.shared, nil, nil)
 }
 
 // member sends a member request through the cached Handler and fails on an error.
@@ -146,7 +146,7 @@ func pointer[T any](value T) *T {
 // writeStore runs SQL on the store directly, as a writer outside the Handler would.
 func (h *cacheHarness) writeStore(query string, arguments ...any) {
 	h.t.Helper()
-	opened, err := store.Open(h.ctx, h.dataDir, h.workspace)
+	opened, err := h.shared.Stores.Open(h.ctx, h.workspace)
 	if err != nil {
 		h.t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"sort"
 
 	"github.com/witseko/agentcy/internal/progress"
@@ -28,12 +29,7 @@ var taskEventKinds = []string{kindTask, kindHandoff, kindDone, kindBlocker, kind
 
 // isTaskEventKind reports a kind that changes task state.
 func isTaskEventKind(kind string) bool {
-	for _, candidate := range taskEventKinds {
-		if candidate == kind {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(taskEventKinds, kind)
 }
 
 // task is the current state of one task, built from its messages in order.

@@ -155,16 +155,16 @@ func catchUpFields(ctx context.Context, tx *sql.Tx, member *participant, after i
 
 // recordReadUsage records the estimated input tokens of a page delivered to a member
 // other than the human. brief is "" unless the page carries it.
-func recordReadUsage(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, workspace string, bodies []string, brief string, now int64) error {
+func recordReadUsage(ctx context.Context, scope writeScope, member *participant, bodies []string, brief string) error {
 	readTokens := tokens.EstimateRead(bodies, brief)
 	if readTokens <= 0 || member.Role == roleHuman {
 		return nil
 	}
-	snapshot, err := tokens.AddEstimated(ctx, tx, member.Room, member.ID, readTokens, 0, now)
+	snapshot, err := tokens.AddEstimated(ctx, scope.tx, member.Room, member.ID, readTokens, 0, scope.now)
 	if err != nil {
 		return err
 	}
-	return book.sync(ctx, workspace, snapshot)
+	return scope.book.sync(ctx, scope.workspace, snapshot)
 }
 
 // read is a member read that records the usage of the page it returns.
@@ -177,7 +177,8 @@ func read(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant,
 	if request.After == 0 {
 		brief = member.Brief
 	}
-	if err := recordReadUsage(ctx, tx, book, member, request.Workspace, bodies, brief, now); err != nil {
+	scope := writeScope{tx: tx, book: book, workspace: request.Workspace, now: now}
+	if err := recordReadUsage(ctx, scope, member, bodies, brief); err != nil {
 		return wire.Value{}, err
 	}
 	return page.Page, nil

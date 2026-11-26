@@ -3,7 +3,6 @@ package conversation
 import (
 	"context"
 	"database/sql"
-	"log"
 	"time"
 
 	"github.com/witseko/agentcy/internal/fresh"
@@ -16,20 +15,16 @@ import (
 // store (the store side of assignment_worker.py and the functions it calls in
 // assignments.py). It is safe for concurrent use.
 type AssignmentStore struct {
-	dataDir string
-	book    *usageBook
+	stores *store.Registry
+	book   *usageBook
 }
 
 // The store must satisfy the worker's interface.
 var _ fresh.Store = (*AssignmentStore)(nil)
 
-// NewAssignmentStore returns the assignment store of the checked data directory.
-// logger receives the warnings that Python logs.
-func NewAssignmentStore(dataDir string, logger *log.Logger) *AssignmentStore {
-	return &AssignmentStore{
-		dataDir: dataDir,
-		book:    &usageBook{dataDir: dataDir, settings: tokens.NewSettingsFile(dataDir), logger: logger},
-	}
+// NewAssignmentStore returns the assignment store on the shared resources.
+func NewAssignmentStore(shared Shared) *AssignmentStore {
+	return &AssignmentStore{stores: shared.Stores, book: shared.newUsageBook()}
 }
 
 // eventTexts end the event of a run that stopped in one of these states (EVENTS in
@@ -43,13 +38,13 @@ var eventTexts = map[string]string{
 
 // WorkspaceKeys lists the workspace stores.
 func (assignments *AssignmentStore) WorkspaceKeys() ([]string, error) {
-	return store.WorkspaceKeys(assignments.dataDir)
+	return assignments.stores.WorkspaceKeys()
 }
 
 // write runs work in a write transaction of a workspace store and flushes any buffered
 // ledger syncs after commit.
 func (assignments *AssignmentStore) write(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) error) error {
-	workspaceStore, err := store.Open(ctx, assignments.dataDir, workspace)
+	workspaceStore, err := assignments.stores.Open(ctx, workspace)
 	if err != nil {
 		return err
 	}
@@ -64,7 +59,7 @@ func (assignments *AssignmentStore) write(ctx context.Context, workspace string,
 
 // read runs work in a read transaction of a workspace store.
 func (assignments *AssignmentStore) read(ctx context.Context, workspace string, work func(tx *sql.Tx) error) error {
-	workspaceStore, err := store.Open(ctx, assignments.dataDir, workspace)
+	workspaceStore, err := assignments.stores.Open(ctx, workspace)
 	if err != nil {
 		return err
 	}
@@ -105,7 +100,7 @@ func (assignments *AssignmentStore) ClaimQueued(ctx context.Context, workspace, 
 		if terminal != "" || rejected {
 			return nil
 		}
-		_, err = recordRunState(ctx, tx, nil, *claimed, fresh.StateStarting, fresh.RunResult{}, now.Unix())
+		_, err = recordRunState(ctx, writeScope{tx: tx, now: now.Unix()}, *claimed, fresh.StateStarting, fresh.RunResult{})
 		return err
 	})
 	return claimed, terminal, err
@@ -116,7 +111,8 @@ func (assignments *AssignmentStore) Record(ctx context.Context, run fresh.Run, s
 	added := false
 	err := assignments.write(ctx, run.Workspace, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
-		added, err = recordRunState(ctx, tx, assignments.book, run, state, result, now.Unix())
+		scope := writeScope{tx: tx, book: assignments.book, workspace: run.Workspace, now: now.Unix()}
+		added, err = recordRunState(ctx, scope, run, state, result)
 		return err
 	})
 	return added, err
@@ -166,16 +162,16 @@ const expireRunInvitation = `UPDATE participant SET expires=? WHERE participant.
 
 // recordRunState saves a state transition, the plugin's usage when it reported both
 // counts, and the event of a stop (assignments.record). It reports whether an event was
-// added. book may be nil when result carries no usage.
-func recordRunState(ctx context.Context, tx *sql.Tx, book *usageBook, run fresh.Run, state string, result fresh.RunResult, now int64) (bool, error) {
-	if result.InputTokens != nil && result.OutputTokens != nil && book != nil {
-		snapshot, err := tokens.RecordExact(ctx, tx, run.Room, run.Slot, tokens.ExactUsage{
+// added. scope.book may be nil when result carries no usage.
+func recordRunState(ctx context.Context, scope writeScope, run fresh.Run, state string, result fresh.RunResult) (bool, error) {
+	if result.InputTokens != nil && result.OutputTokens != nil && scope.book != nil {
+		snapshot, err := tokens.RecordExact(ctx, scope.tx, run.Room, run.Slot, tokens.ExactUsage{
 			InputTokens: *result.InputTokens, OutputTokens: *result.OutputTokens, Source: tokens.SourcePlugin,
-		}, now)
+		}, scope.now)
 		if err != nil {
 			return false, err
 		}
-		if err := book.sync(ctx, run.Workspace, snapshot); err != nil {
+		if err := scope.book.sync(ctx, scope.workspace, snapshot); err != nil {
 			return false, err
 		}
 	}
@@ -186,11 +182,11 @@ func recordRunState(ctx context.Context, tx *sql.Tx, book *usageBook, run fresh.
 	if result.ExitCode != nil {
 		exitCode = *result.ExitCode
 	}
-	if _, err := tx.ExecContext(ctx, updateAssignmentState, state, exitCode, now, run.ID); err != nil {
+	if _, err := scope.tx.ExecContext(ctx, updateAssignmentState, state, exitCode, scope.now, run.ID); err != nil {
 		return false, err
 	}
 	if !fresh.IsPendingState(state) {
-		if _, err := tx.ExecContext(ctx, expireRunInvitation, 0, run.Slot, run.InviteHash); err != nil {
+		if _, err := scope.tx.ExecContext(ctx, expireRunInvitation, 0, run.Slot, run.InviteHash); err != nil {
 			return false, err
 		}
 	}
@@ -198,5 +194,5 @@ func recordRunState(ctx context.Context, tx *sql.Tx, book *usageBook, run fresh.
 	if !found {
 		return false, nil
 	}
-	return true, recordEvent(ctx, tx, run.Room, run.Slot, run.Label+" "+text+".", now)
+	return true, recordEvent(ctx, scope.tx, run.Room, run.Slot, run.Label+" "+text+".", scope.now)
 }

@@ -3,7 +3,8 @@ package conversation
 import (
 	"context"
 	"database/sql"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/witseko/agentcy/internal/wire"
 )
@@ -148,11 +149,8 @@ func scanTimelineRow(rows *sql.Rows) (timelineRow, error) {
 
 // taskDetailList builds the detail of every task, newest first.
 func taskDetailList(timelines *taskTimelines, board *taskBoard, now int64) wire.Value {
-	ids := make([]int64, 0, len(timelines.origins))
-	for id := range timelines.origins {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(left, right int) bool { return ids[left] > ids[right] })
+	ids := slices.Sorted(maps.Keys(timelines.origins))
+	slices.Reverse(ids)
 	details := make([]wire.Value, 0, len(ids))
 	for _, id := range ids {
 		state := board.tasks[id]

@@ -1,6 +1,10 @@
 package fresh
 
-import "context"
+import (
+	"context"
+	"maps"
+	"slices"
+)
 
 // These hooks let the external tests in fixture_runs_test.go drive the worker one step
 // at a time, as the Python tests call AssignmentWorker.scan and launch directly.
@@ -23,7 +27,7 @@ func (worker *Worker) ScanForTest(ctx context.Context) {
 	for _, run := range worker.state.runs {
 		workspaces[run.Workspace] = true
 	}
-	for _, workspace := range sortedKeys(workspaces) {
+	for _, workspace := range slices.Sorted(maps.Keys(workspaces)) {
 		worker.serviceWorkspace(ctx, workspace, false)
 	}
 }

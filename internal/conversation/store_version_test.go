@@ -37,7 +37,7 @@ func TestOldStoreIsRefusedWithThePythonMessageAndLoggedWithTheFix(t *testing.T) 
 	workspace := strings.Repeat("cd", 32)
 	writeStoreAtVersion(t, dataDir, workspace, 14)
 	var logged bytes.Buffer
-	handler := NewHandler(dataDir, nil, log.New(&logged, "", 0), nil)
+	handler := NewHandler(newTestShared(t, dataDir, log.New(&logged, "", 0)), nil, nil)
 
 	_, err := handler.Member(context.Background(), &wire.ListClosed{Workspace: workspace}, time.Unix(startUnix, 0))
 
@@ -57,7 +57,7 @@ func TestIdleCheckRefusesAnOldStoreWithThePythonMessage(t *testing.T) {
 	dataDir := t.TempDir()
 	writeStoreAtVersion(t, dataDir, strings.Repeat("ef", 32), 14)
 	var logged bytes.Buffer
-	handler := NewHandler(dataDir, nil, log.New(&logged, "", 0), nil)
+	handler := NewHandler(newTestShared(t, dataDir, log.New(&logged, "", 0)), nil, nil)
 
 	_, err := handler.HasActiveWork(context.Background(), time.Unix(startUnix, 0))
 
