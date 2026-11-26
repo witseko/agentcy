@@ -68,6 +68,7 @@ var (
 		{Name: "token", Field: "token"},
 		{Name: "name", Field: "name"},
 		{Name: "plugin", Field: "plugin", TypeOnly: true},
+		{Name: "relaunch", Field: "relaunch"},
 	}
 	closeArguments      = sameNames("token", "summary")
 	reopenArguments     = sameNames("token", "note")
@@ -79,14 +80,15 @@ var (
 // of the tool of the same name in the former Python core's mcp/server.py.
 func (shim *shimServer) memberTools() map[string]toolFunction {
 	return map[string]toolFunction{
-		"create_conversation":       shim.sender(func() wire.Request { return &wire.Create{Workspace: shim.workspace} }, createArguments),
+		"create_conversation":       shim.createConversation,
 		"invite_participant":        shim.sender(func() wire.Request { return &wire.Invite{Workspace: shim.workspace} }, inviteArguments),
 		"open_invite":               shim.sender(func() wire.Request { return &wire.OpenInvite{Workspace: shim.workspace} }, openInviteArguments),
 		"retire_participant":        shim.sender(func() wire.Request { return &wire.Retire{Workspace: shim.workspace} }, nameArguments),
+		"ping_participant":          shim.sender(func() wire.Request { return &wire.Ping{Workspace: shim.workspace} }, nameArguments),
 		"set_participant_role":      shim.sender(func() wire.Request { return &wire.SetRole{Workspace: shim.workspace} }, setRoleArguments),
 		"list_plugins":              shim.sender(func() wire.Request { return &wire.Plugins{Workspace: shim.workspace} }, tokenArguments),
-		"join_conversation":         shim.sender(func() wire.Request { return &wire.Join{Workspace: shim.workspace} }, joinArguments),
-		"report_usage":              shim.sender(func() wire.Request { return &wire.ReportUsage{Workspace: shim.workspace} }, usageArguments),
+		"join_conversation":         shim.joinConversation,
+		"report_usage":              shim.reportUsage,
 		"post_message":              shim.postMessage,
 		"read_messages":             shim.readMessages,
 		"launch_participant":        shim.launchParticipant,
@@ -125,6 +127,39 @@ func exchangeRest(ctx context.Context, core Exchanger, request wire.Request, bin
 	return core.Exchange(ctx, request)
 }
 
+// createConversation creates a conversation and registers the creator's MCP session.
+func (shim *shimServer) createConversation(call toolCall) (wire.Value, error) {
+	result, err := shim.send(call, &wire.Create{Workspace: shim.workspace}, createArguments)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	token, _ := result.Get("token")
+	shim.presence.touch(call.request, token.StringOf())
+	return result, nil
+}
+
+// joinConversation redeems a join code and registers the participant's MCP session.
+func (shim *shimServer) joinConversation(call toolCall) (wire.Value, error) {
+	result, err := shim.send(call, &wire.Join{Workspace: shim.workspace}, joinArguments)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	token, _ := result.Get("token")
+	shim.presence.touch(call.request, token.StringOf())
+	return result, nil
+}
+
+// reportUsage records usage and registers the participant's MCP session.
+func (shim *shimServer) reportUsage(call toolCall) (wire.Value, error) {
+	request := &wire.ReportUsage{Workspace: shim.workspace}
+	result, err := shim.send(call, request, usageArguments)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	shim.presence.touch(call.request, request.Token)
+	return result, nil
+}
+
 // postMessage posts and then forgets the poster's quiet waits.
 func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
 	request := &wire.Post{Workspace: shim.workspace}
@@ -133,6 +168,7 @@ func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
 		return wire.Value{}, err
 	}
 	shim.state.resetWaits(tokenDigest(request.Token))
+	shim.presence.touch(call.request, request.Token)
 	return result, nil
 }
 
@@ -149,6 +185,7 @@ func (shim *shimServer) readFor(call toolCall, request *wire.Read, bindings []wi
 	if err := wire.ValidateRest(request, bindings); err != nil {
 		return wire.Value{}, err
 	}
+	shim.presence.touch(call.request, request.Token)
 	return readMember(call.ctx, shim.core, shim.state, request.Workspace, request.Token, request.After, request.WaitSeconds)
 }
 
@@ -163,6 +200,7 @@ func (shim *shimServer) statusFor(call toolCall, request *wire.Status, bindings 
 	if err != nil {
 		return wire.Value{}, err
 	}
+	shim.presence.touch(call.request, request.Token)
 	status.Delete("participant")
 	return status, nil
 }

@@ -30,12 +30,22 @@ type freshWorker struct {
 
 // NewFreshWorkerServer builds the MCP server that exposes only the joined worker's join,
 // post, read and status operations.
-func NewFreshWorkerServer(workspace, code string, core Exchanger) (*mcp.Server, error) {
+func NewFreshWorkerServer(workspace, code string, core Exchanger, dialSession ...SessionDialer) (*mcp.Server, error) {
 	signer, err := newRequestStateSigner(time.Now)
 	if err != nil {
 		return nil, err
 	}
-	shim := &shimServer{workspace: workspace, core: core, state: newListenState(false), signer: signer}
+	var dial SessionDialer
+	if len(dialSession) > 0 {
+		dial = dialSession[0]
+	}
+	shim := &shimServer{
+		workspace: workspace,
+		core:      core,
+		state:     newListenState(false),
+		presence:  newPresenceTracker(workspace, dial, false),
+		signer:    signer,
+	}
 	worker := &freshWorker{shim: shim, code: code}
 	shim.tools = map[string]toolFunction{
 		"join_conversation":   worker.join,
@@ -76,8 +86,10 @@ func (worker *freshWorker) join(call toolCall) (wire.Value, error) {
 		worker.token = token.StringOf()
 		worker.joined = joined
 	}
+	currentToken := worker.token
 	result := worker.joined.Copy()
 	worker.mutex.Unlock()
+	worker.shim.presence.touch(call.request, currentToken)
 	return result, nil
 }
 
@@ -92,6 +104,7 @@ func (worker *freshWorker) post(call toolCall) (wire.Value, error) {
 		return wire.Value{}, err
 	}
 	worker.shim.state.clearWaits()
+	worker.shim.presence.touch(call.request, token)
 	return result, nil
 }
 

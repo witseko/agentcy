@@ -100,6 +100,7 @@ func (handler *Handler) launch(ctx context.Context, request *wire.Launch, now in
 		queued, err = queueAssignment(ctx, tx, member, queueRequest{
 			workspace: request.Workspace, name: request.Name, plugin: request.Plugin,
 			timeout: plugin.TimeoutSeconds, model: plugin.Model, mcpTask: request.McpTask,
+			relaunch: request.Relaunch,
 		}, now)
 		return wire.Value{}, err
 	})
@@ -129,7 +130,7 @@ func (handler *Handler) operatorLaunch(ctx context.Context, workspace string, re
 		var queueErr error
 		queued, queueErr = operatorQueue(ctx, tx, request, queueRequest{
 			workspace: workspace, name: request.Name, plugin: request.Plugin,
-			timeout: plugin.TimeoutSeconds, model: plugin.Model,
+			timeout: plugin.TimeoutSeconds, model: plugin.Model, relaunch: request.Relaunch,
 		}, now)
 		return wire.Value{}, queueErr
 	})

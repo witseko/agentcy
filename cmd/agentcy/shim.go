@@ -113,7 +113,8 @@ func runShim(arguments []string) int {
 		return fail(err)
 	}
 	server, err := shim.NewServer(shim.Config{
-		Workspace: key, Directory: directory, Version: version, Core: coreClient(), OverHTTP: options.httpSet,
+		Workspace: key, Directory: directory, Version: version,
+		Core: coreClient(), DialSession: dialCorePassive, OverHTTP: options.httpSet,
 	})
 	if err != nil {
 		return fail(err)

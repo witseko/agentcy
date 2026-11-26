@@ -647,9 +647,19 @@ func (m model) teamMemberMenuItems(name string, member MemberStatus) []contextIt
 		})
 	}
 	if isOpen && member.State != "retired" {
+		launchLabel := "Launch from plugin…"
+		if needsRelaunch(member) {
+			launchLabel = "Relaunch from plugin…"
+		}
 		items = append(items,
 			contextItem{
-				id: "member:launch", label: "Launch from plugin…", key: "l",
+				id: "member:ping", label: "Ping member", key: "p",
+				action: func(m model) (tea.Model, tea.Cmd) {
+					return m.inform("Pinging " + displayName + "."), m.pingMember(name)
+				},
+			},
+			contextItem{
+				id: "member:launch", label: launchLabel, key: "l",
 				action: func(m model) (tea.Model, tea.Cmd) { return m.prefillLaunchFor(name) },
 			},
 		)
@@ -705,13 +715,17 @@ func (m model) teamMemberRoleItems(name string, member MemberStatus) []contextIt
 	return items
 }
 
-// prefillLaunchFor puts a launch command for name into the composer.
+// prefillLaunchFor puts a launch or relaunch command for name into the composer.
 func (m model) prefillLaunchFor(name string) (tea.Model, tea.Cmd) {
 	plugin := "plugin"
 	if len(m.plugins) > 0 {
 		plugin = m.plugins[0]
 	}
-	return m.prefillComposer("/launch "+name+" "+plugin, "Edit the plugin name if needed and press enter.")
+	command := "/launch "
+	if member, found := m.chat.view.Status.Members[name]; found && needsRelaunch(member) {
+		command = "/relaunch "
+	}
+	return m.prefillComposer(command+name+" "+plugin, "Edit the plugin name if needed and press enter.")
 }
 
 // teamHumanMenuItems builds context operations for the human's own card in the team panel.

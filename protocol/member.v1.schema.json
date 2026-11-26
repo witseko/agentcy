@@ -406,6 +406,11 @@
           "default": false,
           "title": "Mcp Task",
           "type": "boolean"
+        },
+        "relaunch": {
+          "default": false,
+          "title": "Relaunch",
+          "type": "boolean"
         }
       },
       "required": [
@@ -986,6 +991,75 @@
       "title": "Retire",
       "type": "object"
     },
+    "Ping": {
+      "additionalProperties": false,
+      "description": "Check a participant's live connection and wake a waiting read without posting.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "ping",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "name"
+      ],
+      "title": "Ping",
+      "type": "object"
+    },
+    "Session": {
+      "additionalProperties": false,
+      "description": "Register an active shim MCP session with the Go core for presence and liveness probes.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "session",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Session",
+      "type": "object"
+    },
     "SetRole": {
       "additionalProperties": false,
       "description": "Change a participant's role in an open conversation as a lead or co-lead.",
@@ -1115,6 +1189,12 @@
     },
     {
       "$ref": "#/$defs/Launch"
+    },
+    {
+      "$ref": "#/$defs/Ping"
+    },
+    {
+      "$ref": "#/$defs/Session"
     },
     {
       "$ref": "#/$defs/ListClosed"

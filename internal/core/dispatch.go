@@ -16,7 +16,13 @@ func (server *server) dispatch(ctx context.Context, incoming wire.Incoming) (wir
 		if !server.key.matches(incoming.Operator.OperatorKey()) {
 			return wire.Value{}, Reject(wire.OperatorKeyRejected)
 		}
+		if _, isPing := incoming.Operator.(*wire.OperatorPing); isPing {
+			return server.ping(ctx, incoming)
+		}
 		return server.wakeAfter(server.handler.Operator(ctx, incoming.Operator, now))
+	}
+	if _, isPing := incoming.Member.(*wire.Ping); isPing {
+		return server.ping(ctx, incoming)
 	}
 	if read, isRead := incoming.Member.(*wire.Read); isRead && read.WaitSeconds > 0 {
 		return server.waitForRead(ctx, read)

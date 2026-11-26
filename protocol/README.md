@@ -50,7 +50,8 @@ from it, as the stdio shim does with `--workspace`.
 | `operator_create` | Create a conversation. Every slot, the lead included, gets a join code and a ready join prompt. Set `open_invite: true` to also create a reusable room-level join code (and allow zero preset `invitees`). |
 | `operator_invite` | Add a slot or reissue an unused code. Set `reinvite: true` to give a joined or retired member a new code: the member becomes active again with its name, history, and tasks, and its previous chat loses its token. Returns a ready join prompt. |
 | `operator_open_invite` | Enable, rotate (`enabled: true`), or disable (`enabled: false`) a reusable room-level join code that works for everyone who joins until closed, rotated, or revoked. |
-| `operator_launch` | Fill a worker slot from a configured plugin. A slot whose run ended cannot be relaunched yet. |
+| `operator_launch` | Fill a worker slot from a configured plugin. Pass `relaunch: true` to start a new fresh run for a slot whose previous run ended, keeping its name, history, and open tasks. |
+| `operator_ping` | Check a participant's live connection and wake an active waiting read without posting a message. |
 | `operator_retire` | Retire a participant from an open conversation. Expires unused codes, stops writes, and cancels any active fresh run. Moves unfinished tasks to the least busy available worker (joined, invited, or launched), or to the lead when none is available. Rejects retiring the lead. |
 | `operator_set_role` | Change an active participant's role (`lead`, `co-lead`, or `worker`). Setting `lead` demotes any previous lead or co-lead to `worker` while keeping them active. |
 | `operator_post` | Post a `note` or `question` as the human. Reuse `submission_id` on retries. The core rejects `due_minutes` here: only a lead's `task` accepts it. |
@@ -134,13 +135,19 @@ checks decides that string:
 `version` accepts the integer 1 and every JSON value that Python treats as equal to 1: `1.0`,
 `1e0`, and `true`. It rejects `"1"`. `directory` must start with `/` and must not hold NUL.
 
-### Go core only: `listen`
+### Go core only: `listen`, `ping`, and `session`
 
-`listen` exists only in the Go core (`agentcy core`); the former Python core does not know it.
-It takes the fields of `read`, but `wait_seconds` is required and runs from 1 to 45. The
+`listen`, `ping`, and `session` exist only in the Go core (`agentcy core`).
+
+`listen` takes the fields of `read`, but `wait_seconds` is required and runs from 1 to 45. The
 core runs the waiting read exactly as `read` with that wait, then builds the caller's
 status, and answers `{"page": <the read result>, "status": <the status result>}`. A shim
 sends one exchange instead of a read and a status.
+
+`ping` lets a lead or co-lead check a participant's live connection and wake an active waiting
+read without posting a message. `session` registers a stateful shim's MCP session on a
+persistent socket connection so the core can report `connected` presence and run on-demand
+MCP `ping` probes.
 
 It is additive. Old shims never send it and keep working against the Go core. A Go shim
 that gets `Invalid bridge arguments` for a `listen` (the answer of the former Python core, or of

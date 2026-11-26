@@ -1,0 +1,288 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Ping checks", "initiator": "Lead", "invitees": ["Worker", "Pending"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Pending": "<code-2>"
+    },
+    "join_prompt": "Ping checks: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Ping checks\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Pending": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead pings an invited slot
+-> {"action": "ping", "name": "Pending", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Pending",
+    "status": "not_joined",
+    "listening": false,
+    "connected": false,
+    "woke": false
+  }
+}
+
+== 3. operator pings an invited slot
+-> {"action": "operator_ping", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Pending", "version": 1}
+<- {
+  "result": {
+    "participant": "Pending",
+    "status": "not_joined",
+    "listening": false,
+    "connected": false,
+    "woke": false
+  }
+}
+
+== 4. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Pending": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Ping checks",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 5. worker checks status to record activity
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Pending": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Worker"
+  }
+}
+
+== 6. worker cannot ping
+-> {"action": "ping", "name": "Lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can ping participants"
+}
+
+== 7. lead cannot ping self
+-> {"action": "ping", "name": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You cannot ping yourself"
+}
+
+== 8. lead cannot ping unknown member
+-> {"action": "ping", "name": "Missing", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 9. lead pings a disconnected worker
+-> {"action": "ping", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "disconnected",
+    "listening": false,
+    "connected": false,
+    "woke": false,
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 10. operator pings a disconnected worker
+-> {"action": "operator_ping", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "version": 1}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "disconnected",
+    "listening": false,
+    "connected": false,
+    "woke": false,
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 11. status shows connected worker
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "connected": true
+      },
+      "Pending": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 12. lead pings connected worker
+-> {"action": "ping", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "connected",
+    "listening": false,
+    "connected": true,
+    "woke": false,
+    "ping_rtt_ms": "<ping-rtt-ms>",
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 13. operator pings connected worker
+-> {"action": "operator_ping", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "version": 1}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "connected",
+    "listening": false,
+    "connected": true,
+    "woke": false,
+    "ping_rtt_ms": "<ping-rtt-ms>",
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 14. status shows listening and connected worker
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "listening": true,
+        "connected": true
+      },
+      "Pending": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 15. lead wakes listening worker without posting
+-> {"action": "ping", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "woken",
+    "listening": true,
+    "connected": true,
+    "woke": true,
+    "ping_rtt_ms": "<ping-rtt-ms>",
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 16. lead detects unresponsive host on session stream
+-> {"action": "ping", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "status": "unresponsive",
+    "listening": false,
+    "connected": false,
+    "woke": false,
+    "idle_seconds": "<idle-seconds>"
+  }
+}
+
+== 17. transcript stays empty after out-of-band pings
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "wake": false,
+    "brief": "Ping checks",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Pending": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 18. lead retires worker
+-> {"action": "retire", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "retired": true
+  }
+}
+
+== 19. lead cannot ping retired worker
+-> {"action": "ping", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Participant is retired: Worker"
+}
+
+== 20. lead closes conversation
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 21. lead cannot ping in closed conversation
+-> {"action": "ping", "name": "Pending", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+

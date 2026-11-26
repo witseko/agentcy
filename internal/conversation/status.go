@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/tokens"
 	"github.com/witseko/agentcy/internal/wire"
@@ -86,6 +87,8 @@ type statusMember struct {
 	role        int64
 	retired     bool
 	joined      bool
+	listening   bool
+	connected   bool
 	seen        sql.NullInt64
 	launchState sql.NullString
 	activity    authorActivity
@@ -140,6 +143,12 @@ func (member *statusMember) value() wire.Value {
 	}
 	if member.joined && !member.retired && member.seen.Valid {
 		entry.Set("idle_seconds", wire.IntValue(max(0, member.now-member.seen.Int64)))
+	}
+	if member.listening {
+		entry.Set("listening", wire.BoolValue(true))
+	}
+	if member.connected {
+		entry.Set("connected", wire.BoolValue(true))
 	}
 	if (member.joined || member.retired) && member.activity.count > 0 {
 		entry.Set("messages", wire.IntValue(member.activity.count))
@@ -265,8 +274,18 @@ func status(ctx context.Context, tx *sql.Tx, book *usageBook, member *participan
 		return statusOutcome{}, err
 	}
 	entries := wire.NewObject()
+	var presence core.RoomPresence
+	if member.Open {
+		if workspace := workspaceFromContext(ctx); workspace != "" {
+			presence = core.PresenceFromContext(ctx, core.Room{Workspace: workspace, Conversation: member.Room})
+		}
+	}
 	var own *statusMember
 	for _, entry := range members {
+		if member.Open && entry.joined && !entry.retired {
+			entry.listening = presence.Listening(entry.id)
+			entry.connected = presence.Connected(entry.id)
+		}
 		entries.Set(entry.label, entry.value())
 		if entry.label == member.Label {
 			own = entry

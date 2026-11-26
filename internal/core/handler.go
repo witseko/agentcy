@@ -66,6 +66,13 @@ type Handler interface {
 	// status, as a status request does, both in one transaction.
 	FinishListen(ctx context.Context, request *wire.Read, page wire.Value, deliver bool, now time.Time) (wire.Value, error)
 
+	// OpenSession authenticates a shim session stream and returns its room and member ID.
+	OpenSession(ctx context.Context, request *wire.Session, now time.Time) (WaitStart, error)
+
+	// ResolvePing authorizes a member or operator ping and returns the target member's
+	// persisted metadata before the daemon probes live hub state outside any transaction.
+	ResolvePing(ctx context.Context, incoming wire.Incoming, now time.Time) (PingTarget, error)
+
 	// HasActiveWork reports whether any workspace store has an open conversation or a
 	// pending assignment, stores of earlier processes included. The daemon exits after an
 	// idle interval when it reports false. Port of Core.handle_timeout in core.py.
@@ -128,12 +135,62 @@ type WaitPage struct {
 	RoundDeadline *int64
 }
 
-// WaitStart is what a waiting read needs before its first page.
+// WaitStart is what a waiting read or session stream needs before it joins the hub.
 type WaitStart struct {
-	Room Room
+	Room     Room
+	MemberID int64
 	// RoundDeadline is the sealed round deadline in Unix seconds, or nil without one. The
 	// wait wakes at this time even without a write, so the round can be released.
 	RoundDeadline *int64
+}
+
+// PingTarget describes one member resolved from the store for an out-of-band ping.
+type PingTarget struct {
+	Room        Room
+	MemberID    int64
+	Label       string
+	State       string
+	LaunchState *string
+	IdleSeconds *int64
+}
+
+// RoomPresence reports which member IDs of one room currently hold a waiting read or an
+// open shim session stream in the daemon.
+type RoomPresence struct {
+	listening map[int64]bool
+	connected map[int64]bool
+}
+
+// Listening reports whether memberID currently holds an active waiting read in the room.
+func (presence RoomPresence) Listening(memberID int64) bool {
+	return presence.listening[memberID]
+}
+
+// Connected reports whether memberID currently holds an open shim session or waiting read.
+func (presence RoomPresence) Connected(memberID int64) bool {
+	return presence.connected[memberID] || presence.listening[memberID]
+}
+
+// presenceSource looks up the live presence of one room.
+type presenceSource interface {
+	presence(room Room) RoomPresence
+}
+
+type presenceContextKey struct{}
+
+// withPresence attaches a live presence source to ctx.
+func withPresence(ctx context.Context, source presenceSource) context.Context {
+	return context.WithValue(ctx, presenceContextKey{}, source)
+}
+
+// PresenceFromContext returns the live presence of room when ctx runs inside the daemon,
+// or an empty RoomPresence in standalone store tests.
+func PresenceFromContext(ctx context.Context, room Room) RoomPresence {
+	source, ok := ctx.Value(presenceContextKey{}).(presenceSource)
+	if !ok || source == nil {
+		return RoomPresence{}
+	}
+	return source.presence(room)
 }
 
 // Rejection is a refusal whose message the client may see, such as

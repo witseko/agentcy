@@ -31,6 +31,8 @@ type fakeHandler struct {
 	member         func(ctx context.Context, request wire.Request) (Outcome, error)
 	operator       func(ctx context.Context, request wire.OperatorRequest) (Outcome, error)
 	openWait       func(request *wire.Read) (WaitStart, error)
+	openSession    func(request *wire.Session) (WaitStart, error)
+	resolvePing    func(incoming wire.Incoming) (PingTarget, error)
 	readPage       func(request *wire.Read) (wire.Value, error)
 	recordDelivery func(page wire.Value) error
 	finishListen   func(page wire.Value, deliver bool) (wire.Value, error)
@@ -64,7 +66,21 @@ func (fake *fakeHandler) OpenWait(_ context.Context, request *wire.Read, _ time.
 	if fake.openWait != nil {
 		return fake.openWait(request)
 	}
-	return WaitStart{Room: testRoom}, nil
+	return WaitStart{Room: testRoom, MemberID: 1}, nil
+}
+
+func (fake *fakeHandler) OpenSession(_ context.Context, request *wire.Session, _ time.Time) (WaitStart, error) {
+	if fake.openSession != nil {
+		return fake.openSession(request)
+	}
+	return WaitStart{Room: testRoom, MemberID: 1}, nil
+}
+
+func (fake *fakeHandler) ResolvePing(_ context.Context, incoming wire.Incoming, _ time.Time) (PingTarget, error) {
+	if fake.resolvePing != nil {
+		return fake.resolvePing(incoming)
+	}
+	return PingTarget{Room: testRoom, MemberID: 1, Label: "Worker", State: "joined"}, nil
 }
 
 func (fake *fakeHandler) ReadPage(_ context.Context, request *wire.Read, _ time.Time) (WaitPage, error) {

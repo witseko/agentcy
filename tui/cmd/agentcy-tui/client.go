@@ -46,6 +46,7 @@ type Operator interface {
 	Invite(request InviteRequest) (JoinInvitation, error)
 	OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
 	Launch(request LaunchRequest) (LaunchQueued, error)
+	Ping(request PingRequest) (PingResult, error)
 	Retire(request RetireRequest) (RetiredParticipant, error)
 	SetRole(request SetRoleRequest) (ParticipantRoleChanged, error)
 	SetMemberBudget(request SetMemberBudgetRequest) (MemberBudgetUpdated, error)
@@ -113,6 +114,26 @@ type LaunchRequest struct {
 	Conversation string `json:"conversation"`
 	Name         string `json:"name"`
 	Plugin       string `json:"plugin"`
+	Relaunch     bool   `json:"relaunch,omitempty"`
+}
+
+// PingRequest checks a participant's live connection and wakes a waiting read.
+type PingRequest struct {
+	Directory    string `json:"directory"`
+	Conversation string `json:"conversation"`
+	Name         string `json:"name"`
+}
+
+// PingResult reports the outcome of an out-of-band participant ping.
+type PingResult struct {
+	Participant string `json:"participant"`
+	Status      string `json:"status"`
+	Listening   bool   `json:"listening"`
+	Connected   bool   `json:"connected"`
+	Woke        bool   `json:"woke"`
+	PingRTTMs   *int64 `json:"ping_rtt_ms,omitempty"`
+	LaunchState string `json:"launch_state,omitempty"`
+	IdleSeconds *int64 `json:"idle_seconds,omitempty"`
 }
 
 // RetireRequest retires a participant from an open conversation.
@@ -301,6 +322,8 @@ type MemberStatus struct {
 	State       string       `json:"state"`
 	LaunchState string       `json:"launch_state,omitempty"`
 	IdleSeconds *int64       `json:"idle_seconds,omitempty"`
+	Listening   bool         `json:"listening,omitempty"`
+	Connected   bool         `json:"connected,omitempty"`
 	Messages    *int64       `json:"messages,omitempty"`
 	OpenTasks   []OpenTask   `json:"open_tasks,omitempty"`
 	Usage       *MemberUsage `json:"usage,omitempty"`
@@ -503,6 +526,13 @@ func (c *Client) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, error)
 func (c *Client) Launch(request LaunchRequest) (LaunchQueued, error) {
 	var result LaunchQueued
 	err := c.call("operator_launch", request, &result)
+	return result, err
+}
+
+// Ping checks a participant's live connection and wakes an active waiting read.
+func (c *Client) Ping(request PingRequest) (PingResult, error) {
+	var result PingResult
+	err := c.call("operator_ping", request, &result)
 	return result, err
 }
 

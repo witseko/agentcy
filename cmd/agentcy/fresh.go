@@ -28,7 +28,7 @@ func runFreshWorker(arguments []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	server, err := shim.NewFreshWorkerServer(key, code, coreClient())
+	server, err := shim.NewFreshWorkerServer(key, code, coreClient(), dialCorePassive)
 	if err != nil {
 		return fail(err)
 	}

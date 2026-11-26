@@ -29,6 +29,17 @@ func connectCore(ctx context.Context) (net.Conn, error) {
 	return connector.Connect(ctx)
 }
 
+// dialCorePassive connects to an already-running core socket without starting a daemon.
+func dialCorePassive(ctx context.Context) (net.Conn, error) {
+	home, homeSet := os.LookupEnv(paths.HomeVariable)
+	dataDir, err := paths.DataDir(home, homeSet)
+	if err != nil {
+		return nil, err
+	}
+	dialer := net.Dialer{}
+	return dialer.DialContext(ctx, "unix", filepath.Join(dataDir, wire.SocketFileName))
+}
+
 // coreCommand returns the daemon command: AGENTCY_CORE_BIN when set, else this program
 // run as `agentcy core` (see wire.CoreCommand).
 func coreCommand() ([]string, error) {

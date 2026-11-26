@@ -384,5 +384,24 @@
       "note": "Reopened to continue the review."
     },
     "result": {"reopened": true}
+  },
+  {
+    "action": "operator_ping",
+    "request": {
+      "version": 1,
+      "key": "example-operator-key",
+      "action": "operator_ping",
+      "directory": "/work/repository",
+      "conversation": "0123456789abcdef01234567",
+      "name": "Reviewer"
+    },
+    "result": {
+      "participant": "Reviewer",
+      "status": "woken",
+      "listening": true,
+      "connected": true,
+      "woke": true,
+      "ping_rtt_ms": 2
+    }
   }
 ]

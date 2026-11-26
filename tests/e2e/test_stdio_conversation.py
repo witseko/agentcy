@@ -298,3 +298,77 @@ def test_workspace_rejects_foreign_participant_token(bridge_home: Path) -> None:
             )
 
     asyncio.run(check_workspace())
+
+
+async def wait_for_member_flag(
+    client: ClientSession, token: str, member: str, flag: str, expected: bool
+) -> dict[str, Any]:
+    """Poll conversation_status until a member's live presence flag reaches expected."""
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        status = await call(client, "conversation_status", token=token)
+        entry = status["members"][member]
+        if bool(entry.get(flag)) is expected:
+            return status
+        await asyncio.sleep(0.03)
+    pytest.fail(f"{member}.{flag} did not become {expected}")
+
+
+def test_ping_and_live_presence(bridge_home: Path) -> None:
+    """Probe a live MCP shim session, wake a waiting read out-of-band, and detect disconnect."""
+    workspace = bridge_home / "ping-workspace"
+    workspace.mkdir()
+
+    async def exercise_ping_and_presence() -> None:
+        """Drive session probes and out-of-band wake across independent stdio shims."""
+        async with connect(bridge_home, workspace) as lead:
+            created = await call(
+                lead, "create_conversation", brief=BRIEF, your_name="Lead", invitees=["Worker"]
+            )
+            lead_token = created["token"]
+            before_join = await call(lead, "ping_participant", token=lead_token, name="Worker")
+            assert before_join["status"] == "not_joined"
+            assert before_join["woke"] is False
+
+            async with connect(bridge_home, workspace) as worker:
+                joined = await call(
+                    worker, "join_conversation", code=created["invitations"]["Worker"]
+                )
+                worker_token = joined["token"]
+                await wait_for_member_flag(lead, lead_token, "Worker", "connected", True)
+
+                probe = await call(lead, "ping_participant", token=lead_token, name="Worker")
+                assert probe["status"] == "connected"
+                assert probe["connected"] is True
+                assert probe["listening"] is False
+                assert probe["woke"] is False
+                assert isinstance(probe["ping_rtt_ms"], int)
+                assert probe["ping_rtt_ms"] >= 0
+
+                listen_task = asyncio.create_task(
+                    call(worker, "read_messages", token=worker_token, wait_seconds=45)
+                )
+                await wait_for_member_flag(lead, lead_token, "Worker", "listening", True)
+
+                started = time.monotonic()
+                woken = await call(lead, "ping_participant", token=lead_token, name="Worker")
+                woke_read = await listen_task
+                elapsed = time.monotonic() - started
+
+                assert woken["status"] == "woken"
+                assert woken["woke"] is True
+                assert woken["listening"] is True
+                assert woken["connected"] is True
+                assert elapsed < 2.0
+                assert woke_read["messages"] == []
+                assert "Ping received" in woke_read["next"]
+
+            await wait_for_member_flag(lead, lead_token, "Worker", "connected", False)
+            disconnected = await call(lead, "ping_participant", token=lead_token, name="Worker")
+            assert disconnected["status"] == "disconnected"
+            assert disconnected["connected"] is False
+
+            transcript = await call(lead, "read_messages", token=lead_token)
+            assert transcript["messages"] == []
+
+    asyncio.run(exercise_ping_and_presence())

@@ -135,6 +135,13 @@ func (request *OperatorLaunch) schema() requestSchema {
 	return requestSchema{title: "LaunchParticipant", fields: withAction(conversationFields(&request.ConversationHeader), request.Action(),
 		&textField{"name", &request.Name, checkLabel},
 		&textField{"plugin", &request.Plugin, checkPlugin},
+		&boolField{key: "relaunch", target: &request.Relaunch, omitFalse: true},
+	)}
+}
+
+func (request *OperatorPing) schema() requestSchema {
+	return requestSchema{title: "PingParticipant", fields: withAction(conversationFields(&request.ConversationHeader), request.Action(),
+		&textField{"name", &request.Name, checkLabel},
 	)}
 }
 

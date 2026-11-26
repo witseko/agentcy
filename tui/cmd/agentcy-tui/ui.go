@@ -95,8 +95,14 @@ type (
 		err          error
 	}
 	launchedMsg struct {
+		name     string
+		relaunch bool
+		queued   LaunchQueued
+		err      error
+	}
+	pingedMsg struct {
 		name   string
-		queued LaunchQueued
+		result PingResult
 		err    error
 	}
 	retiredMsg struct {
@@ -251,6 +257,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onOpenInvite(msg)
 	case launchedMsg:
 		return m.onLaunched(msg)
+	case pingedMsg:
+		return m.onPinged(msg)
 	case retiredMsg:
 		return m.onRetired(msg)
 	case roleChangedMsg:

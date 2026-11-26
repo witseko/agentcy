@@ -56,6 +56,8 @@ var memberRequests = map[string]func() Request{
 	"invite":          func() Request { return &Invite{} },
 	"release":         func() Request { return &Release{} },
 	"launch":          func() Request { return &Launch{} },
+	"ping":            func() Request { return &Ping{} },
+	"session":         func() Request { return &Session{} },
 	"retire":          func() Request { return &Retire{} },
 	"set_role":        func() Request { return &SetRole{} },
 	"plugins":         func() Request { return &Plugins{} },

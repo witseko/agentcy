@@ -64,6 +64,9 @@ func checkFields(errors *fieldErrors, location string, specs []fieldSpec) {
 func encodeFields(specs []fieldSpec) Value {
 	object := NewObject()
 	for _, spec := range specs {
+		if flag, ok := spec.(*boolField); ok && flag.omitFalse && !*flag.target {
+			continue
+		}
 		object.Set(spec.name(), spec.encode())
 	}
 	return object
@@ -250,10 +253,11 @@ func (field *optionalLiteralField) encode() Value {
 
 // boolField is a lenient boolean with a default, unless required is set.
 type boolField struct {
-	key      string
-	target   *bool
-	fallback bool
-	required bool
+	key       string
+	target    *bool
+	fallback  bool
+	required  bool
+	omitFalse bool
 }
 
 func (field *boolField) name() string { return field.key }

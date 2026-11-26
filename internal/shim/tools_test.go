@@ -22,6 +22,7 @@ func TestToolArgumentsFollowTheGoldenSignatures(t *testing.T) {
 		"invite_participant":        {&wire.Invite{}, inviteArguments},
 		"open_invite":               {&wire.OpenInvite{}, openInviteArguments},
 		"retire_participant":        {&wire.Retire{}, nameArguments},
+		"ping_participant":          {&wire.Ping{}, nameArguments},
 		"set_participant_role":      {&wire.SetRole{}, setRoleArguments},
 		"list_plugins":              {&wire.Plugins{}, tokenArguments},
 		"join_conversation":         {&wire.Join{}, joinArguments},

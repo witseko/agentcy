@@ -74,6 +74,9 @@ type Config struct {
 	Version string
 	// Core sends requests to the core daemon.
 	Core Exchanger
+	// DialSession opens a passive Unix socket connection to core.sock for live presence,
+	// without spawning a new daemon; nil disables background session streams.
+	DialSession SessionDialer
 	// OverHTTP selects the instructions for a remote chat behind a tunnel.
 	OverHTTP bool
 }
@@ -84,6 +87,7 @@ type shimServer struct {
 	directory      string
 	core           Exchanger
 	state          *listenState
+	presence       *presenceTracker
 	signer         *requestStateSigner
 	instructions   string
 	serverInfo     wire.Value
@@ -110,6 +114,7 @@ func NewServer(config Config) (*mcp.Server, error) {
 		directory:      config.Directory,
 		core:           config.Core,
 		state:          newListenState(true),
+		presence:       newPresenceTracker(config.Workspace, config.DialSession, config.OverHTTP),
 		signer:         signer,
 		instructions:   instructions(config.OverHTTP),
 		withExtensions: true,

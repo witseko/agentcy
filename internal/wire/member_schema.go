@@ -117,7 +117,18 @@ func (request *Launch) schema() requestSchema {
 		&textField{"plugin", &request.Plugin, checkPlugin},
 		&textField{"directory", &request.Directory, checkLaunchDirectory},
 		&boolField{key: "mcp_task", target: &request.McpTask},
+		&boolField{key: "relaunch", target: &request.Relaunch, omitFalse: true},
 	)}
+}
+
+func (request *Ping) schema() requestSchema {
+	return requestSchema{title: "Ping", fields: append(memberFields(&request.Workspace, &request.Token, request.Action()),
+		&textField{"name", &request.Name, checkLabel},
+	)}
+}
+
+func (request *Session) schema() requestSchema {
+	return requestSchema{title: "Session", fields: memberFields(&request.Workspace, &request.Token, request.Action())}
 }
 
 func (request *Retire) schema() requestSchema {

@@ -85,8 +85,15 @@ type OperatorOpenInvite struct {
 // OperatorLaunch fills a worker slot with a fresh run from a configured plugin.
 type OperatorLaunch struct {
 	ConversationHeader
-	Name   string
-	Plugin string
+	Name     string
+	Plugin   string
+	Relaunch bool
+}
+
+// OperatorPing checks a participant's live connection and wakes a waiting read.
+type OperatorPing struct {
+	ConversationHeader
+	Name string
 }
 
 // OperatorRetire retires a participant from an open conversation.
@@ -179,6 +186,9 @@ func (*OperatorOpenInvite) Action() string { return "operator_open_invite" }
 
 // Action returns "operator_launch".
 func (*OperatorLaunch) Action() string { return "operator_launch" }
+
+// Action returns "operator_ping".
+func (*OperatorPing) Action() string { return "operator_ping" }
 
 // Action returns "operator_retire".
 func (*OperatorRetire) Action() string { return "operator_retire" }

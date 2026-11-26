@@ -1,0 +1,226 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Relaunch runs", "initiator": "Lead", "invitees": ["Manual"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Manual": "<code-1>"
+    },
+    "join_prompt": "Relaunch runs: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Relaunch runs\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Manual": "worker"
+    }
+  }
+}
+
+== 2. manual worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Manual",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Manual": "worker"
+    },
+    "brief": "Relaunch runs",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. lead assigns a task to Manual
+-> {"action": "post", "body": "Keep this task across relaunch.", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Manual", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 4. lead launches Tasked as an MCP task
+-> {"action": "launch", "directory": "<checkout>", "mcp_task": true, "name": "Tasked", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-1>",
+    "state": "queued",
+    "mcp_task": {
+      "task_id": "<token-3>",
+      "launch_state": "queued",
+      "participant": "Tasked",
+      "created": "<now>",
+      "updated": "<now>"
+    }
+  }
+}
+
+== 5. relaunch is refused while the run is active
+-> {"action": "launch", "directory": "<checkout>", "name": "Tasked", "plugin": "fixture", "relaunch": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Fresh run is still active: Tasked"
+}
+
+== 6. operator relaunch is refused while the run is active
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Tasked", "plugin": "fixture", "relaunch": true, "version": 1}
+<- {
+  "error": "Fresh run is still active: Tasked"
+}
+
+== 7. relaunch of an unknown slot is refused
+-> {"action": "launch", "directory": "<checkout>", "name": "Unknown", "plugin": "fixture", "relaunch": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 8. the host cancels the MCP task
+-> {"action": "mcp_task_cancel", "task_id": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {}
+}
+
+== 9. repeated member launch without relaunch returns the ended assignment
+-> {"action": "launch", "directory": "<checkout>", "name": "Tasked", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-1>",
+    "state": "cancelled"
+  }
+}
+
+== 10. lead relaunches Tasked
+-> {"action": "launch", "directory": "<checkout>", "name": "Tasked", "plugin": "fixture", "relaunch": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-2>",
+    "state": "queued"
+  }
+}
+
+== 11. operator relaunches Manual onto the plugin
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Manual", "plugin": "fixture", "relaunch": true, "version": 1}
+<- {
+  "result": {
+    "assignment_id": "<proposal-3>",
+    "state": "queued"
+  }
+}
+
+== 12. status shows both relaunched runs and the preserved open task
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Manual": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "running",
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ],
+        "usage": {
+          "conversation_tokens": 4,
+          "input_tokens": 4,
+          "output_tokens": 0,
+          "model_tokens_used": 4,
+          "estimated_tokens": 4,
+          "source": "estimated",
+          "model": "test/model"
+        }
+      },
+      "Tasked": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "running"
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      }
+    },
+    "participant": "Lead",
+    "token_usage": {
+      "total_tokens": 52,
+      "actual_tokens": 0,
+      "estimated_tokens": 52,
+      "actual_members": 0,
+      "estimated_members": 2
+    }
+  }
+}
+
+== 13. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 14. status after the close
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": false,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Manual": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "cancelled",
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ],
+        "usage": {
+          "conversation_tokens": 4,
+          "input_tokens": 4,
+          "output_tokens": 0,
+          "model_tokens_used": 4,
+          "estimated_tokens": 4,
+          "source": "estimated",
+          "model": "test/model"
+        }
+      },
+      "Tasked": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "cancelled"
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      }
+    },
+    "participant": "Lead",
+    "token_usage": {
+      "total_tokens": 52,
+      "actual_tokens": 0,
+      "estimated_tokens": 52,
+      "actual_members": 0,
+      "estimated_members": 2
+    }
+  }
+}
+

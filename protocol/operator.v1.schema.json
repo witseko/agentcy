@@ -772,6 +772,11 @@
           "pattern": "^[a-zA-Z0-9-]{1,64}$",
           "title": "Plugin",
           "type": "string"
+        },
+        "relaunch": {
+          "default": false,
+          "title": "Relaunch",
+          "type": "boolean"
         }
       },
       "required": [
@@ -784,6 +789,55 @@
         "plugin"
       ],
       "title": "LaunchParticipant",
+      "type": "object"
+    },
+    "PingParticipant": {
+      "additionalProperties": false,
+      "description": "Check a participant's live connection and wake a waiting read without posting.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00]*$",
+          "title": "Directory",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "action": {
+          "const": "operator_ping",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "key",
+        "directory",
+        "conversation",
+        "action",
+        "name"
+      ],
+      "title": "PingParticipant",
       "type": "object"
     },
     "LaunchQueued": {
@@ -1027,6 +1081,30 @@
           ],
           "default": null,
           "title": "Idle Seconds"
+        },
+        "listening": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listening"
+        },
+        "connected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connected"
         },
         "messages": {
           "anyOf": [
@@ -2443,6 +2521,9 @@
     },
     {
       "$ref": "#/$defs/LaunchParticipant"
+    },
+    {
+      "$ref": "#/$defs/PingParticipant"
     },
     {
       "$ref": "#/$defs/RetireParticipant"

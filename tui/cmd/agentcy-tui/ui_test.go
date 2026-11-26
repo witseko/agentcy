@@ -31,6 +31,8 @@ type fakeOperator struct {
 	plugins     PluginList
 	creates     []CreateRequest
 	launches    []LaunchRequest
+	pings       []PingRequest
+	pingResult  PingResult
 	retires     []RetireRequest
 	roleChanges []SetRoleRequest
 	budgets     []SetMemberBudgetRequest
@@ -112,6 +114,22 @@ func (f *fakeOperator) OpenInvite(request OpenInviteRequest) (OpenInviteStatus, 
 func (f *fakeOperator) Launch(request LaunchRequest) (LaunchQueued, error) {
 	f.launches = append(f.launches, request)
 	return LaunchQueued{AssignmentID: "a1", State: "queued"}, nil
+}
+
+func (f *fakeOperator) Ping(request PingRequest) (PingResult, error) {
+	f.pings = append(f.pings, request)
+	if f.pingResult.Participant != "" {
+		return f.pingResult, nil
+	}
+	rtt := int64(2)
+	return PingResult{
+		Participant: request.Name,
+		Status:      "woken",
+		Listening:   true,
+		Connected:   true,
+		Woke:        true,
+		PingRTTMs:   &rtt,
+	}, nil
 }
 
 func (f *fakeOperator) Retire(request RetireRequest) (RetiredParticipant, error) {
@@ -2385,5 +2403,59 @@ func TestReinviteCommandSendsReinvite(t *testing.T) {
 		Directory: "/work", Conversation: testConversation, Name: "Lead", Reinvite: true,
 	}) {
 		t.Fatalf("invite requests = %+v", fake.invites)
+	}
+}
+
+func TestPingAndRelaunchCommandsAndPresenceState(t *testing.T) {
+	fake := &fakeOperator{plugins: PluginList{Plugins: []PluginSummary{{Name: "glm", Model: "zai/glm-5"}}}}
+	m := chatModel(t, fake)
+	m.plugins = []string{"glm"}
+
+	// /ping dispatches operator_ping and displays the woken notice.
+	m = typeText(t, m, "/ping Lead")
+	var cmd tea.Cmd
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.pings) != 1 || fake.pings[0] != (PingRequest{Directory: "/work", Conversation: testConversation, Name: "Lead"}) {
+		t.Fatalf("pings = %+v", fake.pings)
+	}
+	if !strings.Contains(m.popup.text, "Woke Lead from waiting read (2ms).") {
+		t.Fatalf("popup = %q", m.popup.text)
+	}
+	m.popup = popupState{}
+
+	// Pressing p in the team panel pings the selected member.
+	m, _ = press(t, m, "tab")
+	m, cmd = press(t, m, "p")
+	m = drive(t, m, cmd)
+	if len(fake.pings) != 2 || fake.pings[1].Name != "Lead" {
+		t.Fatalf("team key p pings = %+v", fake.pings)
+	}
+	m.popup = popupState{}
+
+	// Pressing l on a joined/ended member prefills /relaunch, and submitting dispatches Relaunch=true.
+	m.chat.view.Status.Members["Reviewer"] = MemberStatus{Role: "worker", State: "replied", LaunchState: "failed"}
+	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "l")
+	if got := m.chat.input.Value(); got != "/relaunch Reviewer glm" {
+		t.Fatalf("prefilled input = %q, want /relaunch Reviewer glm", got)
+	}
+	m, cmd = press(t, m, "enter")
+	m = drive(t, m, cmd)
+	if len(fake.launches) != 1 || fake.launches[0] != (LaunchRequest{
+		Directory: "/work", Conversation: testConversation, Name: "Reviewer", Plugin: "glm", Relaunch: true,
+	}) {
+		t.Fatalf("launches = %+v", fake.launches)
+	}
+
+	// Live presence keeps a long-idle connected member bright and labels listening/connected.
+	staleIdle := int64(900)
+	glyph, detail := memberState(MemberStatus{Role: "worker", State: "replied", Connected: true, IdleSeconds: &staleIdle})
+	if glyph != okStyle.Render("●") || detail != "replied · connected · active 15m ago" {
+		t.Fatalf("connected state = (%q, %q)", glyph, detail)
+	}
+	glyph, detail = memberState(MemberStatus{Role: "worker", State: "done", Listening: true})
+	if glyph != okStyle.Render("●") || detail != "done · listening" {
+		t.Fatalf("listening done state = (%q, %q)", glyph, detail)
 	}
 }

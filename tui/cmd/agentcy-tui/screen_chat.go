@@ -701,6 +701,8 @@ func (m model) teamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.copyMemberPrompt()
 	case "r":
 		return m.reissueSelected()
+	case "p":
+		return m.pingSelected()
 	case "l":
 		return m.prefillLaunch()
 	case "m":
@@ -1076,7 +1078,7 @@ func addressee(text string, members map[string]MemberStatus) (string, string, er
 	return best, text[len(best):], nil
 }
 
-// runCommand handles /invite, /reinvite, /launch, /retire, /lead, /role, and /open-invite.
+// runCommand handles /invite, /reinvite, /launch, /relaunch, /ping, /retire, /lead, /role, and /open-invite.
 func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 	command, argument, _ := strings.Cut(text, " ")
 	argument = strings.TrimSpace(argument)
@@ -1094,6 +1096,11 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		}
 		m.chat.input.Reset()
 		return m, m.launch(strings.TrimSpace(argument[:cut]), argument[cut+1:])
+	case command == "/relaunch" && argument != "":
+		return m.runRelaunchCommand(argument)
+	case command == "/ping" && argument != "":
+		m.chat.input.Reset()
+		return m.inform("Pinging " + cleanLine(argument) + "."), m.pingMember(argument)
 	case command == "/retire" && argument != "":
 		m.chat.input.Reset()
 		return m.inform("Retiring " + cleanLine(argument) + "."), m.retire(argument)
@@ -1124,7 +1131,36 @@ func (m model) runCommand(text string) (tea.Model, tea.Cmd) {
 		m.chat.input.Reset()
 		return m.reopenChat(m.chat.id, argument)
 	}
-	return m.inform("Commands: /invite Name, /reinvite Name, /launch Name plugin, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off], /reopen [note]"), nil
+	return m.inform("Commands: /invite Name, /reinvite Name, /launch Name plugin, /relaunch Name [plugin], /ping Name, /retire Name, /lead Name, /role Name role, /budget Name tokens [model], /open-invite [off], /reopen [note]"), nil
+}
+
+// runRelaunchCommand parses "/relaunch Name [plugin]" and dispatches a relaunch.
+func (m model) runRelaunchCommand(argument string) (tea.Model, tea.Cmd) {
+	if matched, found := m.matchMemberName(argument); found && len(m.plugins) == 1 {
+		m.chat.input.Reset()
+		return m.inform("Relaunching " + cleanLine(matched) + "."), m.relaunch(matched, m.plugins[0])
+	}
+	cut := strings.LastIndex(argument, " ")
+	if cut < 0 {
+		return m.showError("Usage: /relaunch Name plugin"), nil
+	}
+	name := strings.TrimSpace(argument[:cut])
+	plugin := strings.TrimSpace(argument[cut+1:])
+	if name == "" || plugin == "" {
+		return m.showError("Usage: /relaunch Name plugin"), nil
+	}
+	m.chat.input.Reset()
+	return m.inform("Relaunching " + cleanLine(name) + "."), m.relaunch(name, plugin)
+}
+
+// matchMemberName finds a non-human member of the open chat matching candidate case-insensitively.
+func (m model) matchMemberName(candidate string) (string, bool) {
+	for name, member := range m.chat.view.Status.Members {
+		if member.Role != "human" && strings.EqualFold(name, candidate) {
+			return name, true
+		}
+	}
+	return "", false
 }
 
 // parseTokenAmount parses a positive integer token budget, supporting optional k/m suffixes.
@@ -1269,13 +1305,23 @@ func (m model) sendInvite(request InviteRequest) tea.Cmd {
 
 // launch fills a slot from a plugin.
 func (m model) launch(name string, plugin string) tea.Cmd {
+	return m.sendLaunch(name, plugin, false)
+}
+
+// relaunch starts a new fresh run for an existing slot from a plugin.
+func (m model) relaunch(name string, plugin string) tea.Cmd {
+	return m.sendLaunch(name, plugin, true)
+}
+
+// sendLaunch sends an operator_launch request and reports its result as a launchedMsg.
+func (m model) sendLaunch(name, plugin string, relaunch bool) tea.Cmd {
 	request := LaunchRequest{
-		Directory: m.directory, Conversation: m.chat.id, Name: name, Plugin: plugin,
+		Directory: m.directory, Conversation: m.chat.id, Name: name, Plugin: plugin, Relaunch: relaunch,
 	}
 	client := m.client
 	return func() tea.Msg {
 		queued, err := client.Launch(request)
-		return launchedMsg{name: name, queued: queued, err: err}
+		return launchedMsg{name: name, relaunch: relaunch, queued: queued, err: err}
 	}
 }
 
@@ -1285,25 +1331,86 @@ func (m model) onLaunched(msg launchedMsg) (tea.Model, tea.Cmd) {
 		return m.fail(msg.err), nil
 	}
 	delete(m.invitations[m.chat.id], foldName(msg.name))
-	m = m.inform(fmt.Sprintf("Launch for %s is %s.", cleanLine(msg.name), cleanLine(msg.queued.State)))
+	noun := "Launch"
+	if msg.relaunch {
+		noun = "Relaunch"
+	}
+	m = m.inform(fmt.Sprintf("%s for %s is %s.", noun, cleanLine(msg.name), cleanLine(msg.queued.State)))
 	m, poll := m.refreshChat()
 	return m, tea.Batch(poll, m.loadList())
 }
 
-// prefillLaunch puts a launch command for the selected member into the message line.
+// pingSelected sends an out-of-band ping to the member selected in the team panel.
+func (m model) pingSelected() (tea.Model, tea.Cmd) {
+	if m.chat.loaded && !m.chat.view.Status.Open {
+		return m.showError("This chat is closed."), nil
+	}
+	name := m.selectedMember()
+	if name == "" {
+		return m.inform("Select a member in the team panel first."), nil
+	}
+	if m.chat.view.Status.Members[name].State == "retired" {
+		return m.showError(cleanLine(name) + " is archived."), nil
+	}
+	return m.inform("Pinging " + cleanLine(name) + "."), m.pingMember(name)
+}
+
+// pingMember sends an operator_ping request for name.
+func (m model) pingMember(name string) tea.Cmd {
+	request := PingRequest{Directory: m.directory, Conversation: m.chat.id, Name: name}
+	client := m.client
+	return func() tea.Msg {
+		result, err := client.Ping(request)
+		return pingedMsg{name: name, result: result, err: err}
+	}
+}
+
+// onPinged displays the ping outcome and refreshes the conversation status.
+func (m model) onPinged(msg pingedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(msg.err), nil
+	}
+	m = m.showPingNotice(msg.result)
+	return m.refreshChat()
+}
+
+// showPingNotice formats one out-of-band ping result as a success or warning notice.
+func (m model) showPingNotice(result PingResult) model {
+	name := cleanLine(result.Participant)
+	rtt := ""
+	if result.PingRTTMs != nil {
+		rtt = fmt.Sprintf(" (%dms)", *result.PingRTTMs)
+	}
+	switch result.Status {
+	case "woken":
+		return m.showSuccess(fmt.Sprintf("Woke %s from waiting read%s.", name, rtt))
+	case "connected":
+		return m.showSuccess(fmt.Sprintf("%s is connected%s — busy or between reads.", name, rtt))
+	case "unresponsive":
+		return m.showError(fmt.Sprintf("%s shim is open, but its MCP host did not respond to ping.", name))
+	case "not_joined":
+		return m.inform(fmt.Sprintf("%s has not joined yet.", name))
+	default:
+		detail := ""
+		if result.IdleSeconds != nil {
+			detail = " (last active " + idle(*result.IdleSeconds) + " ago)"
+		}
+		return m.inform(fmt.Sprintf("%s has no active bridge connection%s.", name, detail))
+	}
+}
+
+// needsRelaunch reports whether launching a plugin into member requires relaunch=true.
+func needsRelaunch(member MemberStatus) bool {
+	return isLaunchEnded(member.LaunchState) || member.State != "invited"
+}
+
+// prefillLaunch puts a launch or relaunch command for the selected member into the message line.
 func (m model) prefillLaunch() (tea.Model, tea.Cmd) {
 	name := m.selectedMember()
 	if name == "" {
 		return m.inform("Select a member in the team panel first."), nil
 	}
-	plugin := "plugin"
-	if len(m.plugins) > 0 {
-		plugin = m.plugins[0]
-	}
-	m.chat.input.SetValue("/launch " + name + " " + plugin)
-	m.chat.input.CursorEnd()
-	next, command := m.setChatFocus(focusInput)
-	return next.(model).inform("Edit the plugin name if needed and press enter."), command
+	return m.prefillLaunchFor(name)
 }
 
 // reissueSelected asks for a new join code for the selected member. A member who joined or
@@ -1419,7 +1526,7 @@ func (m model) mainHelp() []hint {
 	case m.chat.retiring != "":
 		return []hint{{"⏎", "retire member"}, {"esc", "cancel"}}
 	case m.chat.focus == focusTeam:
-		return []hint{{"↑↓", "member"}, {"c", "copy prompt"}, {"r", "new code"}, {"i", "invite"},
+		return []hint{{"↑↓", "member"}, {"p", "ping"}, {"c", "copy prompt"}, {"r", "new code"}, {"i", "invite"},
 			{"l", "launch"}, {"m", "make lead"}, {"d", "retire"}, {"a", m.archivedHint()}, {"x", "close chat"}, {"tab", "chat list"}}
 	case m.chat.focus == focusList:
 		return append([]hint{{"↑↓", "choose"}, {"⏎", "open"}, {"n", "new chat"}}, append(m.listHints(), hint{"tab", "message"}, mouse)...)
@@ -2248,11 +2355,19 @@ func memberStateForChat(member MemberStatus, chatOpen bool) (string, string) {
 	} else if len(member.OpenTasks) > 1 {
 		detail = fmt.Sprintf("working on %d tasks", len(member.OpenTasks))
 	} else if member.State == "done" {
+		if member.Listening {
+			return okStyle.Render("●"), "done · listening"
+		}
 		return dimStyle.Render("○"), "done"
+	}
+	if member.Listening {
+		detail += " · listening"
+	} else if member.Connected {
+		detail += " · connected"
 	}
 	if member.IdleSeconds != nil {
 		detail += " · active " + idle(*member.IdleSeconds) + " ago"
-		if *member.IdleSeconds >= staleMemberIdleSeconds {
+		if !member.Connected && !member.Listening && *member.IdleSeconds >= staleMemberIdleSeconds {
 			return dimStyle.Render("●"), detail
 		}
 	}
