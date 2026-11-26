@@ -64,7 +64,7 @@ func (f *fixture) pageWakes(token string, after int64) bool {
 			return wire.Value{}, err
 		}
 		page, _, err := readPage(ctx, tx, member, after)
-		return page, err
+		return page.Page, err
 	})
 	return field(page, "wake").Truthy()
 }

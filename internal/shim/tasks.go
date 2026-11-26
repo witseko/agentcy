@@ -123,19 +123,11 @@ func taskToolResult(name, launchState, message string, isError bool) wire.Value 
 	return result
 }
 
-// taskResultFor replaces a launch_participant result that carries a new MCP task with
-// that task, as McpTasksExtension.intercept_tool_call does. ok is false for any other
-// result.
-func taskResultFor(name string, result *mcp.CallToolResult) (wire.Value, bool, error) {
-	if name != launchTool || result.IsError || len(result.Content) != 1 {
-		return wire.Value{}, false, nil
-	}
-	text, isText := result.Content[0].(*mcp.TextContent)
-	if !isText {
-		return wire.Value{}, false, nil
-	}
-	launched, err := wire.Parse([]byte(text.Text))
-	if err != nil {
+// taskResultFromValue replaces a launch_participant result that carries a new MCP task
+// with that task, as McpTasksExtension.intercept_tool_call does. ok is false for any
+// other result.
+func taskResultFromValue(name string, launched wire.Value) (wire.Value, bool, error) {
+	if name != launchTool {
 		return wire.Value{}, false, nil
 	}
 	created, found := launched.Get(mcpTaskKey)

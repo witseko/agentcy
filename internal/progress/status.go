@@ -15,6 +15,16 @@ const (
 // (PENDING_STATES in src/agentcy/conversations/assignment_tables.py).
 var PendingStates = []string{"queued", "starting", "running"}
 
+// IsPendingState reports a launch state in which a fresh run is still active.
+func IsPendingState(state string) bool {
+	for _, pending := range PendingStates {
+		if state == pending {
+			return true
+		}
+	}
+	return false
+}
+
 // Task is one open task of a member.
 type Task struct {
 	ID      int64

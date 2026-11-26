@@ -133,34 +133,57 @@ func (shim *shimServer) reportUsage(call toolCall) (wire.Value, error) {
 	return shim.send(call, "report_usage", request)
 }
 
-// postMessage posts and then forgets the poster's quiet waits.
-func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
+// postWithToken parses the shared post_message fields, sends the post for token, and
+// returns the core result. withDue enables due_minutes (main shim only).
+func (shim *shimServer) postWithToken(call toolCall, token string, withDue bool) (wire.Value, error) {
 	arguments := call.arguments
-	request := &wire.Post{Workspace: shim.workspace}
-	request.Token = arguments.key("token")
+	request := &wire.Post{Workspace: shim.workspace, Token: token}
 	request.SubmissionID = arguments.key("submission_id")
 	request.Body = arguments.body("body")
 	request.Kind = arguments.literal("kind", "note", wire.PostKinds)
 	request.To = arguments.optionalLabel("to")
 	request.ReplyTo = arguments.optionalStrictInt("reply_to", wire.MessageRange)
-	request.DueMinutes = arguments.optionalStrictInt("due_minutes", wire.DueRange)
-	result, err := shim.send(call, "post_message", request)
-	if err != nil {
-		return wire.Value{}, err
+	if withDue {
+		request.DueMinutes = arguments.optionalStrictInt("due_minutes", wire.DueRange)
 	}
-	shim.state.resetWaits(tokenDigest(request.Token))
-	return result, nil
+	return shim.send(call, "post_message", request)
 }
 
-func (shim *shimServer) readMessages(call toolCall) (wire.Value, error) {
+// readWithToken parses the shared read_messages arguments and reads for token.
+func (shim *shimServer) readWithToken(call toolCall, token string) (wire.Value, error) {
 	arguments := call.arguments
-	token := arguments.key("token")
 	after := arguments.cursor("after")
 	waitSeconds := arguments.strictInt("wait_seconds", 0, wire.WaitRange)
 	if err := arguments.err("read_messages"); err != nil {
 		return wire.Value{}, err
 	}
 	return readMember(call.ctx, shim.core, shim.state, shim.workspace, token, after, waitSeconds)
+}
+
+// statusWithToken fetches conversation status for token and removes the caller's own name.
+func (shim *shimServer) statusWithToken(call toolCall, token string) (wire.Value, error) {
+	status, err := exchangeValid(call.ctx, shim.core, &wire.Status{Workspace: shim.workspace, Token: token})
+	if err != nil {
+		return wire.Value{}, err
+	}
+	status.Delete("participant")
+	return status, nil
+}
+
+// postMessage posts and then forgets the poster's quiet waits.
+func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
+	token := call.arguments.key("token")
+	result, err := shim.postWithToken(call, token, true)
+	if err != nil {
+		return wire.Value{}, err
+	}
+	shim.state.resetWaits(tokenDigest(token))
+	return result, nil
+}
+
+func (shim *shimServer) readMessages(call toolCall) (wire.Value, error) {
+	token := call.arguments.key("token")
+	return shim.readWithToken(call, token)
 }
 
 func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
@@ -182,13 +205,11 @@ func (shim *shimServer) launchParticipant(call toolCall) (wire.Value, error) {
 
 // conversationStatus returns the status without the caller's own name.
 func (shim *shimServer) conversationStatus(call toolCall) (wire.Value, error) {
-	request := &wire.Status{Workspace: shim.workspace, Token: call.arguments.key("token")}
-	status, err := shim.send(call, "conversation_status", request)
-	if err != nil {
+	token := call.arguments.key("token")
+	if err := call.arguments.err("conversation_status"); err != nil {
 		return wire.Value{}, err
 	}
-	status.Delete("participant")
-	return status, nil
+	return shim.statusWithToken(call, token)
 }
 
 func (shim *shimServer) releaseProposals(call toolCall) (wire.Value, error) {

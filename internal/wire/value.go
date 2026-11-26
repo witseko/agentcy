@@ -158,6 +158,26 @@ func (value Value) Truthy() bool {
 	}
 }
 
+// OnlyKnownFields reports whether value is an object whose keys are all in known.
+func (value Value) OnlyKnownFields(known ...string) bool {
+	if value.Kind != Object {
+		return false
+	}
+	for _, key := range value.Keys() {
+		found := false
+		for _, candidate := range known {
+			if candidate == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // StringOf returns the text of a string value, or "" for any other kind.
 func (value Value) StringOf() string {
 	if value.Kind != String {

@@ -55,7 +55,7 @@ func TestResultFieldOrderFollowsPython(t *testing.T) {
 	worker := f.member(text(joined, "token"))
 	page := f.mustWrite(func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		result, _, err := readPage(ctx, tx, worker, 0)
-		return result, err
+		return result.Page, err
 	})
 	wantRead := "messages,more,cursor,wake,round,round_deadline,brief,role,roster"
 	if got := strings.Join(page.Keys(), ","); got != wantRead {

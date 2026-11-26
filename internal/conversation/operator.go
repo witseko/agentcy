@@ -85,7 +85,7 @@ func operatorCreate(ctx context.Context, tx *sql.Tx, workspace string, request *
 	invitations := make([]wire.Value, 0, len(team))
 	for _, slot := range team {
 		slot.model, slot.tokenBudget = nil, nil
-		code, err := insertInvitation(ctx, tx, room.id, workspace, slot, now)
+		_, code, err := insertInvitation(ctx, tx, room.id, workspace, slot, now)
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -119,11 +119,11 @@ func operatorShow(ctx context.Context, tx *sql.Tx, book *usageBook, request *wir
 	if err != nil {
 		return wire.Value{}, err
 	}
-	current, _, err := status(ctx, tx, book, &human.participant, now)
+	current, err := status(ctx, tx, book, &human.participant, now)
 	if err != nil {
 		return wire.Value{}, err
 	}
-	current.Delete("participant")
+	current.value.Delete("participant")
 	titleSource := human.Brief
 	if human.title.Valid && human.title.String != "" {
 		titleSource = human.title.String
@@ -134,7 +134,7 @@ func operatorShow(ctx context.Context, tx *sql.Tx, book *usageBook, request *wir
 	result.Set("brief", wire.TextValue(human.Brief))
 	result.Set("created", nullableInt(human.created))
 	result.Set("archived", wire.BoolValue(human.archived))
-	result.Set("status", current)
+	result.Set("status", current.value)
 	page := transcriptPage{after: request.After, before: request.Before, tail: request.Tail, pageSize: operatorPageSize}
 	err = transcript(ctx, tx, request.Conversation, page, result)
 	return result, err
@@ -147,16 +147,13 @@ func operatorInvite(ctx context.Context, tx *sql.Tx, workspace string, request *
 	if err != nil {
 		return wire.Value{}, err
 	}
-	result, err := invite(ctx, tx, &human.participant, inviteRequest{
+	invited, err := invite(ctx, tx, &human.participant, inviteRequest{
 		workspace: workspace, name: request.Name, role: request.Role, reinvite: request.Reinvite,
 	}, now)
 	if err != nil {
 		return wire.Value{}, err
 	}
-	label, _ := result.Get("participant")
-	role, _ := result.Get("role")
-	code, _ := result.Get("code")
-	return invitationValue(label.Text, role.Text, code.Text, human.Brief), nil
+	return invitationValue(invited.label, invited.role, invited.code, human.Brief), nil
 }
 
 // operatorOpenInvite enables, rotates, or disables the open invite as the human.
@@ -165,15 +162,14 @@ func operatorOpenInvite(ctx context.Context, tx *sql.Tx, workspace string, reque
 	if err != nil {
 		return wire.Value{}, err
 	}
-	result, err := setOpenInvite(ctx, tx, &human.participant, workspace, request.Enabled, now)
-	if err != nil || !request.Enabled {
-		return result, err
+	opened, err := setOpenInvite(ctx, tx, &human.participant, workspace, request.Enabled, now)
+	if err != nil || !opened.enabled {
+		return opened.value(), err
 	}
-	code, _ := result.Get("code")
 	ready := wire.NewObject()
 	ready.Set("open_invite", wire.BoolValue(true))
-	ready.Set("code", code)
-	ready.Set("join_prompt", wire.TextValue(formatOpenJoinPrompt(human.Brief, code.Text, true)))
+	ready.Set("code", wire.TextValue(opened.code))
+	ready.Set("join_prompt", wire.TextValue(formatOpenJoinPrompt(human.Brief, opened.code, true)))
 	return ready, nil
 }
 

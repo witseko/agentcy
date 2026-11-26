@@ -176,7 +176,8 @@ func (shim *shimServer) callTool(ctx context.Context, method string, request mcp
 			return nil, invalidRequestStateError()
 		}
 	}
-	result, err := next(ctx, method, request)
+	outcome := &toolOutcome{}
+	result, err := next(context.WithValue(ctx, toolOutcomeKey{}, outcome), method, request)
 	if err != nil {
 		return nil, err
 	}
@@ -187,12 +188,13 @@ func (shim *shimServer) callTool(ctx context.Context, method string, request mcp
 	if toolResult.InputRequests != nil {
 		return shim.newResult(inputRequiredBody(toolResult)), nil
 	}
-	task, isTask, err := taskResultFor(params.Name, toolResult)
-	if err != nil {
-		return nil, err
-	}
-	if isTask {
-		return shim.newResult(task), nil
+	if outcome.hasValue {
+		if task, isTask, err := taskResultFromValue(params.Name, outcome.value); err != nil {
+			return nil, err
+		} else if isTask {
+			return shim.newResult(task), nil
+		}
+		return shim.newResult(toolResultBody(outcome.value.Indented(), false, modern)), nil
 	}
 	text := ""
 	if len(toolResult.Content) == 1 {

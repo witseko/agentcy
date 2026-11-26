@@ -74,14 +74,20 @@ func (parser *jsonParser) value(depth int) (Value, error) {
 
 // literal parses true, false or null.
 func (parser *jsonParser) literal() (Value, error) {
-	for word, value := range map[string]Value{"true": BoolValue(true), "false": BoolValue(false), "null": NullValue()} {
-		end := parser.position + len(word)
-		if end <= len(parser.data) && string(parser.data[parser.position:end]) == word {
-			parser.position = end
-			return value, nil
-		}
+	rest := parser.data[parser.position:]
+	switch {
+	case len(rest) >= 4 && string(rest[:4]) == "true":
+		parser.position += 4
+		return BoolValue(true), nil
+	case len(rest) >= 5 && string(rest[:5]) == "false":
+		parser.position += 5
+		return BoolValue(false), nil
+	case len(rest) >= 4 && string(rest[:4]) == "null":
+		parser.position += 4
+		return NullValue(), nil
+	default:
+		return Value{}, ErrInvalidJSON
 	}
-	return Value{}, ErrInvalidJSON
 }
 
 // object parses an object whose opening brace is at the current position.
@@ -243,15 +249,27 @@ func (parser *jsonParser) text() (string, error) {
 	}
 }
 
+// shortEscapes maps single-character JSON backslash escapes to their decoded bytes.
+var shortEscapes = [256]byte{
+	'"':  '"',
+	'\\': '\\',
+	'/':  '/',
+	'b':  '\b',
+	'f':  '\f',
+	'n':  '\n',
+	'r':  '\r',
+	't':  '\t',
+}
+
 // escape decodes one backslash escape and appends it to decoded.
 func (parser *jsonParser) escape(decoded []byte) ([]byte, error) {
 	parser.position++
-	shortForms := map[byte]byte{'"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t'}
-	if replacement, ok := shortForms[parser.peek()]; ok {
+	ch := parser.peek()
+	if replacement := shortEscapes[ch]; replacement != 0 {
 		parser.position++
 		return append(decoded, replacement), nil
 	}
-	if parser.peek() != 'u' {
+	if ch != 'u' {
 		return nil, ErrInvalidJSON
 	}
 	first, err := parser.hexUnit()

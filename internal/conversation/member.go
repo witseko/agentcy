@@ -64,18 +64,58 @@ func (handler *Handler) member(ctx context.Context, request wire.Request, unix i
 	return handler.participantRequest(ctx, request, unix)
 }
 
+// participantMeta holds the per-request routing metadata extracted once from a
+// token-authenticated member request.
+type participantMeta struct {
+	token            string
+	workspace        string
+	releasesRound    bool
+	addsOnlyMessages bool
+	noWakeOnRead     bool
+	noWake           bool
+}
+
+// describeParticipantRequest extracts credentials and wake behavior in one switch.
+func describeParticipantRequest(request wire.Request) participantMeta {
+	switch typed := request.(type) {
+	case *wire.Status:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace, releasesRound: true, noWake: true}
+	case *wire.Read:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace, releasesRound: true, noWakeOnRead: true}
+	case *wire.Post:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace, releasesRound: true, addsOnlyMessages: typed.Kind != kindProposal}
+	case *wire.Invite:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.Retire:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.SetRole:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.OpenInvite:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.ReportUsage:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.Close:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.Reopen:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	case *wire.Release:
+		return participantMeta{token: typed.Token, workspace: typed.Workspace}
+	}
+	return participantMeta{}
+}
+
 // participantRequest applies a request of an authenticated member and wakes its room,
-// except for a status, which writes nothing that others wait for. A read, and a post
-// that is not a proposal, wake only the waiting reads that the added messages concern,
-// unless the request released a sealed round (port plan fix L3).
+// except for a status or a read that did not release a sealed round. A post that is not
+// a proposal wakes only the waiting reads that the added messages concern, unless the
+// request released a sealed round (port plan fix L3).
 func (handler *Handler) participantRequest(ctx context.Context, request wire.Request, now int64) (core.Outcome, error) {
-	token, workspace := memberCredentials(request)
+	meta := describeParticipantRequest(request)
 	var room string
 	var added []core.Message
 	var roundReleased bool
-	targeted := addsOnlyMessages(request)
-	result, err := handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
-		member, released, err := refreshParticipantReleasing(ctx, tx, token, releasesRound(request), now)
+	targeted := meta.addsOnlyMessages
+	result, err := handler.writeResult(ctx, meta.workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		member, released, err := refreshParticipantReleasing(ctx, tx, meta.token, meta.releasesRound, now)
 		if err != nil {
 			return wire.Value{}, err
 		}
@@ -100,10 +140,10 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 		return core.Outcome{}, err
 	}
 	outcome := core.Outcome{Result: result}
-	changed := core.Room{Workspace: workspace, Conversation: room}
+	changed := core.Room{Workspace: meta.workspace, Conversation: room}
 	switch {
-	case isStatusRequest(request):
-	case isReadRequest(request) && !roundReleased:
+	case meta.noWake:
+	case meta.noWakeOnRead && !roundReleased:
 	case targeted:
 		if len(added) > 0 {
 			outcome.Added = []core.AddedMessages{{Room: changed, Messages: added}}
@@ -114,47 +154,26 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 	return outcome, nil
 }
 
-// addsOnlyMessages reports the requests whose only change that a waiting read can see is
-// the messages they add, unless they release a sealed round: a post that is not a
-// proposal adds at most one message and its receipt. Every other write wakes the whole
-// room.
-func addsOnlyMessages(request wire.Request) bool {
-	if post, ok := request.(*wire.Post); ok {
-		return post.Kind != kindProposal
-	}
-	return false
-}
-
-// isReadRequest reports a read request.
-func isReadRequest(request wire.Request) bool {
-	_, isRead := request.(*wire.Read)
-	return isRead
-}
-
-// isStatusRequest reports a status request.
-func isStatusRequest(request wire.Request) bool {
-	_, isStatus := request.(*wire.Status)
-	return isStatus
-}
-
 // applyParticipant dispatches one request of an authenticated member (apply in
 // repository.py).
 func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member *participant, request wire.Request, now int64) (wire.Value, error) {
 	switch typed := request.(type) {
 	case *wire.Status:
-		result, _, err := status(ctx, tx, handler.book, member, now)
-		return result, err
+		current, err := status(ctx, tx, handler.book, member, now)
+		return current.value, err
 	case *wire.Invite:
-		return invite(ctx, tx, member, inviteRequest{
+		invited, err := invite(ctx, tx, member, inviteRequest{
 			workspace: typed.Workspace, name: typed.Name, role: typed.Role, model: typed.Model,
 			tokenBudget: typed.TokenBudget, reinvite: typed.Reinvite,
 		}, now)
+		return invited.value(), err
 	case *wire.Retire:
 		return retire(ctx, tx, member, typed.Name, now)
 	case *wire.SetRole:
 		return setRole(ctx, tx, member, typed.Name, typed.Role, now)
 	case *wire.OpenInvite:
-		return setOpenInvite(ctx, tx, member, typed.Workspace, typed.Enabled, now)
+		opened, err := setOpenInvite(ctx, tx, member, typed.Workspace, typed.Enabled, now)
+		return opened.value(), err
 	case *wire.ReportUsage:
 		return reportUsage(ctx, tx, handler.book, member, typed, now)
 	case *wire.Post:
@@ -172,46 +191,6 @@ func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member
 		return release(ctx, tx, member, now)
 	}
 	return wire.Value{}, errUnknownOperation
-}
-
-// memberCredentials returns the token and workspace of a request that a member makes
-// with its participant token.
-func memberCredentials(request wire.Request) (string, string) {
-	switch typed := request.(type) {
-	case *wire.Status:
-		return typed.Token, typed.Workspace
-	case *wire.Invite:
-		return typed.Token, typed.Workspace
-	case *wire.Retire:
-		return typed.Token, typed.Workspace
-	case *wire.SetRole:
-		return typed.Token, typed.Workspace
-	case *wire.OpenInvite:
-		return typed.Token, typed.Workspace
-	case *wire.ReportUsage:
-		return typed.Token, typed.Workspace
-	case *wire.Post:
-		return typed.Token, typed.Workspace
-	case *wire.Read:
-		return typed.Token, typed.Workspace
-	case *wire.Close:
-		return typed.Token, typed.Workspace
-	case *wire.Reopen:
-		return typed.Token, typed.Workspace
-	case *wire.Release:
-		return typed.Token, typed.Workspace
-	}
-	return "", ""
-}
-
-// releasesRound reports the requests before which a sealed round past its deadline is
-// published: read, post and status.
-func releasesRound(request wire.Request) bool {
-	switch request.(type) {
-	case *wire.Read, *wire.Post, *wire.Status:
-		return true
-	}
-	return false
 }
 
 // listClosed lists the closed conversations without creating a store.

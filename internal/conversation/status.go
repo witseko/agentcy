@@ -245,16 +245,24 @@ func enrichTokenStatus(ctx context.Context, tx *sql.Tx, book *usageBook, room st
 	return result, nil
 }
 
+// statusOutcome is the encoded status payload along with the caller's own member entry
+// and evaluated token balance.
+type statusOutcome struct {
+	value   wire.Value
+	own     *statusMember
+	balance *tokens.Balance
+}
+
 // status reports the activity and message counts of the participant's team. The human
 // of an operator request may have no row yet; its ID is then zero.
-func status(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, now int64) (wire.Value, *statusMember, error) {
+func status(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, now int64) (statusOutcome, error) {
 	members, err := statusMembers(ctx, tx, member.Room, now)
 	if err != nil {
-		return wire.Value{}, nil, err
+		return statusOutcome{}, err
 	}
 	tokenState, err := enrichTokenStatus(ctx, tx, book, member.Room, members, now)
 	if err != nil {
-		return wire.Value{}, nil, err
+		return statusOutcome{}, err
 	}
 	entries := wire.NewObject()
 	var own *statusMember
@@ -281,9 +289,9 @@ func status(ctx context.Context, tx *sql.Tx, book *usageBook, member *participan
 	if member.sealed() && member.Role == roleWorker {
 		submitted, err := proposalSubmitted(ctx, tx, member)
 		if err != nil {
-			return wire.Value{}, nil, err
+			return statusOutcome{}, err
 		}
 		result.Set("proposal_submitted", wire.BoolValue(submitted))
 	}
-	return result, own, nil
+	return statusOutcome{value: result, own: own, balance: tokenState.balance}, nil
 }

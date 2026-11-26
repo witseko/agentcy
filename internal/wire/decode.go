@@ -1,6 +1,9 @@
 package wire
 
-import "errors"
+import (
+	"errors"
+	"strconv"
+)
 
 // ErrInvalidRequest is returned for a request line that is not one known action.
 var ErrInvalidRequest = errors.New("invalid member request")
@@ -151,7 +154,7 @@ func (reader *fieldReader) slots(name string) []Slot {
 	}
 	slots := make([]Slot, 0, len(value.Items))
 	for index, item := range value.Items {
-		slots = append(slots, reader.slot(name+"."+itoa(index), item))
+		slots = append(slots, reader.slot(name+"."+strconv.Itoa(index), item))
 	}
 	return slots
 }

@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -93,44 +92,23 @@ func (client *Client) exchangeOnce(ctx context.Context, request Request) (Value,
 	if err := connection.SetDeadline(time.Now().Add(exchangeTimeout)); err != nil {
 		return Value{}, err
 	}
-	if _, err := io.WriteString(connection, request.Encode().Compact()+"\n"); err != nil {
+	if err := WriteLine(connection, []byte(request.Encode().Compact())); err != nil {
 		if ctx.Err() != nil {
 			return Value{}, ctx.Err()
 		}
 		return Value{}, err
 	}
-	line, err := readBoundedLine(bufio.NewReader(connection), MaxResponseBytes)
+	line, err := ReadLine(connection, MaxResponseBytes)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Value{}, ctx.Err()
 		}
+		if errors.Is(err, io.EOF) || errors.Is(err, ErrLineTooLong) {
+			return Value{}, ErrIncompleteResponse
+		}
 		return Value{}, err
 	}
 	return decodeResponse(line)
-}
-
-// readBoundedLine reads up to limit bytes and requires the line to end with a newline
-// within them.
-func readBoundedLine(reader *bufio.Reader, limit int) ([]byte, error) {
-	var line []byte
-	for len(line) <= limit {
-		chunk, err := reader.ReadSlice('\n')
-		line = append(line, chunk...)
-		if err == nil {
-			break
-		}
-		if errors.Is(err, bufio.ErrBufferFull) {
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			return nil, ErrIncompleteResponse
-		}
-		return nil, err
-	}
-	if len(line) > limit || line[len(line)-1] != '\n' {
-		return nil, ErrIncompleteResponse
-	}
-	return line, nil
 }
 
 // decodeResponse returns the result of a response line or the core's rejection.

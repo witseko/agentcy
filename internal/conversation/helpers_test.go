@@ -133,8 +133,8 @@ func (f *fixture) statusOf(token string, now int64) wire.Value {
 		if err != nil {
 			return wire.Value{}, err
 		}
-		result, _, err := status(ctx, tx, f.book, member, now)
-		return result, err
+		current, err := status(ctx, tx, f.book, member, now)
+		return current.value, err
 	})
 }
 

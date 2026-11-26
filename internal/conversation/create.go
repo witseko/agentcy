@@ -107,12 +107,16 @@ func insertRoom(ctx context.Context, tx *sql.Tx, settings newRoom, now int64) (i
 
 const insertInvitationSlot = `INSERT INTO participant (room, label, role, invite_hash, expires, model, token_budget) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-// insertInvitation reserves one slot and returns its new join code.
-func insertInvitation(ctx context.Context, tx *sql.Tx, room, workspace string, slot teamSlot, now int64) (string, error) {
+// insertInvitation reserves one slot and returns its slot ID and new join code.
+func insertInvitation(ctx context.Context, tx *sql.Tx, room, workspace string, slot teamSlot, now int64) (int64, string, error) {
 	code := newJoinCode(workspace, now)
-	_, err := tx.ExecContext(ctx, insertInvitationSlot, room, slot.label, slot.role, code.hash,
+	res, err := tx.ExecContext(ctx, insertInvitationSlot, room, slot.label, slot.role, code.hash,
 		code.expires, slot.model, slot.tokenBudget)
-	return code.code, err
+	if err != nil {
+		return 0, "", err
+	}
+	id, err := res.LastInsertId()
+	return id, code.code, err
 }
 
 const insertJoinedMember = `INSERT INTO participant (room, label, role, token_hash, model, token_budget) VALUES (?, ?, ?, ?, ?, ?)`
@@ -158,7 +162,7 @@ func create(ctx context.Context, tx *sql.Tx, request *wire.Create, now int64) (w
 	}
 	invitations := wire.NewObject()
 	for _, slot := range team[1:] {
-		code, err := insertInvitation(ctx, tx, room.id, request.Workspace, slot, now)
+		_, code, err := insertInvitation(ctx, tx, room.id, request.Workspace, slot, now)
 		if err != nil {
 			return wire.Value{}, err
 		}

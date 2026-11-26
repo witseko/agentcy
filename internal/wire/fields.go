@@ -150,6 +150,21 @@ func laxIntFromText(text string, limits IntRange) (int64, *FieldError) {
 	return checkRange(number, limits)
 }
 
+// checkInt64Range applies the bounds of an integer field directly on an int64 without
+// allocating big.Int values.
+func checkInt64Range(value int64, limits IntRange) *FieldError {
+	if limits.Exclusive && value <= limits.Minimum {
+		return problem(fmt.Sprintf("Input should be greater than %d", limits.Minimum), "greater_than")
+	}
+	if value < limits.Minimum {
+		return problem(fmt.Sprintf("Input should be greater than or equal to %d", limits.Minimum), "greater_than_equal")
+	}
+	if value > limits.Maximum {
+		return problem(fmt.Sprintf("Input should be less than or equal to %d", limits.Maximum), "less_than_equal")
+	}
+	return nil
+}
+
 // checkRange applies the bounds of an integer field.
 func checkRange(number *big.Int, limits IntRange) (int64, *FieldError) {
 	minimum := big.NewInt(limits.Minimum)

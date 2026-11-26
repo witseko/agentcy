@@ -3,9 +3,9 @@ package conversation
 import (
 	"context"
 	"database/sql"
-	"errors"
 
 	"github.com/witseko/agentcy/internal/fresh"
+	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -153,10 +153,6 @@ func protectLeadSlot(ctx context.Context, tx *sql.Tx, room, name string) error {
 	return rows.Err()
 }
 
-const selectSlotByInvite = `SELECT participant.id
-FROM participant
-WHERE participant.room = ? AND participant.invite_hash = ?`
-
 // reserveWorker invites the worker slot with the same rules as a manual invitation and
 // returns the join code and the slot (reserve_worker).
 func reserveWorker(ctx context.Context, tx *sql.Tx, actor *participant, request queueRequest, now int64) (string, int64, error) {
@@ -166,13 +162,7 @@ func reserveWorker(ctx context.Context, tx *sql.Tx, actor *participant, request 
 	if err != nil {
 		return "", 0, err
 	}
-	code, _ := invited.Get("code")
-	var slot int64
-	err = tx.QueryRowContext(ctx, selectSlotByInvite, actor.Room, digest(code.Text)).Scan(&slot)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, errors.New("invited slot not found")
-	}
-	return code.Text, slot, err
+	return invited.code, invited.slotID, nil
 }
 
 // operatorQueue queues a fresh run for the human (launch in operator.py). Relaunching a
@@ -189,7 +179,7 @@ func operatorQueue(ctx context.Context, tx *sql.Tx, request *wire.OperatorLaunch
 	if err != nil {
 		return queuedLaunch{}, err
 	}
-	if previous != nil && !isPendingState(previous.state) {
+	if previous != nil && !progress.IsPendingState(previous.state) {
 		return queuedLaunch{}, reject(launchEndedError)
 	}
 	return queueAssignment(ctx, tx, &human.participant, queue, now)

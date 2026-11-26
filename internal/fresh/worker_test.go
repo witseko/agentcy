@@ -303,14 +303,10 @@ func TestWorkerReconcilesEachStateAfterRestart(t *testing.T) {
 	answers := map[string]string{"queued": StateUnknown, "starting": StateRunning, "closed": StateCancelled, "done": StateFinished}
 	store := newFakeStore(runs...)
 	store.broken["broken-workspace"] = true
-	var current string
-	provider := &fakeProvider{answer: func(tool string) (RunResult, error) { return RunResult{State: answers[current]}, nil }}
-	fixture := newWorkerFixture(t, store, provider)
+	fixture := newWorkerFixture(t, store, &fakeProvider{})
 	fixture.worker.plugins = func(string) (*Plugin, error) { return &Plugin{}, nil }
-	inner := fixture.worker.provider
-	fixture.worker.provider = providerFunc(func(ctx context.Context, tool, id string) (RunResult, error) {
-		current = id
-		return inner.Operate(ctx, Plugin{}, tool, id)
+	fixture.worker.provider = providerFunc(func(_ context.Context, _ string, id string) (RunResult, error) {
+		return RunResult{State: answers[id]}, nil
 	})
 	if fixture.worker.Ready() {
 		t.Fatal("ready before the reconciliation")

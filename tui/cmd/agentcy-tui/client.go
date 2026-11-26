@@ -1,37 +1,27 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
-	"fmt"
-	"io"
-	"net"
 	"os"
-	"path/filepath"
-	"sync"
 	"time"
+
+	"github.com/witseko/agentcy/internal/paths"
+	"github.com/witseko/agentcy/internal/wire"
 )
 
 const (
-	protocolVersion  = 1
-	operatorKeyFile  = "operator.key"
-	socketFile       = "core.sock"
-	keyRejectedError = "Operator key rejected"
+	operatorKeyFile = wire.OperatorKeyFileName
+	socketFile      = wire.SocketFileName
 	// The core answers this when a request does not match its schema. The UI sends only
 	// requests that match its own core version, so a mismatch means a stale core.
-	invalidArgumentsError = "Invalid bridge arguments"
+	invalidArgumentsError = wire.InvalidArguments
 	coreVersionHelp       = "The running core is likely an older version. Stop it with 'make stop-core' in the agentcy clone and restart the UI"
-	maxKeyBytes           = 1024
-	// maxResponseBytes matches MAX_RESPONSE in the Python transport.
-	maxResponseBytes = 2 * 1024 * 1024
-	dialTimeout      = 2 * time.Second
-	callTimeout      = 10 * time.Second
+	callTimeout           = 10 * time.Second
 )
 
 // errCoreUnreachable marks a failed dial, for example after the core exited while idle.
-var errCoreUnreachable = errors.New("core is not reachable")
+var errCoreUnreachable = wire.ErrCoreUnreachable
 
 // CoreError carries the error text that the core returned for one request.
 type CoreError struct {
@@ -443,42 +433,21 @@ type SearchResults struct {
 	Hits []SearchHit `json:"hits"`
 }
 
-// envelope holds the fields that every operator request carries.
-type envelope struct {
-	Version int    `json:"version"`
-	Key     string `json:"key"`
-	Action  string `json:"action"`
-}
-
-// response is one line from the core: a result or an error.
-type response struct {
-	Result json.RawMessage `json:"result"`
-	Error  *string         `json:"error"`
-}
-
 // Client talks to the core over its Unix socket with one request per connection.
 type Client struct {
-	home    string
-	timeout time.Duration
-	mutex   sync.Mutex
-	key     string
+	operator *wire.OperatorClient
+	timeout  time.Duration
 }
 
 // NewClient returns a client for the bridge data directory home.
 func NewClient(home string) *Client {
-	return &Client{home: home, timeout: callTimeout}
+	return &Client{operator: wire.NewOperatorClient(home), timeout: callTimeout}
 }
 
-// bridgeHome returns AGENTCY_HOME, or ~/.agentcy when it is unset.
+// bridgeHome returns the validated bridge data directory from AGENTCY_HOME or ~/.agentcy.
 func bridgeHome() (string, error) {
-	if home := os.Getenv("AGENTCY_HOME"); home != "" {
-		return filepath.Abs(home)
-	}
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(userHome, ".agentcy"), nil
+	home, set := os.LookupEnv(paths.HomeVariable)
+	return paths.DataDir(home, set)
 }
 
 // Plugins lists the configured plugin names and models.
@@ -600,111 +569,29 @@ func (c *Client) Search(request SearchRequest) (SearchResults, error) {
 	return result, err
 }
 
-// call sends one request and decodes its result. After a key rejection it re-reads the key
-// file once and retries, because the core writes a new key at every start.
+// call sends one request through wire.OperatorClient and wraps wire.CoreError into the
+// TUI's CoreError (which adds the stale-core restart hint for Invalid bridge arguments).
 func (c *Client) call(action string, request any, result any) error {
-	key, err := c.operatorKey(false)
-	if err != nil {
-		return err
+	c.operator.Timeout = c.timeout
+	err := c.operator.Call(context.Background(), action, request, result)
+	var wireErr *wire.CoreError
+	if errors.As(err, &wireErr) {
+		return &CoreError{Message: wireErr.Message}
 	}
-	err = c.exchange(action, key, request, result)
-	var coreError *CoreError
-	if !errors.As(err, &coreError) || coreError.Message != keyRejectedError {
-		return err
-	}
-	key, err = c.operatorKey(true)
-	if err != nil {
-		return err
-	}
-	return c.exchange(action, key, request, result)
-}
-
-// operatorKey returns the cached key, reading the key file when asked or when none is cached.
-func (c *Client) operatorKey(reload bool) (string, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.key != "" && !reload {
-		return c.key, nil
-	}
-	file, err := os.Open(filepath.Join(c.home, operatorKeyFile))
-	if err != nil {
-		return "", fmt.Errorf("%w: operator key file is missing", errCoreUnreachable)
-	}
-	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, maxKeyBytes+1))
-	if err != nil || len(content) > maxKeyBytes {
-		return "", errors.New("operator key file is unreadable")
-	}
-	key := string(bytes.TrimSpace(content))
-	if key == "" {
-		return "", errors.New("operator key file is empty")
-	}
-	c.key = key
-	return key, nil
+	return err
 }
 
 // encodeRequest merges the envelope into the request object as one JSON line.
 func encodeRequest(action string, key string, request any) ([]byte, error) {
-	body, err := json.Marshal(request)
-	if err != nil {
-		return nil, err
-	}
-	fields := map[string]json.RawMessage{}
-	if err := json.Unmarshal(body, &fields); err != nil {
-		return nil, err
-	}
-	head, err := json.Marshal(envelope{Version: protocolVersion, Key: key, Action: action})
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(head, &fields); err != nil {
-		return nil, err
-	}
-	line, err := json.Marshal(fields)
-	if err != nil {
-		return nil, err
-	}
-	return append(line, '\n'), nil
-}
-
-// exchange writes one request line and reads one response line within the call deadline.
-func (c *Client) exchange(action string, key string, request any, result any) error {
-	line, err := encodeRequest(action, key, request)
-	if err != nil {
-		return err
-	}
-	connection, err := net.DialTimeout("unix", filepath.Join(c.home, socketFile), dialTimeout)
-	if err != nil {
-		return errCoreUnreachable
-	}
-	defer connection.Close()
-	if err := connection.SetDeadline(time.Now().Add(c.timeout)); err != nil {
-		return err
-	}
-	if _, err := connection.Write(line); err != nil {
-		return fmt.Errorf("sending the request failed: %w", err)
-	}
-	reply, err := bufio.NewReader(io.LimitReader(connection, maxResponseBytes+1)).ReadBytes('\n')
-	if err != nil {
-		return fmt.Errorf("incomplete response from the core: %w", err)
-	}
-	return decodeResponse(reply, result)
+	return wire.EncodeOperatorRequest(action, key, request)
 }
 
 // decodeResponse maps an error line to CoreError and decodes a result line into result.
 func decodeResponse(reply []byte, result any) error {
-	var decoded response
-	if err := json.Unmarshal(reply, &decoded); err != nil {
-		return errors.New("malformed response from the core")
+	err := wire.DecodeOperatorResponse(reply, result)
+	var wireErr *wire.CoreError
+	if errors.As(err, &wireErr) {
+		return &CoreError{Message: wireErr.Message}
 	}
-	if decoded.Error != nil {
-		return &CoreError{Message: *decoded.Error}
-	}
-	if decoded.Result == nil {
-		return errors.New("malformed response from the core")
-	}
-	if err := json.Unmarshal(decoded.Result, result); err != nil {
-		return errors.New("unexpected result from the core")
-	}
-	return nil
+	return err
 }

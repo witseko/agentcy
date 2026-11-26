@@ -13,10 +13,10 @@ func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire
 	if err != nil {
 		return wire.Value{}, err
 	}
-	if !pageDelivers(page) {
-		return page, nil
+	if !page.Ready || !page.HasMessages {
+		return page.Page, nil
 	}
-	return page, server.handler.RecordDelivery(ctx, request, page, server.settings.now())
+	return page.Page, server.handler.RecordDelivery(ctx, request, page.Page, server.settings.now())
 }
 
 // listen runs a waiting read and returns its page together with the caller's status
@@ -27,12 +27,12 @@ func (server *server) listen(ctx context.Context, request *wire.Listen) (wire.Va
 	if err != nil {
 		return wire.Value{}, err
 	}
-	status, err := server.handler.FinishListen(ctx, read, page, pageDelivers(page), server.settings.now())
+	status, err := server.handler.FinishListen(ctx, read, page.Page, page.Ready && page.HasMessages, server.settings.now())
 	if err != nil {
 		return wire.Value{}, err
 	}
 	result := wire.NewObject()
-	result.Set("page", page)
+	result.Set("page", page.Page)
 	result.Set("status", status)
 	return result, nil
 }
@@ -50,21 +50,21 @@ func (server *server) listen(ctx context.Context, request *wire.Listen) (wire.Va
 //
 // Deadlines use the real clock, not Options.Now. No store connection is held while it
 // sleeps. A shutdown ends the wait with the current page.
-func (server *server) waitForPage(ctx context.Context, request *wire.Read) (wire.Value, error) {
+func (server *server) waitForPage(ctx context.Context, request *wire.Read) (WaitPage, error) {
 	start, err := server.handler.OpenWait(ctx, request, server.settings.now())
 	if err != nil {
-		return wire.Value{}, err
+		return WaitPage{}, err
 	}
 	listener := server.hub.join(start.Room)
 	defer listener.leave()
 	deadline := time.Now().Add(time.Duration(request.WaitSeconds) * time.Second)
 	roundDeadline := start.RoundDeadline
 	page, err := server.readPage(ctx, request, listener)
-	if err != nil || pageIsReady(page) {
+	if err != nil || page.Ready {
 		return page, err
 	}
-	if pageRound := pageRoundDeadline(page); pageRound != nil {
-		roundDeadline = pageRound
+	if page.RoundDeadline != nil {
+		roundDeadline = page.RoundDeadline
 	}
 	var lastExpiredRound *int64
 	for {
@@ -87,10 +87,10 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (wire
 			return page, nil
 		}
 		if page, err = server.readPage(ctx, request, listener); err != nil {
-			return wire.Value{}, err
+			return WaitPage{}, err
 		}
-		roundDeadline = pageRoundDeadline(page)
-		if pageIsReady(page) {
+		roundDeadline = page.RoundDeadline
+		if page.Ready {
 			if server.stopping(ctx) {
 				return page, nil
 			}
@@ -100,24 +100,24 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (wire
 }
 
 // readPage reads one page and narrows the listener's wakes to the reader as it read.
-func (server *server) readPage(ctx context.Context, request *wire.Read, listener *listener) (wire.Value, error) {
+func (server *server) readPage(ctx context.Context, request *wire.Read, listener *listener) (WaitPage, error) {
 	listener.beginRead()
 	waitPage, err := server.handler.ReadPage(ctx, request, server.settings.now())
 	if err != nil {
-		return wire.Value{}, err
+		return WaitPage{}, err
 	}
 	listener.setFilter(waitPage.Filter)
-	return waitPage.Page, nil
+	return waitPage, nil
 }
 
 // settle collects a short burst, returning at once when the page is closed, retired, or
 // full. Port of settle in concurrency.py. Every added message wakes the read while it
 // settles, as every write did in Python, so the settled page shows the whole burst and a
 // burst that fills the page ends the settle at once.
-func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, page wire.Value) (wire.Value, error) {
+func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, page WaitPage) (WaitPage, error) {
 	listener.startSettle()
 	deadline := time.Now().Add(server.settings.settleWindow)
-	for !pageEndsSettle(page) && !server.stopping(ctx) {
+	for !page.EndsSettle && !server.stopping(ctx) {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			break
@@ -128,17 +128,11 @@ func (server *server) settle(ctx context.Context, request *wire.Read, listener *
 		}
 		next, err := server.readPage(ctx, request, listener)
 		if err != nil {
-			return wire.Value{}, err
+			return WaitPage{}, err
 		}
 		page = next
 	}
 	return page, nil
-}
-
-// pageDelivers reports a ready page with at least one message, whose token usage a
-// waiting read records once.
-func pageDelivers(page wire.Value) bool {
-	return pageIsReady(page) && pageMessages(page).Len() > 0
 }
 
 // sleep returns after duration, when changed closes, or when the daemon stops. A zero
@@ -165,48 +159,4 @@ func (server *server) stopping(ctx context.Context) bool {
 	default:
 		return ctx.Err() != nil
 	}
-}
-
-// pageIsReady recognises relevant messages, a close, and a retirement even without
-// outcome text: page.closed or page.retired or page.get("wake", bool(page.messages)).
-// Port of ready in concurrency.py.
-func pageIsReady(page wire.Value) bool {
-	if pageFlag(page, "closed") || pageFlag(page, "retired") {
-		return true
-	}
-	if wake, found := page.Get("wake"); found {
-		return wake.Truthy()
-	}
-	return pageMessages(page).Len() > 0
-}
-
-// pageEndsSettle reports a closed, retired, or full page, which ends the settle window.
-func pageEndsSettle(page wire.Value) bool {
-	return pageFlag(page, "closed") || pageFlag(page, "retired") || pageFlag(page, "more")
-}
-
-// pageFlag reads one optional flag with Python truthiness.
-func pageFlag(page wire.Value, name string) bool {
-	value, _ := page.Get(name)
-	return value.Truthy()
-}
-
-// pageMessages returns the page's message list, or an empty value.
-func pageMessages(page wire.Value) wire.Value {
-	messages, _ := page.Get("messages")
-	return messages
-}
-
-// pageRoundDeadline returns the page's sealed round deadline in Unix seconds, or nil
-// when the page has none.
-func pageRoundDeadline(page wire.Value) *int64 {
-	value, found := page.Get("round_deadline")
-	if !found {
-		return nil
-	}
-	seconds, isInteger := value.IntOf()
-	if !isInteger {
-		return nil
-	}
-	return &seconds
 }

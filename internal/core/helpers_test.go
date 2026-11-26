@@ -69,10 +69,43 @@ func (fake *fakeHandler) OpenWait(_ context.Context, request *wire.Read, _ time.
 
 func (fake *fakeHandler) ReadPage(_ context.Context, request *wire.Read, _ time.Time) (WaitPage, error) {
 	if fake.readPage == nil {
-		return WaitPage{Page: pageWith(0), Filter: fake.filter}, nil
+		return waitPageFromValue(pageWith(0), fake.filter), nil
 	}
 	page, err := fake.readPage(request)
-	return WaitPage{Page: page, Filter: fake.filter}, err
+	return waitPageFromValue(page, fake.filter), err
+}
+
+// waitPageFromValue derives WaitPage's typed fields from a test fixture page value.
+func waitPageFromValue(page wire.Value, filter WakeFilter) WaitPage {
+	flag := func(name string) bool {
+		value, _ := page.Get(name)
+		return value.Truthy()
+	}
+	messages, _ := page.Get("messages")
+	hasMessages := messages.Len() > 0
+	closed, retired, more := flag("closed"), flag("retired"), flag("more")
+	ready := closed || retired
+	if !ready {
+		if wake, found := page.Get("wake"); found {
+			ready = wake.Truthy()
+		} else {
+			ready = hasMessages
+		}
+	}
+	var roundDeadline *int64
+	if value, found := page.Get("round_deadline"); found {
+		if seconds, ok := value.IntOf(); ok {
+			roundDeadline = &seconds
+		}
+	}
+	return WaitPage{
+		Page:          page,
+		Filter:        filter,
+		Ready:         ready,
+		HasMessages:   hasMessages,
+		EndsSettle:    closed || retired || more,
+		RoundDeadline: roundDeadline,
+	}
 }
 
 func (fake *fakeHandler) FinishListen(_ context.Context, _ *wire.Read, page wire.Value, deliver bool, _ time.Time) (wire.Value, error) {

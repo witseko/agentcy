@@ -1,6 +1,9 @@
 package wire
 
-import "regexp"
+import (
+	"regexp"
+	"strconv"
+)
 
 // checker validates typed request fields, normalises texts in place, and collects the
 // errors in field order.
@@ -64,8 +67,7 @@ func (check *checker) model(name string, value *string) {
 
 // number checks an integer against its range.
 func (check *checker) number(name string, value int64, limits IntRange) {
-	_, err := CoerceStrictInt(IntValue(value), limits)
-	check.errors.add(name, err)
+	check.errors.add(name, checkInt64Range(value, limits))
 }
 
 // optionalNumber checks an integer that may be absent.
@@ -94,7 +96,7 @@ func (check *checker) slots(slots []Slot) {
 		return
 	}
 	for index := range slots {
-		location := "invitees." + itoa(index)
+		location := "invitees." + strconv.Itoa(index)
 		slot := &slots[index]
 		if slot.Invitation == nil {
 			check.label(location, &slot.Name)
@@ -106,11 +108,6 @@ func (check *checker) slots(slots []Slot) {
 		check.model(location+".model", invitation.Model)
 		check.optionalNumber(location+".token_budget", invitation.TokenBudget, BudgetRange)
 	}
-}
-
-// itoa formats a list index.
-func itoa(index int) string {
-	return IntValue(int64(index)).Literal
 }
 
 // Validate checks a create request, including its rules across fields.

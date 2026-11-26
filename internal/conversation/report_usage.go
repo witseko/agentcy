@@ -27,16 +27,16 @@ func reportUsage(ctx context.Context, tx *sql.Tx, book *usageBook, member *parti
 	if err := book.sync(ctx, request.Workspace, snapshot); err != nil {
 		return wire.Value{}, err
 	}
-	current, own, err := status(ctx, tx, book, member, now)
+	current, err := status(ctx, tx, book, member, now)
 	if err != nil {
 		return wire.Value{}, err
 	}
 	result := singleField("participant", wire.TextValue(member.Label))
-	if own != nil && own.usage != nil {
-		result.Set("usage", own.usage.Value())
+	if current.own != nil && current.own.usage != nil {
+		result.Set("usage", current.own.usage.Value())
 	}
-	if balance, found := current.Get("token_balance"); found {
-		result.Set("token_balance", balance)
+	if current.balance != nil {
+		result.Set("token_balance", current.balance.Value())
 	}
 	return result, nil
 }

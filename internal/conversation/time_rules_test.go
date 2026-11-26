@@ -144,7 +144,7 @@ func TestSealedRoundReleasesAtItsDeadline(t *testing.T) {
 			return wire.Value{}, err
 		}
 		result, _, err := readPage(ctx, tx, member, 0)
-		return result, err
+		return result.Page, err
 	})
 	messages := field(page, "messages").Items
 	last := messages[len(messages)-1]

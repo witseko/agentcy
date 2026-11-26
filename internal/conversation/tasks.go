@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"sort"
 
+	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -225,22 +226,9 @@ func roomRecoverySets(ctx context.Context, tx *sql.Tx, room string) (recoverySet
 	return sets, rows.Err()
 }
 
-// pendingStates are the assignment states of a fresh run that is still active.
-var pendingStates = []string{"queued", "starting", "running"}
-
-// isPendingState reports an active fresh-run state.
-func isPendingState(state string) bool {
-	for _, pending := range pendingStates {
-		if pending == state {
-			return true
-		}
-	}
-	return false
-}
-
 // launchEnded reports a fresh run that the bridge no longer tracks as active.
 func launchEnded(launch sql.NullString) bool {
-	return launch.Valid && !isPendingState(launch.String)
+	return launch.Valid && !progress.IsPendingState(launch.String)
 }
 
 const selectRoomTaskEvents = `SELECT message.id, message.kind, message.author, message.recipient, message.reply_to, message.created, message.due_minutes 

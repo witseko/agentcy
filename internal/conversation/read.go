@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/tokens"
 	"github.com/witseko/agentcy/internal/wire"
 )
@@ -71,11 +72,11 @@ func laterWake(ctx context.Context, tx *sql.Tx, member *participant, after, last
 
 // readPage returns the full view from cursor zero, and only other members' new messages
 // after it, without recording usage (read in repository.py with record_usage=False). It
-// also returns the page's message bodies for the usage estimate.
-func readPage(ctx context.Context, tx *sql.Tx, member *participant, after int64) (wire.Value, []string, error) {
+// also returns the page's typed readiness metadata and message bodies for usage estimation.
+func readPage(ctx context.Context, tx *sql.Tx, member *participant, after int64) (core.WaitPage, []string, error) {
 	rows, err := readRows(ctx, tx, member, after)
 	if err != nil {
-		return wire.Value{}, nil, err
+		return core.WaitPage{}, nil, err
 	}
 	messages, bodies := messagePage(rows)
 	more := len(rows) > pageSize
@@ -85,7 +86,7 @@ func readPage(ctx context.Context, tx *sql.Tx, member *participant, after int64)
 	}
 	if more && !hasWake {
 		if hasWake, err = laterWake(ctx, tx, member, after, rows[len(rows)-1].ID); err != nil {
-			return wire.Value{}, nil, err
+			return core.WaitPage{}, nil, err
 		}
 	}
 	cursor := after
@@ -102,15 +103,27 @@ func readPage(ctx context.Context, tx *sql.Tx, member *participant, after int64)
 		result.Set("_task_blockers", wire.ListValue(blockers))
 	}
 	if err := catchUpFields(ctx, tx, member, after, result); err != nil {
-		return wire.Value{}, nil, err
+		return core.WaitPage{}, nil, err
 	}
-	if !member.Open {
+	closed := !member.Open
+	if closed {
 		result.Set("closed", wire.BoolValue(true))
 	}
 	if member.Retired {
 		result.Set("retired", wire.BoolValue(true))
 	}
-	return result, bodies, nil
+	var roundDeadline *int64
+	if member.Round.Valid && member.RoundDeadline.Valid {
+		deadline := member.RoundDeadline.Int64
+		roundDeadline = &deadline
+	}
+	return core.WaitPage{
+		Page:          result,
+		Ready:         closed || member.Retired || hasWake,
+		HasMessages:   len(messages) > 0,
+		EndsSettle:    closed || member.Retired || more,
+		RoundDeadline: roundDeadline,
+	}, bodies, nil
 }
 
 // taskBlockers lists the IDs of blockers that reply to a task. The shim reads this
@@ -156,7 +169,7 @@ func recordReadUsage(ctx context.Context, tx *sql.Tx, book *usageBook, member *p
 
 // read is a member read that records the usage of the page it returns.
 func read(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant, request *wire.Read, now int64) (wire.Value, error) {
-	result, bodies, err := readPage(ctx, tx, member, request.After)
+	page, bodies, err := readPage(ctx, tx, member, request.After)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -167,5 +180,5 @@ func read(ctx context.Context, tx *sql.Tx, book *usageBook, member *participant,
 	if err := recordReadUsage(ctx, tx, book, member, request.Workspace, bodies, brief, now); err != nil {
 		return wire.Value{}, err
 	}
-	return result, nil
+	return page.Page, nil
 }

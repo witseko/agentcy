@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/witseko/agentcy/internal/fresh"
+	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/tokens"
 )
@@ -139,7 +140,7 @@ WHERE assignment.state IN (?, ?, ?) ORDER BY assignment.deadline`
 // pendingRuns reads the pending runs with the circumstances that stop them
 // (assignments.pending).
 func pendingRuns(ctx context.Context, tx *sql.Tx, workspace string) ([]fresh.Run, error) {
-	rows, err := tx.QueryContext(ctx, selectPendingRuns, pendingStates[0], pendingStates[1], pendingStates[2])
+	rows, err := tx.QueryContext(ctx, selectPendingRuns, progress.PendingStates[0], progress.PendingStates[1], progress.PendingStates[2])
 	if err != nil {
 		return nil, err
 	}

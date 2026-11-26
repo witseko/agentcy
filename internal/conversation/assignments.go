@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -18,7 +19,7 @@ WHERE assignment.slot = ? AND assignment.state IN (?, ?, ?)`
 // activeAssignment protects the credential of a launch that has not consumed its
 // invitation yet.
 func activeAssignment(ctx context.Context, tx *sql.Tx, slot int64) (bool, error) {
-	return firstValueSet(ctx, tx, selectActiveAssignment, slot, pendingStates[0], pendingStates[1], pendingStates[2])
+	return firstValueSet(ctx, tx, selectActiveAssignment, slot, progress.PendingStates[0], progress.PendingStates[1], progress.PendingStates[2])
 }
 
 const selectPendingAssignment = `SELECT assignment.id 
@@ -28,7 +29,7 @@ WHERE assignment.state IN (?, ?, ?)
 
 // hasPendingAssignment keeps the daemon alive while a provider run needs service.
 func hasPendingAssignment(ctx context.Context, tx *sql.Tx) (bool, error) {
-	return firstValueSet(ctx, tx, selectPendingAssignment, pendingStates[0], pendingStates[1], pendingStates[2], 1, 0)
+	return firstValueSet(ctx, tx, selectPendingAssignment, progress.PendingStates[0], progress.PendingStates[1], progress.PendingStates[2], 1, 0)
 }
 
 const selectOpenConversation = `SELECT conversation.id 
@@ -108,7 +109,7 @@ func cancelMcpTask(ctx context.Context, tx *sql.Tx, taskID string) (wire.Value, 
 	if err != nil {
 		return wire.Value{}, err
 	}
-	if isPendingState(found.state) {
+	if progress.IsPendingState(found.state) {
 		if _, err := tx.ExecContext(ctx, "UPDATE assignment SET cancel_requested=? WHERE assignment.id = ?", 1, found.id); err != nil {
 			return wire.Value{}, err
 		}

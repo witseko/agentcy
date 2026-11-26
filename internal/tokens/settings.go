@@ -3,7 +3,6 @@ package tokens
 import (
 	"errors"
 	"regexp"
-	"slices"
 
 	"golang.org/x/text/cases"
 
@@ -43,6 +42,7 @@ type ModelBudget struct {
 type NamedBudget struct {
 	Model  string
 	Budget ModelBudget
+	folded string
 }
 
 // Settings is a validated tokens.json.
@@ -53,21 +53,44 @@ type Settings struct {
 	ImbalanceGapPercent  int64
 }
 
-// BudgetFor returns the budget of model, matched exactly or else case-insensitively with
-// Unicode case folding, or nil. An empty model has no budget.
+// cloneBudget returns an independent copy of budget so callers cannot mutate cached
+// settings.
+func cloneBudget(budget ModelBudget) *ModelBudget {
+	copied := budget
+	if budget.WarnPercent != nil {
+		v := *budget.WarnPercent
+		copied.WarnPercent = &v
+	}
+	if budget.ImbalanceGapPercent != nil {
+		v := *budget.ImbalanceGapPercent
+		copied.ImbalanceGapPercent = &v
+	}
+	if budget.ResetWindowHours != nil {
+		v := *budget.ResetWindowHours
+		copied.ResetWindowHours = &v
+	}
+	return &copied
+}
+
+// BudgetFor returns a copy of the budget of model, matched exactly or else
+// case-insensitively with Unicode case folding, or nil. An empty model has no budget.
 func (settings *Settings) BudgetFor(model string) *ModelBudget {
 	if model == "" {
 		return nil
 	}
 	for index := range settings.Models {
 		if settings.Models[index].Model == model {
-			return &settings.Models[index].Budget
+			return cloneBudget(settings.Models[index].Budget)
 		}
 	}
 	folded := cases.Fold().String(model)
 	for index := range settings.Models {
-		if cases.Fold().String(settings.Models[index].Model) == folded {
-			return &settings.Models[index].Budget
+		entryFolded := settings.Models[index].folded
+		if entryFolded == "" {
+			entryFolded = cases.Fold().String(settings.Models[index].Model)
+		}
+		if entryFolded == folded {
+			return cloneBudget(settings.Models[index].Budget)
 		}
 	}
 	return nil
@@ -123,7 +146,7 @@ var (
 // pattern. Every problem returns ErrSettingsInvalid, so no input is echoed.
 func ParseSettings(data []byte) (*Settings, error) {
 	document, err := wire.Parse(data)
-	if err != nil || !onlyKnownFields(document, "models", "default_initial_tokens", "warn_percent", "imbalance_gap_percent") {
+	if err != nil || !document.OnlyKnownFields("models", "default_initial_tokens", "warn_percent", "imbalance_gap_percent") {
 		return nil, ErrSettingsInvalid
 	}
 	settings := &Settings{WarnPercent: DefaultWarnPercent, ImbalanceGapPercent: DefaultImbalanceGapPercent}
@@ -152,13 +175,14 @@ func parseModels(value wire.Value) ([]NamedBudget, bool) {
 		return nil, false
 	}
 	models := []NamedBudget{}
+	folder := cases.Fold()
 	for _, name := range value.Keys() {
 		entry, _ := value.Get(name)
 		budget, valid := parseModelBudget(entry)
 		if !valid || !modelNamePattern.MatchString(name) {
 			return nil, false
 		}
-		models = append(models, NamedBudget{Model: name, Budget: budget})
+		models = append(models, NamedBudget{Model: name, Budget: budget, folded: folder.String(name)})
 	}
 	return models, true
 }
@@ -166,7 +190,7 @@ func parseModels(value wire.Value) ([]NamedBudget, bool) {
 // parseModelBudget validates one model entry; initial_tokens is required.
 func parseModelBudget(value wire.Value) (ModelBudget, bool) {
 	var budget ModelBudget
-	if !onlyKnownFields(value, "initial_tokens", "warn_percent", "imbalance_gap_percent", "reset_window_hours") {
+	if !value.OnlyKnownFields("initial_tokens", "warn_percent", "imbalance_gap_percent", "reset_window_hours") {
 		return budget, false
 	}
 	initial, found := value.Get("initial_tokens")
@@ -190,19 +214,6 @@ func parseModelBudget(value wire.Value) (ModelBudget, bool) {
 		}
 	}
 	return budget, valid
-}
-
-// onlyKnownFields reports whether value is an object whose keys are all in known.
-func onlyKnownFields(value wire.Value, known ...string) bool {
-	if value.Kind != wire.Object {
-		return false
-	}
-	for _, key := range value.Keys() {
-		if !slices.Contains(known, key) {
-			return false
-		}
-	}
-	return true
 }
 
 // strictInteger accepts a JSON integer in bounds; floats such as 5.0, strings and

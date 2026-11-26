@@ -1,10 +1,8 @@
 package core
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"time"
 
@@ -31,35 +29,25 @@ func (server *server) serveConnection(ctx context.Context, connection net.Conn) 
 	if err := connection.SetReadDeadline(time.Now().Add(requestTimeout)); err != nil {
 		return
 	}
-	line, err := readRequestLine(connection)
-	if err != nil || len(line) == 0 {
+	line, err := wire.ReadLine(connection, wire.MaxRequestBytes)
+	var reply []byte
+	switch {
+	case errors.Is(err, wire.ErrLineTooLong):
+		reply = errorReply(requestTooLarge)
+	case err != nil:
 		return
+	default:
+		reply = server.answer(ctx, line)
 	}
-	reply := server.answer(ctx, line)
 	if err := connection.SetWriteDeadline(time.Now().Add(requestTimeout)); err != nil {
 		return
 	}
 	// The client may be gone; there is nobody left to tell.
-	_, _ = connection.Write(reply)
+	_ = wire.WriteLine(connection, reply)
 }
 
-// readRequestLine reads up to and including the first newline, stopping after
-// MaxRequestBytes+1 bytes like readline(MAX_REQUEST + 1). An end of stream is not an
-// error: the caller sees a short or unterminated line.
-func readRequestLine(connection io.Reader) ([]byte, error) {
-	reader := bufio.NewReader(io.LimitReader(connection, wire.MaxRequestBytes+1))
-	line, err := reader.ReadBytes('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-	return line, nil
-}
-
-// answer turns one request line into one reply line.
+// answer turns one validated request line into one reply line.
 func (server *server) answer(ctx context.Context, line []byte) []byte {
-	if len(line) > wire.MaxRequestBytes || line[len(line)-1] != '\n' {
-		return errorReply(requestTooLarge)
-	}
 	incoming, err := wire.DecodeIncoming(line)
 	if errors.Is(err, wire.ErrOperatorKeyRejected) {
 		return errorReply(wire.OperatorKeyRejected)

@@ -116,11 +116,16 @@ type WakeFilter interface {
 	Wakes(message Message) bool
 }
 
-// WaitPage is one page of a waiting read and the filter for the reader as it read it.
+// WaitPage is one page of a waiting read, its typed readiness metadata, and the filter
+// for the reader as it read it.
 type WaitPage struct {
 	Page wire.Value
 	// Filter is nil when every added message must wake the read.
-	Filter WakeFilter
+	Filter        WakeFilter
+	Ready         bool
+	HasMessages   bool
+	EndsSettle    bool
+	RoundDeadline *int64
 }
 
 // WaitStart is what a waiting read needs before its first page.

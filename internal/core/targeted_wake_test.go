@@ -185,7 +185,8 @@ func TestWaitingReadStopsSettlingWhenMessagesForOthersFillThePage(t *testing.T) 
 	read := handler.readPage
 	handler.readPage = func(request *wire.Read) (wire.Value, error) {
 		page, err := read(request)
-		page.Set("more", wire.BoolValue(page.Has("messages") && pageMessages(page).Len() >= 2))
+		messages, _ := page.Get("messages")
+		page.Set("more", wire.BoolValue(messages.Len() >= 2))
 		return page, err
 	}
 	daemon := startDaemon(t, handler, Options{SettleWindow: 5 * time.Second})

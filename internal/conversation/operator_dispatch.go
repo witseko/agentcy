@@ -23,14 +23,63 @@ func (handler *Handler) Operator(ctx context.Context, request wire.OperatorReque
 	return outcome, err
 }
 
+// operatorMeta holds the target directory, optional conversation, read-only flag, and
+// room-notification flag for one operator request.
+type operatorMeta struct {
+	directory    string
+	conversation string
+	readOnly     bool
+	notifiesRoom bool
+}
+
+// describeOperatorRequest extracts routing metadata for one operator request in a single
+// switch.
+func describeOperatorRequest(request wire.OperatorRequest) operatorMeta {
+	switch typed := request.(type) {
+	case *wire.OperatorList:
+		return operatorMeta{directory: typed.Directory, readOnly: true}
+	case *wire.OperatorSearch:
+		return operatorMeta{directory: typed.Directory, readOnly: true}
+	case *wire.OperatorCreate:
+		return operatorMeta{directory: typed.Directory}
+	case *wire.OperatorShow:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, readOnly: true}
+	case *wire.OperatorTasks:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, readOnly: true}
+	case *wire.OperatorInvite:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorOpenInvite:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorLaunch:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation}
+	case *wire.OperatorRetire:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorSetRole:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorPost:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorClose:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorReopen:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	case *wire.OperatorArchive:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: typed.DeprecateTasks}
+	case *wire.OperatorRename:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation}
+	case *wire.OperatorSetMemberBudget:
+		return operatorMeta{directory: typed.Directory, conversation: typed.Conversation, notifiesRoom: true}
+	}
+	return operatorMeta{}
+}
+
 // operator dispatches one operator request.
 func (handler *Handler) operator(ctx context.Context, request wire.OperatorRequest, now time.Time) (core.Outcome, error) {
 	if _, isPlugins := request.(*wire.OperatorPlugins); isPlugins {
 		result, err := handler.pluginNames()
 		return core.Outcome{Result: result}, err
 	}
-	directory, conversation := operatorTarget(request)
-	workspace, err := handler.checkoutWorkspace(directory)
+	meta := describeOperatorRequest(request)
+	workspace, err := handler.checkoutWorkspace(meta.directory)
 	if err != nil {
 		return core.Outcome{}, err
 	}
@@ -43,21 +92,21 @@ func (handler *Handler) operator(ctx context.Context, request wire.OperatorReque
 	}
 	unix := now.Unix()
 	var result wire.Value
-	if readsOnly(request) {
+	if meta.readOnly {
 		result, err = handler.readResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return handler.applyOperatorRead(ctx, tx, request, unix)
 		})
 	} else {
 		result, err = handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
-			return handler.applyOperatorWrite(ctx, tx, workspace, request, unix)
+			return handler.applyOperatorWrite(ctx, tx, workspace, meta.conversation, request, unix)
 		})
 	}
 	if err != nil {
 		return core.Outcome{}, err
 	}
 	outcome := core.Outcome{Result: result}
-	if notifiesRoom(request) {
-		outcome.Notify = []core.Room{{Workspace: workspace, Conversation: conversation}}
+	if meta.notifiesRoom {
+		outcome.Notify = []core.Room{{Workspace: workspace, Conversation: meta.conversation}}
 	}
 	return outcome, nil
 }
@@ -86,66 +135,6 @@ func withoutStore(request wire.OperatorRequest) (core.Outcome, error) {
 	return core.Outcome{}, reject(unknownConversation)
 }
 
-// operatorTarget returns the checkout directory and the conversation of a request; the
-// conversation is "" for a workspace-level action.
-func operatorTarget(request wire.OperatorRequest) (string, string) {
-	switch typed := request.(type) {
-	case *wire.OperatorList:
-		return typed.Directory, ""
-	case *wire.OperatorSearch:
-		return typed.Directory, ""
-	case *wire.OperatorCreate:
-		return typed.Directory, ""
-	case *wire.OperatorShow:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorTasks:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorInvite:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorOpenInvite:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorLaunch:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorRetire:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorSetRole:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorPost:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorClose:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorReopen:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorArchive:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorRename:
-		return typed.Directory, typed.Conversation
-	case *wire.OperatorSetMemberBudget:
-		return typed.Directory, typed.Conversation
-	}
-	return "", ""
-}
-
-// readsOnly reports the operator actions that never write.
-func readsOnly(request wire.OperatorRequest) bool {
-	switch request.(type) {
-	case *wire.OperatorList, *wire.OperatorSearch, *wire.OperatorShow, *wire.OperatorTasks:
-		return true
-	}
-	return false
-}
-
-// notifiesRoom reports the actions after which the conversation's waiting reads wake
-// (NOTIFYING_OPERATOR_ACTIONS in core.py).
-func notifiesRoom(request wire.OperatorRequest) bool {
-	switch request.(type) {
-	case *wire.OperatorInvite, *wire.OperatorOpenInvite, *wire.OperatorRetire, *wire.OperatorSetRole,
-		*wire.OperatorSetMemberBudget, *wire.OperatorPost, *wire.OperatorClose, *wire.OperatorReopen:
-		return true
-	}
-	return false
-}
-
 // applyOperatorRead runs one read-only operator action.
 func (handler *Handler) applyOperatorRead(ctx context.Context, tx *sql.Tx, request wire.OperatorRequest, now int64) (wire.Value, error) {
 	switch typed := request.(type) {
@@ -162,7 +151,7 @@ func (handler *Handler) applyOperatorRead(ctx context.Context, tx *sql.Tx, reque
 }
 
 // applyOperatorWrite runs one operator action that may write (apply in operator.py).
-func (handler *Handler) applyOperatorWrite(ctx context.Context, tx *sql.Tx, workspace string, request wire.OperatorRequest, now int64) (wire.Value, error) {
+func (handler *Handler) applyOperatorWrite(ctx context.Context, tx *sql.Tx, workspace, conversation string, request wire.OperatorRequest, now int64) (wire.Value, error) {
 	switch typed := request.(type) {
 	case *wire.OperatorCreate:
 		return operatorCreate(ctx, tx, workspace, typed, now)
@@ -179,12 +168,11 @@ func (handler *Handler) applyOperatorWrite(ctx context.Context, tx *sql.Tx, work
 	case *wire.OperatorClose:
 		return operatorClose(ctx, tx, typed, now)
 	}
-	return handler.applyHumanAction(ctx, tx, request, now)
+	return handler.applyHumanAction(ctx, tx, conversation, request, now)
 }
 
 // applyHumanAction runs an action that the human performs as a member of the room.
-func (handler *Handler) applyHumanAction(ctx context.Context, tx *sql.Tx, request wire.OperatorRequest, now int64) (wire.Value, error) {
-	_, conversation := operatorTarget(request)
+func (handler *Handler) applyHumanAction(ctx context.Context, tx *sql.Tx, conversation string, request wire.OperatorRequest, now int64) (wire.Value, error) {
 	human, err := writingActor(ctx, tx, conversation)
 	if err != nil {
 		return wire.Value{}, err

@@ -117,14 +117,14 @@ func TestRequestLineIsOneCompactJSONLine(t *testing.T) {
 
 func TestSizeCapsAreEnforcedWithABoundedReader(t *testing.T) {
 	long := `{"result": "` + strings.Repeat("x", MaxResponseBytes) + `"}` + "\n"
-	if _, err := readBoundedLine(bufio.NewReader(strings.NewReader(long)), MaxResponseBytes); !errors.Is(err, ErrIncompleteResponse) {
+	if _, err := ReadLine(strings.NewReader(long), MaxResponseBytes); !errors.Is(err, ErrLineTooLong) {
 		t.Errorf("oversized line: err = %v", err)
 	}
-	if _, err := readBoundedLine(bufio.NewReader(strings.NewReader(`{"result": 1}`)), MaxResponseBytes); !errors.Is(err, ErrIncompleteResponse) {
+	if _, err := ReadLine(strings.NewReader(`{"result": 1}`), MaxResponseBytes); !errors.Is(err, ErrLineTooLong) {
 		t.Errorf("line without newline: err = %v", err)
 	}
 	exact := strings.Repeat("x", MaxResponseBytes-1) + "\n"
-	if line, err := readBoundedLine(bufio.NewReader(strings.NewReader(exact)), MaxResponseBytes); err != nil || len(line) != MaxResponseBytes {
+	if line, err := ReadLine(strings.NewReader(exact), MaxResponseBytes); err != nil || len(line) != MaxResponseBytes {
 		t.Errorf("line at the cap: %d bytes, err = %v", len(line), err)
 	}
 	if MaxRequestBytes != 128*1024 {

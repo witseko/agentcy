@@ -190,6 +190,15 @@ func serverInfoValue(implementation *mcp.Implementation) wire.Value {
 	return info
 }
 
+// toolOutcome passes the raw wire.Value returned by a tool function back to shapeResults
+// without serializing and re-parsing indented JSON to detect MCP tasks.
+type toolOutcome struct {
+	value    wire.Value
+	hasValue bool
+}
+
+type toolOutcomeKey struct{}
+
 // toolHandler adapts a tool function to the SDK: the result becomes one indented JSON
 // text block, and an error becomes an error result in the Python shim's words.
 func toolHandler(name string, function toolFunction) mcp.ToolHandler {
@@ -202,6 +211,11 @@ func toolHandler(name string, function toolFunction) mcp.ToolHandler {
 		}
 		if err != nil {
 			return textResult("Error executing tool "+name+": "+err.Error(), true), nil
+		}
+		if outcome, ok := ctx.Value(toolOutcomeKey{}).(*toolOutcome); ok && outcome != nil {
+			outcome.value = result
+			outcome.hasValue = true
+			return &mcp.CallToolResult{}, nil
 		}
 		return textResult(result.Indented(), false), nil
 	}

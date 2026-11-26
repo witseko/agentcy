@@ -2,19 +2,16 @@ package fresh
 
 import (
 	"errors"
-	"io"
-	"io/fs"
 	"math"
-	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 	"unicode/utf8"
 
+	"github.com/witseko/agentcy/internal/paths"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -62,11 +59,28 @@ type Settings struct {
 	Plugins []Plugin
 }
 
-// Find returns the plugin registered under name, or nil.
+// clonePlugin returns an independent copy of plugin so callers cannot mutate cached
+// settings.
+func clonePlugin(plugin Plugin) *Plugin {
+	copied := plugin
+	copied.Command = slices.Clone(plugin.Command)
+	copied.Environment = slices.Clone(plugin.Environment)
+	if plugin.TokenCap != nil {
+		v := *plugin.TokenCap
+		copied.TokenCap = &v
+	}
+	if plugin.CostCapMicroUSD != nil {
+		v := *plugin.CostCapMicroUSD
+		copied.CostCapMicroUSD = &v
+	}
+	return &copied
+}
+
+// Find returns a copy of the plugin registered under name, or nil.
 func (settings *Settings) Find(name string) *Plugin {
 	for index := range settings.Plugins {
 		if settings.Plugins[index].Name == name {
-			return &settings.Plugins[index]
+			return clonePlugin(settings.Plugins[index])
 		}
 	}
 	return nil
@@ -82,117 +96,39 @@ func (file *SettingsFile) Plugin(name string) (*Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	if settings == nil || settings.Find(name) == nil {
+	if settings == nil {
 		return nil, ErrPluginNotConfigured
 	}
-	return settings.Find(name), nil
+	plugin := settings.Find(name)
+	if plugin == nil {
+		return nil, ErrPluginNotConfigured
+	}
+	return plugin, nil
 }
 
 // SettingsFile loads plugins.json and keeps the parsed result while the file's
 // modification time, size and inode stay the same (port plan fix L5). The safety checks
 // run on every Load. It is safe for concurrent use.
 type SettingsFile struct {
-	path   string
-	mutex  sync.Mutex
-	cached *loadedSettings
-}
-
-// loadedSettings is the result of parsing one version of the file.
-type loadedSettings struct {
-	identity fileIdentity
-	settings *Settings
-	err      error
-}
-
-// fileIdentity tells whether the file changed since it was parsed.
-type fileIdentity struct {
-	modified int64
-	size     int64
-	inode    uint64
+	file *paths.PrivateConfigFile[*Settings]
 }
 
 // NewSettingsFile returns the loader of plugins.json inside dataDir.
 func NewSettingsFile(dataDir string) *SettingsFile {
-	return &SettingsFile{path: filepath.Join(dataDir, SettingsFilename)}
+	return &SettingsFile{
+		file: paths.NewPrivateConfigFile(
+			filepath.Join(dataDir, SettingsFilename),
+			maxSettingsBytes,
+			ErrSettingsUnsafe,
+			ErrSettingsInvalid,
+			ParseSettings,
+		),
+	}
 }
 
-// Load returns the settings, or nil and no error when plugins.json does not exist. It
-// returns ErrSettingsUnsafe for anything but a regular file that belongs to the user,
-// has no group or other permission bits and is at most 64 KiB, and ErrSettingsInvalid
-// for a file that cannot be read or validated (read_settings in Python).
+// Load returns the settings, or nil and no error when plugins.json does not exist.
 func (file *SettingsFile) Load() (*Settings, error) {
-	file.mutex.Lock()
-	defer file.mutex.Unlock()
-	info, err := os.Lstat(file.path)
-	if errors.Is(err, fs.ErrNotExist) {
-		file.cached = nil
-		return nil, nil
-	}
-	if err != nil {
-		return nil, ErrSettingsInvalid
-	}
-	identity, err := privateFileIdentity(info)
-	if err != nil {
-		return nil, err
-	}
-	if file.cached != nil && file.cached.identity == identity {
-		return file.cached.settings, file.cached.err
-	}
-	loaded, err := file.read()
-	if err != nil {
-		return nil, err
-	}
-	if loaded == nil {
-		file.cached = nil
-		return nil, nil
-	}
-	file.cached = loaded
-	return loaded.settings, loaded.err
-}
-
-// read opens the file without following a symbolic link, checks the opened file again
-// and parses it. It returns nil when the file is gone. A parse failure is kept in
-// loadedSettings for the cache.
-func (file *SettingsFile) read() (*loadedSettings, error) {
-	handle, err := os.OpenFile(file.path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if errors.Is(err, syscall.ELOOP) {
-		return nil, ErrSettingsUnsafe
-	}
-	if err != nil {
-		return nil, ErrSettingsInvalid
-	}
-	defer handle.Close()
-	info, err := handle.Stat()
-	if err != nil {
-		return nil, ErrSettingsInvalid
-	}
-	identity, err := privateFileIdentity(info)
-	if err != nil {
-		return nil, err
-	}
-	data, err := io.ReadAll(io.LimitReader(handle, maxSettingsBytes+1))
-	if err != nil {
-		return nil, ErrSettingsInvalid
-	}
-	if len(data) > maxSettingsBytes {
-		return nil, ErrSettingsUnsafe
-	}
-	settings, err := ParseSettings(data)
-	return &loadedSettings{identity: identity, settings: settings, err: err}, nil
-}
-
-// privateFileIdentity checks that info describes a regular file owned by the user with
-// no group or other permission bits and at most 64 KiB, and returns its identity.
-func privateFileIdentity(info fs.FileInfo) (fileIdentity, error) {
-	status, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !info.Mode().IsRegular() || int(status.Uid) != os.Getuid() ||
-		info.Mode().Perm()&0o077 != 0 || info.Size() > maxSettingsBytes {
-		return fileIdentity{}, ErrSettingsUnsafe
-	}
-	return fileIdentity{modified: info.ModTime().UnixNano(), size: info.Size(), inode: uint64(status.Ino)}, nil
+	return file.file.Load()
 }
 
 // ParseSettings validates the content of plugins.json like the pydantic models: an
@@ -200,7 +136,7 @@ func privateFileIdentity(info fs.FileInfo) (fileIdentity, error) {
 // entries without unknown fields. Every problem returns ErrSettingsInvalid.
 func ParseSettings(data []byte) (*Settings, error) {
 	document, err := wire.Parse(data)
-	if err != nil || !onlyKnownFields(document, "plugins") {
+	if err != nil || !document.OnlyKnownFields("plugins") {
 		return nil, ErrSettingsInvalid
 	}
 	settings := &Settings{Plugins: []Plugin{}}
@@ -229,7 +165,7 @@ func ParseSettings(data []byte) (*Settings, error) {
 // parsePlugin validates one plugin entry; command and model are required.
 func parsePlugin(value wire.Value) (Plugin, bool) {
 	plugin := Plugin{TimeoutSeconds: defaultTimeoutSeconds, Environment: []string{}}
-	if !onlyKnownFields(value, "command", "model", "timeout_seconds", "token_cap", "cost_cap_microusd", "environment") {
+	if !value.OnlyKnownFields("command", "model", "timeout_seconds", "token_cap", "cost_cap_microusd", "environment") {
 		return plugin, false
 	}
 	command, hasCommand := value.Get("command")
@@ -335,21 +271,4 @@ func laxInteger(value wire.Value, minimum, maximum int64) (int64, bool) {
 		return 0, false
 	}
 	return number, number >= minimum && number <= maximum
-}
-
-// onlyKnownFields reports whether value is an object whose keys are all in known.
-func onlyKnownFields(value wire.Value, known ...string) bool {
-	if value.Kind != wire.Object {
-		return false
-	}
-	for _, key := range value.Keys() {
-		found := false
-		for _, candidate := range known {
-			found = found || candidate == key
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
 }

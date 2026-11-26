@@ -60,37 +60,34 @@ func (worker *freshWorker) credential() (string, error) {
 // token. Later calls return the first answer.
 func (worker *freshWorker) join(call toolCall) (wire.Value, error) {
 	worker.mutex.Lock()
-	defer worker.mutex.Unlock()
+	if worker.token != "" {
+		joined := worker.joined.Copy()
+		worker.mutex.Unlock()
+		return joined, nil
+	}
+	worker.mutex.Unlock()
+	joined, err := exchangeValid(call.ctx, worker.shim.core, &wire.Join{Workspace: worker.shim.workspace, Code: worker.code})
+	if err != nil {
+		return wire.Value{}, err
+	}
+	token, _ := joined.Delete("token")
+	worker.mutex.Lock()
 	if worker.token == "" {
-		joined, err := exchangeValid(call.ctx, worker.shim.core, &wire.Join{Workspace: worker.shim.workspace, Code: worker.code})
-		if err != nil {
-			return wire.Value{}, err
-		}
-		token, _ := joined.Delete("token")
 		worker.token = token.StringOf()
 		worker.joined = joined
 	}
-	return worker.joined.Copy(), nil
+	result := worker.joined.Copy()
+	worker.mutex.Unlock()
+	return result, nil
 }
 
 // post posts a finding, blocker, or completion and forgets every quiet wait.
 func (worker *freshWorker) post(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	request := &wire.Post{Workspace: worker.shim.workspace}
-	request.SubmissionID = arguments.key("submission_id")
-	request.Body = arguments.body("body")
-	request.Kind = arguments.literal("kind", "note", wire.PostKinds)
-	request.To = arguments.optionalLabel("to")
-	request.ReplyTo = arguments.optionalStrictInt("reply_to", wire.MessageRange)
-	if err := arguments.err("post_message"); err != nil {
-		return wire.Value{}, err
-	}
 	token, err := worker.credential()
 	if err != nil {
 		return wire.Value{}, err
 	}
-	request.Token = token
-	result, err := exchangeValid(call.ctx, worker.shim.core, request)
+	result, err := worker.shim.postWithToken(call, token, false)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -100,17 +97,11 @@ func (worker *freshWorker) post(call toolCall) (wire.Value, error) {
 
 // read reads after the cursor and optionally waits for activity or close guidance.
 func (worker *freshWorker) read(call toolCall) (wire.Value, error) {
-	arguments := call.arguments
-	after := arguments.cursor("after")
-	waitSeconds := arguments.strictInt("wait_seconds", 0, wire.WaitRange)
-	if err := arguments.err("read_messages"); err != nil {
-		return wire.Value{}, err
-	}
 	token, err := worker.credential()
 	if err != nil {
 		return wire.Value{}, err
 	}
-	return readMember(call.ctx, worker.shim.core, worker.shim.state, worker.shim.workspace, token, after, waitSeconds)
+	return worker.shim.readWithToken(call, token)
 }
 
 // status returns member activity, launch states and open tasks.
@@ -119,10 +110,5 @@ func (worker *freshWorker) status(call toolCall) (wire.Value, error) {
 	if err != nil {
 		return wire.Value{}, err
 	}
-	status, err := exchangeValid(call.ctx, worker.shim.core, &wire.Status{Workspace: worker.shim.workspace, Token: token})
-	if err != nil {
-		return wire.Value{}, err
-	}
-	status.Delete("participant")
-	return status, nil
+	return worker.shim.statusWithToken(call, token)
 }

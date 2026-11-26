@@ -3,6 +3,7 @@ package fresh
 import (
 	"errors"
 
+	"github.com/witseko/agentcy/internal/progress"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
@@ -76,7 +77,7 @@ type RunResult struct {
 // parseCapabilities validates a capabilities reply: an object with version 1 and the
 // optional booleans token_cap and cost_cap, and nothing else.
 func parseCapabilities(value wire.Value) (Capabilities, error) {
-	if !onlyKnownFields(value, "version", "token_cap", "cost_cap") {
+	if !value.OnlyKnownFields("version", "token_cap", "cost_cap") {
 		return Capabilities{}, errContract
 	}
 	version, found := value.Get("version")
@@ -109,7 +110,7 @@ func optionalBool(object wire.Value, key string) (bool, bool) {
 // parseRunResult validates a run result: a known state, an optional integer exit code
 // and optional token counts from 0 to 1,000,000,000, and nothing else.
 func parseRunResult(value wire.Value) (RunResult, error) {
-	if !onlyKnownFields(value, "state", "exit_code", "input_tokens", "output_tokens") {
+	if !value.OnlyKnownFields("state", "exit_code", "input_tokens", "output_tokens") {
 		return RunResult{}, errContract
 	}
 	state, found := value.Get("state")
@@ -155,5 +156,5 @@ func isRunState(state string) bool {
 // IsPendingState reports a state in which the bridge still tracks the run
 // (PENDING_STATES in assignment_tables.py).
 func IsPendingState(state string) bool {
-	return state == StateQueued || state == StateStarting || state == StateRunning
+	return progress.IsPendingState(state)
 }

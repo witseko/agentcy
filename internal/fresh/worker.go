@@ -2,6 +2,7 @@ package fresh
 
 import (
 	"context"
+	"io"
 	"log"
 	"sort"
 	"sync"
@@ -28,6 +29,10 @@ const (
 // cancelMaxFailures is the number of consecutive failed cancel checks after which the
 // state becomes unknown (CANCEL_MAX_FAILURES).
 const cancelMaxFailures = 5
+
+// maxConcurrentPluginCalls bounds concurrent blocking plugin subprocesses dispatched by
+// the worker so one hung plugin cannot starve other workspaces.
+const maxConcurrentPluginCalls = 8
 
 // Timing holds the worker's intervals. Zero fields take the defaults.
 type Timing struct {
@@ -88,10 +93,12 @@ type Worker struct {
 	ready atomic.Bool
 	inbox inbox
 	state workerState
+	sem   chan struct{}
 }
 
-// workerState is the worker's memory of pending runs. Only the Run goroutine uses it.
+// workerState is the worker's memory of pending runs. mutex guards all maps and notify.
 type workerState struct {
+	mutex sync.Mutex
 	// notify wakes the waiting reads of a conversation.
 	notify func(workspace, room string)
 	// runs are the pending runs from the last read of each workspace, by assignment ID.
@@ -100,6 +107,8 @@ type workerState struct {
 	retries map[string]retry
 	// nextInspect is when a run without a stop reason is inspected next.
 	nextInspect map[string]time.Time
+	// inFlight tracks assignment IDs that currently have a blocking plugin call running.
+	inFlight map[string]bool
 }
 
 // retry schedules another check of one run while counting consecutive failures (Retry
@@ -127,7 +136,7 @@ func NewWorker(config WorkerConfig) *Worker {
 	}
 	logger := config.Logger
 	if logger == nil {
-		logger = log.New(discard{}, "", 0)
+		logger = log.New(io.Discard, "", 0)
 	}
 	return &Worker{
 		store:    config.Store,
@@ -137,20 +146,16 @@ func NewWorker(config WorkerConfig) *Worker {
 		now:      now,
 		logger:   logger,
 		inbox:    inbox{woken: map[string]bool{}, signal: make(chan struct{}, 1)},
+		sem:      make(chan struct{}, maxConcurrentPluginCalls),
 		state: workerState{
 			notify:      func(string, string) {},
 			runs:        map[string]Run{},
 			retries:     map[string]retry{},
 			nextInspect: map[string]time.Time{},
+			inFlight:    map[string]bool{},
 		},
 	}
 }
-
-// discard is a writer that drops everything.
-type discard struct{}
-
-// Write drops data.
-func (discard) Write(data []byte) (int, error) { return len(data), nil }
 
 // Ready reports whether the startup reconciliation has finished. Until then launches
 // are refused, as in Python.
@@ -198,11 +203,15 @@ func (box *inbox) take() ([]Dispatch, map[string]bool) {
 // worker added an event to it. A plugin call in flight when ctx ends is stopped and its
 // process killed; the next daemon reconciles the run.
 func (worker *Worker) Run(ctx context.Context, notify func(workspace, room string)) {
+	worker.state.mutex.Lock()
 	worker.state.notify = notify
+	worker.state.mutex.Unlock()
 	worker.reconcile(ctx)
 	worker.ready.Store(true)
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for {
 		worker.resetTimer(timer)
 		select {
@@ -211,7 +220,7 @@ func (worker *Worker) Run(ctx context.Context, notify func(workspace, room strin
 		case <-worker.inbox.signal:
 		case <-timer.C:
 		}
-		worker.step(ctx)
+		worker.stepAsync(ctx, &wg)
 	}
 }
 
@@ -226,8 +235,38 @@ func (worker *Worker) resetTimer(timer *time.Timer) {
 	timer.Reset(max(due.Sub(worker.now()), 0))
 }
 
-// step serves the queued launches, then rereads each workspace that a launch or wake
-// named or that has a due check.
+// spawnPluginTask runs task in a goroutine bounded by worker.sem while marking runID
+// in-flight so no duplicate call is launched for the same run. It signals the worker
+// loop when done.
+func (worker *Worker) spawnPluginTask(ctx context.Context, wg *sync.WaitGroup, runID string, task func()) {
+	worker.state.mutex.Lock()
+	if worker.state.inFlight[runID] {
+		worker.state.mutex.Unlock()
+		return
+	}
+	worker.state.inFlight[runID] = true
+	worker.state.mutex.Unlock()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			worker.state.mutex.Lock()
+			delete(worker.state.inFlight, runID)
+			worker.state.mutex.Unlock()
+			worker.signal()
+		}()
+		select {
+		case worker.sem <- struct{}{}:
+			defer func() { <-worker.sem }()
+		case <-ctx.Done():
+			return
+		}
+		task()
+	}()
+}
+
+// step serves the queued launches and due checks synchronously (used by unit tests).
 func (worker *Worker) step(ctx context.Context) {
 	jobs, workspaces := worker.inbox.take()
 	for _, job := range jobs {
@@ -239,12 +278,7 @@ func (worker *Worker) step(ctx context.Context) {
 		}
 		workspaces[job.Workspace] = true
 	}
-	now := worker.now()
-	for _, run := range worker.state.runs {
-		if due, found := worker.runDue(run, now); found && !due.After(now) {
-			workspaces[run.Workspace] = true
-		}
-	}
+	worker.addDueWorkspaces(workspaces)
 	for _, workspace := range sortedKeys(workspaces) {
 		if ctx.Err() != nil {
 			return
@@ -255,25 +289,69 @@ func (worker *Worker) step(ctx context.Context) {
 	}
 }
 
+// stepAsync dispatches queued launches and due inspections concurrently via the bounded
+// worker pool so one slow or hung plugin does not block other workspaces.
+func (worker *Worker) stepAsync(ctx context.Context, wg *sync.WaitGroup) {
+	jobs, workspaces := worker.inbox.take()
+	for _, job := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
+		job := job
+		worker.spawnPluginTask(ctx, wg, job.Start.AssignmentID, func() {
+			if err := worker.launch(ctx, job); err != nil {
+				worker.logger.Print("Fresh-run dispatch failed")
+			}
+		})
+	}
+	worker.addDueWorkspaces(workspaces)
+	for _, workspace := range sortedKeys(workspaces) {
+		if ctx.Err() != nil {
+			return
+		}
+		if worker.tracks(workspace) {
+			worker.serviceWorkspaceAsync(ctx, wg, workspace, false)
+		}
+	}
+}
+
+// addDueWorkspaces adds every workspace with a remembered run that is due and not
+// currently in flight.
+func (worker *Worker) addDueWorkspaces(workspaces map[string]bool) {
+	now := worker.now()
+	worker.state.mutex.Lock()
+	defer worker.state.mutex.Unlock()
+	for _, run := range worker.state.runs {
+		if worker.state.inFlight[run.ID] {
+			continue
+		}
+		if due, found := worker.runDueLocked(run, now); found && !due.After(now) {
+			workspaces[run.Workspace] = true
+		}
+	}
+}
+
 // reconcile is the startup scan: it checks every pending run of every store with the
-// plugin, queued runs included, as AssignmentWorker.scan(restart=True) does.
+// plugin, queued runs included, as AssignmentWorker.scan(restart=True) does, using
+// bounded concurrency across workspaces.
 func (worker *Worker) reconcile(ctx context.Context) {
 	workspaces, err := worker.store.WorkspaceKeys()
 	if err != nil {
 		worker.logger.Print("Fresh-run reconciliation failed")
 		return
 	}
+	var wg sync.WaitGroup
 	for _, workspace := range workspaces {
 		if ctx.Err() != nil {
-			return
+			break
 		}
-		worker.serviceWorkspace(ctx, workspace, true)
+		worker.serviceWorkspaceAsync(ctx, &wg, workspace, true)
 	}
+	wg.Wait()
 }
 
 // serviceWorkspace rereads one store's pending runs, remembers them, and checks each
-// run that is due. A store failure is logged with a fixed message and skips the rest of
-// that store, as in Python.
+// run that is due synchronously.
 func (worker *Worker) serviceWorkspace(ctx context.Context, workspace string, restart bool) {
 	runs, err := worker.store.Pending(ctx, workspace)
 	if err != nil {
@@ -293,11 +371,45 @@ func (worker *Worker) serviceWorkspace(ctx context.Context, workspace string, re
 	}
 }
 
-// remember replaces the remembered runs of a workspace with the ones just read.
+// serviceWorkspaceAsync rereads one store's pending runs, remembers them, and dispatches
+// due inspections concurrently via the bounded pool.
+func (worker *Worker) serviceWorkspaceAsync(ctx context.Context, wg *sync.WaitGroup, workspace string, restart bool) {
+	runs, err := worker.store.Pending(ctx, workspace)
+	if err != nil {
+		worker.logger.Print("Fresh-run reconciliation failed")
+		return
+	}
+	worker.remember(workspace, runs)
+	for _, run := range runs {
+		if !restart && run.State == StateQueued {
+			continue
+		}
+		if !worker.needsInspect(run, restart) {
+			continue
+		}
+		run := run
+		worker.spawnPluginTask(ctx, wg, run.ID, func() {
+			if err := worker.inspect(ctx, run, restart); err != nil {
+				worker.logger.Print("Fresh-run reconciliation failed")
+			}
+		})
+	}
+}
+
+// remember replaces the remembered runs of a workspace with the ones just read and
+// prunes retry/inspection state for runs that disappeared.
 func (worker *Worker) remember(workspace string, runs []Run) {
+	present := make(map[string]bool, len(runs))
+	for _, run := range runs {
+		present[run.ID] = true
+	}
+	worker.state.mutex.Lock()
+	defer worker.state.mutex.Unlock()
 	for id, run := range worker.state.runs {
-		if run.Workspace == workspace {
+		if run.Workspace == workspace && !present[id] {
 			delete(worker.state.runs, id)
+			delete(worker.state.retries, id)
+			delete(worker.state.nextInspect, id)
 		}
 	}
 	for _, run := range runs {
@@ -307,6 +419,8 @@ func (worker *Worker) remember(workspace string, runs []Run) {
 
 // tracks reports whether the worker remembers a pending run of the workspace.
 func (worker *Worker) tracks(workspace string) bool {
+	worker.state.mutex.Lock()
+	defer worker.state.mutex.Unlock()
 	for _, run := range worker.state.runs {
 		if run.Workspace == workspace {
 			return true
@@ -315,13 +429,19 @@ func (worker *Worker) tracks(workspace string) bool {
 	return false
 }
 
-// nextDue returns the earliest time any remembered run needs a check.
+// nextDue returns the earliest time any remembered run (not currently in flight) needs a
+// check.
 func (worker *Worker) nextDue() (time.Time, bool) {
 	var earliest time.Time
 	found := false
 	now := worker.now()
+	worker.state.mutex.Lock()
+	defer worker.state.mutex.Unlock()
 	for _, run := range worker.state.runs {
-		due, ok := worker.runDue(run, now)
+		if worker.state.inFlight[run.ID] {
+			continue
+		}
+		due, ok := worker.runDueLocked(run, now)
 		if ok && (!found || due.Before(earliest)) {
 			earliest, found = due, true
 		}
@@ -329,10 +449,8 @@ func (worker *Worker) nextDue() (time.Time, bool) {
 	return earliest, found
 }
 
-// runDue returns when a run needs its next check: its scheduled retry or inspection,
-// or earlier when its deadline or round deadline arrives. A queued run waits for its
-// Dispatch and has no due time.
-func (worker *Worker) runDue(run Run, now time.Time) (time.Time, bool) {
+// runDueLocked returns when a run needs its next check. Caller must hold state.mutex.
+func (worker *Worker) runDueLocked(run Run, now time.Time) (time.Time, bool) {
 	if run.State == StateQueued {
 		return time.Time{}, false
 	}

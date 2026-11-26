@@ -145,20 +145,24 @@ func (handler *Handler) OpenWait(ctx context.Context, request *wire.Read, now ti
 // ReadPage refreshes the participant and loads one page without recording usage
 // (read_page in concurrency.py). The filter describes the reader as it read the page.
 func (handler *Handler) ReadPage(ctx context.Context, request *wire.Read, now time.Time) (core.WaitPage, error) {
-	var filter readerFilter
-	page, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+	var waitPage core.WaitPage
+	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, err := refreshParticipant(ctx, tx, request.Token, true, now.Unix())
 		if err != nil {
 			return wire.Value{}, err
 		}
-		filter = newReaderFilter(member, request.After)
 		page, _, err := readPage(ctx, tx, member, request.After)
-		return page, err
+		if err != nil {
+			return wire.Value{}, err
+		}
+		page.Filter = newReaderFilter(member, request.After)
+		waitPage = page
+		return page.Page, nil
 	})
 	if err != nil {
 		return core.WaitPage{}, err
 	}
-	return core.WaitPage{Page: page, Filter: filter}, nil
+	return waitPage, nil
 }
 
 // RecordDelivery records the estimated input tokens of a page that a waiting read
@@ -201,8 +205,8 @@ func (handler *Handler) FinishListen(ctx context.Context, request *wire.Read, pa
 		if err != nil {
 			return wire.Value{}, err
 		}
-		result, _, err := status(ctx, tx, handler.book, member, unix)
-		return result, err
+		current, err := status(ctx, tx, handler.book, member, unix)
+		return current.value, err
 	})
 }
 

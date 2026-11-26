@@ -64,19 +64,57 @@ func checkManager(member *participant, roleError string) error {
 	return nil
 }
 
+// inviteOutcome is the typed result of inviting or reissuing a participant slot.
+type inviteOutcome struct {
+	slotID     int64
+	label      string
+	role       string
+	code       string
+	joinPrompt string
+}
+
+// value encodes inviteOutcome as the member invite response object.
+func (out inviteOutcome) value() wire.Value {
+	result := wire.NewObject()
+	result.Set("participant", wire.TextValue(out.label))
+	result.Set("role", wire.TextValue(out.role))
+	result.Set("code", wire.TextValue(out.code))
+	result.Set("join_prompt", wire.TextValue(out.joinPrompt))
+	return result
+}
+
+// openInviteOutcome is the typed result of enabling, rotating, or disabling open invites.
+type openInviteOutcome struct {
+	enabled    bool
+	code       string
+	joinPrompt string
+}
+
+// value encodes openInviteOutcome as the member open_invite response object.
+func (out openInviteOutcome) value() wire.Value {
+	if !out.enabled {
+		return singleField("open_invite", wire.BoolValue(false))
+	}
+	result := wire.NewObject()
+	result.Set("open_invite", wire.BoolValue(true))
+	result.Set("code", wire.TextValue(out.code))
+	result.Set("join_prompt", wire.TextValue(out.joinPrompt))
+	return result
+}
+
 // invite reserves a slot or replaces an unused code within the actor's conversation.
 // With reinvite, a joined or retired slot gets a new code: the slot becomes active again
 // and its previous chat loses its token (invite in repository.py).
-func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteRequest, now int64) (wire.Value, error) {
+func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteRequest, now int64) (inviteOutcome, error) {
 	if err := checkManager(actor, "Only a lead or co-lead can invite participants"); err != nil {
-		return wire.Value{}, err
+		return inviteOutcome{}, err
 	}
 	if err := checkName(request.name); err != nil {
-		return wire.Value{}, err
+		return inviteOutcome{}, err
 	}
 	slots, err := inviteSlots(ctx, tx, actor.Room)
 	if err != nil {
-		return wire.Value{}, err
+		return inviteOutcome{}, err
 	}
 	var slot *existingSlot
 	for index := range slots {
@@ -86,14 +124,14 @@ func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteR
 		}
 	}
 	if slot == nil && request.reinvite {
-		return wire.Value{}, reject(unknownParticipant)
+		return inviteOutcome{}, reject(unknownParticipant)
 	}
 	if slot == nil && len(slots) >= maxParticipants {
-		return wire.Value{}, rejectf(participantCapTemplate, maxParticipants)
+		return inviteOutcome{}, rejectf(participantCapTemplate, maxParticipants)
 	}
 	if slot != nil {
 		if err := checkReissue(ctx, tx, actor, *slot, request.reinvite); err != nil {
-			return wire.Value{}, err
+			return inviteOutcome{}, err
 		}
 	}
 	label := request.name
@@ -107,34 +145,36 @@ func invite(ctx context.Context, tx *sql.Tx, actor *participant, request inviteR
 			role = slot.role
 		}
 	}
-	code, event, err := storeInvitation(ctx, tx, actor, slot, teamSlot{label: label, role: role, model: request.model, tokenBudget: request.tokenBudget}, request, now)
+	slotID, code, event, err := storeInvitation(ctx, tx, actor, slot, teamSlot{label: label, role: role, model: request.model, tokenBudget: request.tokenBudget}, request, now)
 	if err != nil {
-		return wire.Value{}, err
+		return inviteOutcome{}, err
 	}
 	if role == roleCoLead {
 		if _, err := tx.ExecContext(ctx, "UPDATE participant SET role=? WHERE participant.room = ? AND participant.role = ?", roleCoLead, actor.Room, roleLead); err != nil {
-			return wire.Value{}, err
+			return inviteOutcome{}, err
 		}
 	}
 	if err := recordEvent(ctx, tx, actor.Room, actor.ID, event, now); err != nil {
-		return wire.Value{}, err
+		return inviteOutcome{}, err
 	}
-	result := wire.NewObject()
-	result.Set("participant", wire.TextValue(label))
-	result.Set("role", wire.TextValue(roleLabel(role)))
-	result.Set("code", wire.TextValue(code))
-	result.Set("join_prompt", wire.TextValue(formatJoinPrompt(actor.Brief, joinPromptOptions{
-		participant: label, role: roleLabel(role), template: roleJoinTemplate(roleLabel(role)),
-	})))
-	return result, nil
+	roleName := roleLabel(role)
+	return inviteOutcome{
+		slotID: slotID,
+		label:  label,
+		role:   roleName,
+		code:   code,
+		joinPrompt: formatJoinPrompt(actor.Brief, joinPromptOptions{
+			participant: label, role: roleName, template: roleJoinTemplate(roleName),
+		}),
+	}, nil
 }
 
 // storeInvitation inserts a new slot, or gives an existing one a new code, and returns
-// the code and the event text.
-func storeInvitation(ctx context.Context, tx *sql.Tx, actor *participant, slot *existingSlot, wanted teamSlot, request inviteRequest, now int64) (string, string, error) {
+// the slot ID, code, and event text.
+func storeInvitation(ctx context.Context, tx *sql.Tx, actor *participant, slot *existingSlot, wanted teamSlot, request inviteRequest, now int64) (int64, string, string, error) {
 	if slot == nil {
-		code, err := insertInvitation(ctx, tx, actor.Room, request.workspace, wanted, now)
-		return code, "Invited " + wanted.label + " as " + roleLabel(wanted.role) + ".", err
+		id, code, err := insertInvitation(ctx, tx, actor.Room, request.workspace, wanted, now)
+		return id, code, "Invited " + wanted.label + " as " + roleLabel(wanted.role) + ".", err
 	}
 	code := newJoinCode(request.workspace, now)
 	query := "UPDATE participant SET role=?, invite_hash=?, expires=?"
@@ -153,13 +193,13 @@ func storeInvitation(ctx context.Context, tx *sql.Tx, actor *participant, slot *
 	}
 	query += " WHERE participant.id = ?"
 	if _, err := tx.ExecContext(ctx, query, append(arguments, slot.id)...); err != nil {
-		return "", "", err
+		return 0, "", "", err
 	}
 	event := "Reissued the invitation for " + wanted.label + " as " + roleLabel(wanted.role) + "."
 	if request.reinvite {
 		event = "Reinvited " + wanted.label + " as " + roleLabel(wanted.role) + "."
 	}
-	return code.code, event, nil
+	return slot.id, code.code, event, nil
 }
 
 // checkReissue allows a new code for an existing slot only when it cannot cut off a chat
@@ -185,36 +225,36 @@ func checkReissue(ctx context.Context, tx *sql.Tx, actor *participant, slot exis
 }
 
 // setOpenInvite enables, rotates, or disables a room's reusable invite code.
-func setOpenInvite(ctx context.Context, tx *sql.Tx, actor *participant, workspace string, enabled bool, now int64) (wire.Value, error) {
+func setOpenInvite(ctx context.Context, tx *sql.Tx, actor *participant, workspace string, enabled bool, now int64) (openInviteOutcome, error) {
 	if err := checkManager(actor, "Only a lead, co-lead or the human can manage open invites"); err != nil {
-		return wire.Value{}, err
+		return openInviteOutcome{}, err
 	}
 	hadCode := actor.OpenInviteHash.Valid
 	if !enabled {
 		if hadCode {
 			if _, err := tx.ExecContext(ctx, "UPDATE conversation SET open_invite_hash=? WHERE conversation.id = ?", nil, actor.Room); err != nil {
-				return wire.Value{}, err
+				return openInviteOutcome{}, err
 			}
 			if err := recordEvent(ctx, tx, actor.Room, actor.ID, "Disabled open invite.", now); err != nil {
-				return wire.Value{}, err
+				return openInviteOutcome{}, err
 			}
 		}
-		return singleField("open_invite", wire.BoolValue(false)), nil
+		return openInviteOutcome{enabled: false}, nil
 	}
 	code, hash := newOpenInviteCode(workspace)
 	if _, err := tx.ExecContext(ctx, "UPDATE conversation SET open_invite_hash=? WHERE conversation.id = ?", hash, actor.Room); err != nil {
-		return wire.Value{}, err
+		return openInviteOutcome{}, err
 	}
 	event := "Enabled open invite."
 	if hadCode {
 		event = "Rotated the open invite code."
 	}
 	if err := recordEvent(ctx, tx, actor.Room, actor.ID, event, now); err != nil {
-		return wire.Value{}, err
+		return openInviteOutcome{}, err
 	}
-	result := wire.NewObject()
-	result.Set("open_invite", wire.BoolValue(true))
-	result.Set("code", wire.TextValue(code))
-	result.Set("join_prompt", wire.TextValue(formatOpenJoinPrompt(actor.Brief, "", false)))
-	return result, nil
+	return openInviteOutcome{
+		enabled:    true,
+		code:       code,
+		joinPrompt: formatOpenJoinPrompt(actor.Brief, "", false),
+	}, nil
 }
