@@ -51,6 +51,28 @@ Audit the locked third-party runtime and development dependencies.
 )
 ```
 
+## Daemon conformance suite
+
+The suite in `conformance/` pins the behavior of the core daemon as a black box. It starts the daemon that `AGENTCY_CORE_CMD` names, sends requests over the Unix socket, and compares every normalized response with a golden file in `conformance/testdata/`. The goldens come from the Python core, so a Go core must give the same responses.
+
+```bash
+make conformance
+# or, for another daemon:
+AGENTCY_CORE_CMD="uv run python -I -m agentcy.mcp.core" go test -tags conformance ./conformance/...
+```
+
+Each test starts its own daemon with a new private `AGENTCY_HOME` and a new workspace under `/tmp`, and stops the daemon at the end. The suite never reads or writes `~/.agentcy`. Without the `conformance` build tag, `go test ./...` skips the suite.
+
+Normalization replaces values that change between runs with placeholders: `<room-1>` for a conversation ID, `<code-1>` for a join code, `<token-1>` for a participant token, `<workspace-1>` for a workspace key, `<proposal-1>` for a proposal ID, `<checkout>` and `<home>` for temp paths, and `<now>` or `<now+30m>` for a Unix time relative to the daemon start. The first distinct value of a kind gets number 1. The goldens keep the key order of every object and the exact text of every error.
+
+To add a scenario:
+
+1. Copy a test function in `conformance/*_test.go`. Start it with `newScenario(t)`, or `newGitScenario(t)` when the workspace key matters.
+2. Send requests with `s.member`, `s.post` and `s.operator`. Give each step a label that says what it checks. Read values for later steps with `reply.text` and `reply.number`.
+3. Record the golden with `-update`, read the new file in `conformance/testdata/`, then run the suite three times without `-update` to confirm the result does not change.
+
+Do not put text in a request that looks like a generated value: a run of 24, 32 or 64 characters from `0-9a-f`, or a run of 43 URL-safe characters. Normalization would replace it.
+
 ## Release binaries
 
 Each GitHub release holds one terminal UI binary for each platform, named `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The repository holds no binaries. `make tui` downloads the one for your machine when Go is not installed.

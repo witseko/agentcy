@@ -1,0 +1,158 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Worker", "Spare", "Late"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Spare": "<code-2>",
+      "Late": "<code-3>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Late": "worker",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. an untagged unknown code
+-> {"action": "join", "code": "not-a-real-code", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation. Set both clients to the same --workspace and reconnect."
+}
+
+== 3. a tagged code with a wrong tag
+-> {"action": "join", "code": "<code-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Join code does not match this workspace. Set both clients to the same --workspace and reconnect."
+}
+
+== 4. a valid code from another workspace
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-2>"}
+<- {
+  "error": "Join code does not match this workspace. Set both clients to the same --workspace and reconnect."
+}
+
+== 5. lead reissues the unused worker code (case-insensitive name)
+-> {"action": "invite", "name": "worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "role": "worker",
+    "code": "<code-5>",
+    "join_prompt": "Review - worker (Worker): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Worker)\"."
+  }
+}
+
+== 6. the replaced code no longer works
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 7. the new code works
+-> {"action": "join", "code": "<code-5>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Late": "worker",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-2>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Reissued the invitation for Worker as worker.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 1,
+    "more": false
+  }
+}
+
+== 8. the new code cannot be reused
+-> {"action": "join", "code": "<code-5>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invitation slot already taken: Worker"
+}
+
+== 9. lead retires the unjoined spare slot
+-> {"action": "retire", "name": "Spare", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Spare",
+    "retired": true
+  }
+}
+
+== 10. the retired slot's code is expired
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 11. a worker cannot invite
+-> {"action": "invite", "name": "More", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can invite participants"
+}
+
+== 12. a joined slot cannot be reissued
+-> {"action": "invite", "name": "wOrKeR", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invitation slot already taken: Worker. Pass reinvite to replace its chat"
+}
+
+== 13. an unknown token cannot invite
+-> {"action": "invite", "name": "More", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 14. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 15. an unused code of a closed conversation is invalid
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 16. closed conversation rejects invites
+-> {"action": "invite", "name": "Late", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 17. lead reopens
+-> {"action": "reopen", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 18. the code expired at close stays expired after reopen
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+

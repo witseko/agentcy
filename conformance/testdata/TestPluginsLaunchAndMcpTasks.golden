@@ -1,0 +1,121 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Plugins", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Plugins: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Plugins\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Plugins",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. lead lists plugins
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "plugins": []
+  }
+}
+
+== 4. a worker cannot list plugins
+-> {"action": "plugins", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can launch fresh workers"
+}
+
+== 5. an unknown token cannot list plugins
+-> {"action": "plugins", "token": "unknown", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 6. a worker cannot launch
+-> {"action": "launch", "directory": "<checkout>", "name": "Helper", "plugin": "fixture", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can launch fresh workers"
+}
+
+== 7. launch with an invalid plugin name
+-> {"action": "launch", "directory": "<checkout>", "name": "Helper", "plugin": "bad plugin", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 8. mcp_task_status of an unknown task
+-> {"action": "mcp_task_status", "task_id": "task-1", "workspace": "<workspace-1>"}
+<- {
+  "error": "Failed to retrieve task: Task not found"
+}
+
+== 9. mcp_task_cancel of an unknown task
+-> {"action": "mcp_task_cancel", "task_id": "task-1", "workspace": "<workspace-1>"}
+<- {
+  "error": "Failed to retrieve task: Task not found"
+}
+
+== 10. an invalid MCP task ID
+-> {"action": "mcp_task_status", "task_id": "bad id!", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 11. a 129-character MCP task ID
+-> {"action": "mcp_task_status", "task_id": "<129 characters starting \"tttttttttttt\">", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 12. operator plugins
+-> {"action": "operator_plugins", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "plugins": []
+  }
+}
+
+== 13. operator plugins refuses a directory
+-> {"action": "operator_plugins", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 14. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 15. lead cannot list plugins after close
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+

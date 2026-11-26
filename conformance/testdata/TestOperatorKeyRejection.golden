@@ -1,0 +1,676 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Keyed - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Keyed - lead (Lead)\"."
+      },
+      {
+        "participant": "W",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Keyed - worker (W): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Keyed - worker (W)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    },
+    "brief": "Keyed",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. operator_plugins without a key
+-> {"action": "operator_plugins", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 4. operator_plugins with a wrong key
+-> {"action": "operator_plugins", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 5. operator_plugins with a wrong key
+-> {"action": "operator_plugins", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 6. operator_plugins with a wrong key
+-> {"action": "operator_plugins", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 7. operator_plugins with a wrong key
+-> {"action": "operator_plugins", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 8. operator_plugins with a wrong key
+-> {"action": "operator_plugins", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 9. operator_list without a key
+-> {"action": "operator_list", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 10. operator_list with a wrong key
+-> {"action": "operator_list", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 11. operator_list with a wrong key
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 12. operator_list with a wrong key
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 13. operator_list with a wrong key
+-> {"action": "operator_list", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 14. operator_list with a wrong key
+-> {"action": "operator_list", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 15. operator_show without a key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 16. operator_show with a wrong key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 17. operator_show with a wrong key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 18. operator_show with a wrong key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 19. operator_show with a wrong key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 20. operator_show with a wrong key
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 21. operator_tasks without a key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 22. operator_tasks with a wrong key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 23. operator_tasks with a wrong key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 24. operator_tasks with a wrong key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 25. operator_tasks with a wrong key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 26. operator_tasks with a wrong key
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 27. operator_create without a key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 28. operator_create with a wrong key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "wrong", "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 29. operator_create with a wrong key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "<token-1>", "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 30. operator_create with a wrong key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "<200 characters starting \"kkkkkkkkkkkk\">", "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 31. operator_create with a wrong key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "", "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 32. operator_create with a wrong key
+-> {"action": "operator_create", "brief": "Keyed", "directory": "<checkout>", "invitees": ["W"], "key": "schlüssel", "lead": "Lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 33. operator_invite without a key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 34. operator_invite with a wrong key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 35. operator_invite with a wrong key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 36. operator_invite with a wrong key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 37. operator_invite with a wrong key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 38. operator_invite with a wrong key
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "name": "Extra", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 39. operator_open_invite without a key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 40. operator_open_invite with a wrong key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 41. operator_open_invite with a wrong key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 42. operator_open_invite with a wrong key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 43. operator_open_invite with a wrong key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 44. operator_open_invite with a wrong key
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 45. operator_launch without a key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 46. operator_launch with a wrong key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 47. operator_launch with a wrong key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 48. operator_launch with a wrong key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 49. operator_launch with a wrong key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 50. operator_launch with a wrong key
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 51. operator_retire without a key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 52. operator_retire with a wrong key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 53. operator_retire with a wrong key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 54. operator_retire with a wrong key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 55. operator_retire with a wrong key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 56. operator_retire with a wrong key
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "name": "W", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 57. operator_set_role without a key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 58. operator_set_role with a wrong key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 59. operator_set_role with a wrong key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 60. operator_set_role with a wrong key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 61. operator_set_role with a wrong key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 62. operator_set_role with a wrong key
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 63. operator_post without a key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 64. operator_post with a wrong key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 65. operator_post with a wrong key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 66. operator_post with a wrong key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 67. operator_post with a wrong key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 68. operator_post with a wrong key
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "submission_id": "k", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 69. operator_close without a key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 70. operator_close with a wrong key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 71. operator_close with a wrong key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 72. operator_close with a wrong key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 73. operator_close with a wrong key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 74. operator_close with a wrong key
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 75. operator_reopen without a key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 76. operator_reopen with a wrong key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 77. operator_reopen with a wrong key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 78. operator_reopen with a wrong key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 79. operator_reopen with a wrong key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 80. operator_reopen with a wrong key
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 81. operator_archive without a key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 82. operator_archive with a wrong key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 83. operator_archive with a wrong key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 84. operator_archive with a wrong key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 85. operator_archive with a wrong key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 86. operator_archive with a wrong key
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 87. operator_rename without a key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 88. operator_rename with a wrong key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 89. operator_rename with a wrong key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 90. operator_rename with a wrong key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 91. operator_rename with a wrong key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 92. operator_rename with a wrong key
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "title": "T", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 93. operator_search without a key
+-> {"action": "operator_search", "directory": "<checkout>", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 94. operator_search with a wrong key
+-> {"action": "operator_search", "directory": "<checkout>", "key": "wrong", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 95. operator_search with a wrong key
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<token-1>", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 96. operator_search with a wrong key
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 97. operator_search with a wrong key
+-> {"action": "operator_search", "directory": "<checkout>", "key": "", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 98. operator_search with a wrong key
+-> {"action": "operator_search", "directory": "<checkout>", "key": "schlüssel", "query": "keyed", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 99. operator_set_member_budget without a key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 100. operator_set_member_budget with a wrong key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "wrong", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 101. operator_set_member_budget with a wrong key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<token-1>", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 102. operator_set_member_budget with a wrong key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 103. operator_set_member_budget with a wrong key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 104. operator_set_member_budget with a wrong key
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "schlüssel", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 105. list shows one conversation with one joined slot
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Keyed",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,249 @@
+== 1. lead opens a sealed round
+-> {"action": "create", "brief": "Propose", "deadline_minutes": 30, "initiator": "Lead", "invitees": ["First", "Second", "Third"], "sealed": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "First": "<code-1>",
+      "Second": "<code-2>",
+      "Third": "<code-3>"
+    },
+    "join_prompt": "Propose: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Propose\".",
+    "role": "lead",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    },
+    "round": "sealed",
+    "round_deadline": "<now+30m>"
+  }
+}
+
+== 2. First joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "First",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    },
+    "brief": "Propose",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+30m>"
+  }
+}
+
+== 3. Second joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Second",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    },
+    "brief": "Propose",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+30m>"
+  }
+}
+
+== 4. Third joins
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Third",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    },
+    "brief": "Propose",
+    "token": "<token-4>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+30m>"
+  }
+}
+
+== 5. First submits
+-> {"action": "post", "body": "First idea", "kind": "proposal", "submission_id": "submission-1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 6. Second submits
+-> {"action": "post", "body": "Second idea", "kind": "proposal", "submission_id": "submission-2", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-2>"
+  }
+}
+
+== 7. lead retires Second, discarding its proposal
+-> {"action": "retire", "name": "Second", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Second",
+    "retired": true
+  }
+}
+
+== 8. status after the retirement
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "First": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Second": {
+        "role": "worker",
+        "state": "retired"
+      },
+      "Third": {
+        "role": "worker",
+        "state": "joined"
+      }
+    },
+    "participant": "Lead",
+    "round": "sealed",
+    "round_deadline": "<now+30m>"
+  }
+}
+
+== 9. lead retires Third, the last pending worker
+-> {"action": "retire", "name": "Third", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Third",
+    "retired": true
+  }
+}
+
+== 10. First reads the released round
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Retired Second.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Retired Third.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "First",
+        "body": "First idea",
+        "kind": "proposal"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Proposals released for critique. All workers submitted.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "round": "critique",
+    "brief": "Propose",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    }
+  }
+}
+
+== 11. Third reads as a retired member
+-> {"action": "read", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Retired Second.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Retired Third.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "First",
+        "body": "First idea",
+        "kind": "proposal"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Proposals released for critique. All workers submitted.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "round": "critique",
+    "brief": "Propose",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Lead": "lead",
+      "Second": "worker",
+      "Third": "worker"
+    },
+    "retired": true
+  }
+}
+

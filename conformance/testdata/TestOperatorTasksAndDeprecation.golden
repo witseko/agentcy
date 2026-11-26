@@ -1,0 +1,733 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Tasks", "directory": "<checkout>", "invitees": ["Alpha", "Bravo"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Tasks - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Tasks - lead (Lead)\"."
+      },
+      {
+        "participant": "Alpha",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Tasks - worker (Alpha): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Tasks - worker (Alpha)\"."
+      },
+      {
+        "participant": "Bravo",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "Tasks - worker (Bravo): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Tasks - worker (Bravo)\"."
+      }
+    ],
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    },
+    "brief": "Tasks",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Alpha joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    },
+    "brief": "Tasks",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. Bravo joins
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    },
+    "brief": "Tasks",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 5. no tasks yet
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "tasks": []
+  }
+}
+
+== 6. a finished task
+-> {"action": "post", "body": "Check the parser\nwith all fixtures", "due_minutes": 20, "kind": "task", "submission_id": "submission-1", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 7. a task to hand off
+-> {"action": "post", "body": "   Review   the\tretry   limits   ", "due_minutes": 45, "kind": "task", "submission_id": "submission-2", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 8. a task to block
+-> {"action": "post", "body": "<132 characters starting \"A task title\">", "due_minutes": 60, "kind": "task", "submission_id": "submission-3", "to": "Bravo", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 9. Alpha finishes the first task
+-> {"action": "post", "body": "Parser checked", "kind": "done", "reply_to": 1, "submission_id": "submission-4", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 10. Alpha offers the second task
+-> {"action": "post", "body": "Bravo, please take it", "kind": "handoff", "reply_to": 2, "submission_id": "submission-5", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 11. Bravo comments on the offer
+-> {"action": "post", "body": "Looking at it", "reply_to": 5, "submission_id": "submission-6", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 12. Bravo blocks the third task
+-> {"action": "post", "body": "Need credentials", "kind": "blocker", "reply_to": 3, "submission_id": "submission-7", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 13. lead replies to the blocker task
+-> {"action": "post", "body": "Use the fixture account", "reply_to": 3, "submission_id": "submission-8", "to": "Bravo", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 14. tasks show states, the pending handoff and timelines
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "tasks": [
+      {
+        "id": 3,
+        "title": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it wit…",
+        "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+        "author": "Lead",
+        "owner": "Bravo",
+        "state": "blocked",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 3,
+            "author": "Lead",
+            "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Bravo"
+          },
+          {
+            "id": 7,
+            "author": "Bravo",
+            "body": "Need credentials",
+            "created": "<now>",
+            "kind": "blocker",
+            "reply_to": 3
+          },
+          {
+            "id": 8,
+            "author": "Lead",
+            "body": "Use the fixture account",
+            "created": "<now>",
+            "to": "Bravo",
+            "reply_to": 3
+          }
+        ],
+        "due": "<now+60m>"
+      },
+      {
+        "id": 2,
+        "title": "Review the retry limits",
+        "body": "Review   the\tretry   limits",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "open",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 2,
+            "author": "Lead",
+            "body": "Review   the\tretry   limits",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 5,
+            "author": "Alpha",
+            "body": "Bravo, please take it",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 2
+          },
+          {
+            "id": 6,
+            "author": "Bravo",
+            "body": "Looking at it",
+            "created": "<now>",
+            "reply_to": 5
+          }
+        ],
+        "pending_handoff_to": "Bravo",
+        "due": "<now+45m>"
+      },
+      {
+        "id": 1,
+        "title": "Check the parser",
+        "body": "Check the parser\nwith all fixtures",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "done",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 1,
+            "author": "Lead",
+            "body": "Check the parser\nwith all fixtures",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 4,
+            "author": "Alpha",
+            "body": "Parser checked",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 1
+          }
+        ],
+        "due": "<now+20m>"
+      }
+    ]
+  }
+}
+
+== 15. the human cannot own a task
+-> {"action": "post", "body": "Review this", "due_minutes": 5, "kind": "task", "submission_id": "submission-9", "to": "human", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "The human cannot own a task. Address it to a member"
+}
+
+== 16. a handoff to the human is refused
+-> {"action": "post", "body": "Yours", "kind": "handoff", "reply_to": 2, "submission_id": "submission-10", "to": "Human", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "The human cannot own a task. Address it to a member"
+}
+
+== 17. a member cannot post a deprecate message
+-> {"action": "post", "body": "Drop it.", "kind": "deprecate", "reply_to": 2, "submission_id": "submission-11", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. a plain close keeps the tasks open
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 19. tasks after a plain close
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "tasks": [
+      {
+        "id": 3,
+        "title": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it wit…",
+        "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+        "author": "Lead",
+        "owner": "Bravo",
+        "state": "blocked",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 3,
+            "author": "Lead",
+            "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Bravo"
+          },
+          {
+            "id": 7,
+            "author": "Bravo",
+            "body": "Need credentials",
+            "created": "<now>",
+            "kind": "blocker",
+            "reply_to": 3
+          },
+          {
+            "id": 8,
+            "author": "Lead",
+            "body": "Use the fixture account",
+            "created": "<now>",
+            "to": "Bravo",
+            "reply_to": 3
+          }
+        ],
+        "due": "<now+60m>"
+      },
+      {
+        "id": 2,
+        "title": "Review the retry limits",
+        "body": "Review   the\tretry   limits",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "open",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 2,
+            "author": "Lead",
+            "body": "Review   the\tretry   limits",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 5,
+            "author": "Alpha",
+            "body": "Bravo, please take it",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 2
+          },
+          {
+            "id": 6,
+            "author": "Bravo",
+            "body": "Looking at it",
+            "created": "<now>",
+            "reply_to": 5
+          }
+        ],
+        "pending_handoff_to": "Bravo",
+        "due": "<now+45m>"
+      },
+      {
+        "id": 1,
+        "title": "Check the parser",
+        "body": "Check the parser\nwith all fixtures",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "done",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 1,
+            "author": "Lead",
+            "body": "Check the parser\nwith all fixtures",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 4,
+            "author": "Alpha",
+            "body": "Parser checked",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 1
+          }
+        ],
+        "due": "<now+20m>"
+      }
+    ]
+  }
+}
+
+== 20. archive with deprecate_tasks
+-> {"action": "operator_archive", "archived": true, "conversation": "<room-1>", "deprecate_tasks": true, "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "archived": true
+  }
+}
+
+== 21. tasks after the deprecation
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "tasks": [
+      {
+        "id": 3,
+        "title": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it wit…",
+        "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+        "author": "Lead",
+        "owner": "Bravo",
+        "state": "deprecated",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 3,
+            "author": "Lead",
+            "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Bravo"
+          },
+          {
+            "id": 7,
+            "author": "Bravo",
+            "body": "Need credentials",
+            "created": "<now>",
+            "kind": "blocker",
+            "reply_to": 3
+          },
+          {
+            "id": 8,
+            "author": "Lead",
+            "body": "Use the fixture account",
+            "created": "<now>",
+            "to": "Bravo",
+            "reply_to": 3
+          },
+          {
+            "id": 10,
+            "author": "Human",
+            "body": "Task #3 is deprecated. Stop work on it.",
+            "created": "<now>",
+            "kind": "deprecate",
+            "reply_to": 3
+          }
+        ],
+        "due": "<now+60m>"
+      },
+      {
+        "id": 2,
+        "title": "Review the retry limits",
+        "body": "Review   the\tretry   limits",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "deprecated",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 2,
+            "author": "Lead",
+            "body": "Review   the\tretry   limits",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 5,
+            "author": "Alpha",
+            "body": "Bravo, please take it",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 2
+          },
+          {
+            "id": 6,
+            "author": "Bravo",
+            "body": "Looking at it",
+            "created": "<now>",
+            "reply_to": 5
+          },
+          {
+            "id": 9,
+            "author": "Human",
+            "body": "Task #2 is deprecated. Stop work on it.",
+            "created": "<now>",
+            "kind": "deprecate",
+            "reply_to": 2
+          }
+        ],
+        "due": "<now+45m>"
+      },
+      {
+        "id": 1,
+        "title": "Check the parser",
+        "body": "Check the parser\nwith all fixtures",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "done",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 1,
+            "author": "Lead",
+            "body": "Check the parser\nwith all fixtures",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 4,
+            "author": "Alpha",
+            "body": "Parser checked",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 1
+          }
+        ],
+        "due": "<now+20m>"
+      }
+    ]
+  }
+}
+
+== 22. the human reopens
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 23. lead assigns a new task
+-> {"action": "post", "body": "One more", "due_minutes": 5, "kind": "task", "submission_id": "submission-12", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 11
+  }
+}
+
+== 24. close with deprecate_tasks
+-> {"action": "operator_close", "conversation": "<room-1>", "deprecate_tasks": true, "directory": "<checkout>", "key": "<operator-key>", "summary": "Wrapping up", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 25. show after deprecation has no open tasks
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "tail": true, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Tasks",
+    "brief": "Tasks",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": false,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "replied",
+          "idle_seconds": "<idle-seconds>",
+          "messages": 5
+        },
+        "Alpha": {
+          "role": "worker",
+          "state": "replied",
+          "idle_seconds": "<idle-seconds>",
+          "messages": 2
+        },
+        "Bravo": {
+          "role": "worker",
+          "state": "blocked",
+          "idle_seconds": "<idle-seconds>",
+          "messages": 2
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Check the parser\nwith all fixtures",
+        "created": "<now>",
+        "kind": "task",
+        "to": "Alpha"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Review   the\tretry   limits",
+        "created": "<now>",
+        "kind": "task",
+        "to": "Alpha"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "A task title that is longer than one hundred and twenty characters so that the operator task list has to shorten it with an ellipsis",
+        "created": "<now>",
+        "kind": "task",
+        "to": "Bravo"
+      },
+      {
+        "id": 4,
+        "label": "Alpha",
+        "body": "Parser checked",
+        "created": "<now>",
+        "kind": "done",
+        "reply_to": 1
+      },
+      {
+        "id": 5,
+        "label": "Alpha",
+        "body": "Bravo, please take it",
+        "created": "<now>",
+        "kind": "handoff",
+        "to": "Bravo",
+        "reply_to": 2
+      },
+      {
+        "id": 6,
+        "label": "Bravo",
+        "body": "Looking at it",
+        "created": "<now>",
+        "reply_to": 5
+      },
+      {
+        "id": 7,
+        "label": "Bravo",
+        "body": "Need credentials",
+        "created": "<now>",
+        "kind": "blocker",
+        "reply_to": 3
+      },
+      {
+        "id": 8,
+        "label": "Lead",
+        "body": "Use the fixture account",
+        "created": "<now>",
+        "to": "Bravo",
+        "reply_to": 3
+      },
+      {
+        "id": 9,
+        "label": "Human",
+        "body": "Task #2 is deprecated. Stop work on it.",
+        "created": "<now>",
+        "kind": "deprecate",
+        "reply_to": 2
+      },
+      {
+        "id": 10,
+        "label": "Human",
+        "body": "Task #3 is deprecated. Stop work on it.",
+        "created": "<now>",
+        "kind": "deprecate",
+        "reply_to": 3
+      },
+      {
+        "id": 11,
+        "label": "Lead",
+        "body": "One more",
+        "created": "<now>",
+        "kind": "task",
+        "to": "Alpha"
+      },
+      {
+        "id": 12,
+        "label": "Human",
+        "body": "Task #11 is deprecated. Stop work on it.",
+        "created": "<now>",
+        "kind": "deprecate",
+        "reply_to": 11
+      },
+      {
+        "id": 13,
+        "label": "Human",
+        "body": "Wrapping up",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 13,
+    "total_messages": 13
+  }
+}
+
+== 26. tasks of an unknown conversation
+-> {"action": "operator_tasks", "conversation": "<room-2>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+

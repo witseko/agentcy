@@ -1,0 +1,258 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Roles", "directory": "<checkout>", "invitees": ["Alice", "Bob"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Roles - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Roles - lead (Lead)\"."
+      },
+      {
+        "participant": "Alice",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Roles - worker (Alice): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Roles - worker (Alice)\"."
+      },
+      {
+        "participant": "Bob",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "Roles - worker (Bob): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Roles - worker (Bob)\"."
+      }
+    ],
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    },
+    "brief": "Roles",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Alice joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alice",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    },
+    "brief": "Roles",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. a worker cannot change roles
+-> {"action": "set_role", "name": "Bob", "role": "co-lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can change participant roles"
+}
+
+== 5. the human role fails validation
+-> {"action": "set_role", "name": "Alice", "role": "human", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 6. the only lead cannot be demoted
+-> {"action": "set_role", "name": "Lead", "role": "worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Cannot demote the only lead. Promote another participant first"
+}
+
+== 7. making the lead lead again records nothing
+-> {"action": "set_role", "name": "Lead", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 8. an unknown participant
+-> {"action": "set_role", "name": "Ghost", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 9. the human retires Bob
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Bob", "version": 1}
+<- {
+  "result": {
+    "participant": "Bob",
+    "retired": true
+  }
+}
+
+== 10. a retired participant cannot change role
+-> {"action": "set_role", "name": "Bob", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Participant is retired: Bob"
+}
+
+== 11. the human's role cannot change
+-> {"action": "set_role", "name": "Human", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Cannot change the role of Human"
+}
+
+== 12. the human makes Alice a co-lead
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Alice", "role": "co-lead", "version": 1}
+<- {
+  "result": {
+    "participant": "Alice",
+    "role": "co-lead",
+    "roster": {
+      "Alice": "co-lead",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "co-lead"
+    }
+  }
+}
+
+== 13. the human demotes the lead, leaving Alice as sole lead
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Lead", "role": "worker", "version": 1}
+<- {
+  "result": {
+    "participant": "Lead",
+    "role": "worker",
+    "roster": {
+      "Alice": "lead",
+      "Bob": "worker",
+      "Human": "human",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 14. the human cannot change its own role
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Human", "role": "worker", "version": 1}
+<- {
+  "error": "Cannot change the role of Human"
+}
+
+== 15. show lists retired and active members
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Roles",
+    "brief": "Roles",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "worker",
+          "state": "joined",
+          "idle_seconds": "<idle-seconds>"
+        },
+        "Alice": {
+          "role": "lead",
+          "state": "joined"
+        },
+        "Bob": {
+          "role": "worker",
+          "state": "retired"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Retired Bob.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Set Alice as co-lead.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Human",
+        "body": "Changed Lead to worker.",
+        "created": "<now>",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "total_messages": 3
+  }
+}
+
+== 16. Alice closes
+-> {"action": "close", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 17. set_role on a closed conversation
+-> {"action": "set_role", "name": "Lead", "role": "lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 18. operator_set_role on a closed conversation
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Lead", "role": "lead", "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 19. operator_retire on a closed conversation
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Lead", "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+

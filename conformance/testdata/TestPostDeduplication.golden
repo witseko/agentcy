@@ -1,0 +1,138 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. first post
+-> {"action": "post", "body": "The retry worked", "submission_id": "initial", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 4. a retry with the same submission ID
+-> {"action": "post", "body": "The retry worked", "submission_id": "initial", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. the same body with a new submission ID
+-> {"action": "post", "body": "The retry worked", "submission_id": "retry", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 6. the same submission ID with another body
+-> {"action": "post", "body": "Something else", "submission_id": "initial", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Submission ID already used for a different message"
+}
+
+== 7. the same body as a question
+-> {"action": "post", "body": "The retry worked", "kind": "question", "submission_id": "submission-5", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 8. the same body addressed to the worker
+-> {"action": "post", "body": "The retry worked", "submission_id": "submission-6", "to": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 9. the same body as a reply
+-> {"action": "post", "body": "The retry worked", "reply_to": 1, "submission_id": "submission-7", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 10. the same submission ID with another kind
+-> {"action": "post", "body": "The retry worked", "kind": "finding", "submission_id": "initial", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Submission ID already used for a different message"
+}
+
+== 11. lead reads the transcript
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "The retry worked"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "The retry worked",
+        "kind": "question"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "The retry worked",
+        "to": "Worker"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "The retry worked",
+        "reply_to": 1
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "brief": "Review",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+

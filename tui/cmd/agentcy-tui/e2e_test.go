@@ -7,14 +7,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-// This test starts a real core. Run it from the tui/ folder under the project's environment,
-// so VIRTUAL_ENV names the interpreter that has agentcy installed:
+// This test starts a real core. Run it under the project's environment, so VIRTUAL_ENV names
+// the interpreter that has agentcy installed:
 //
-//	uv run --locked go test -tags e2e ./...
+//	uv run --locked go test -tags e2e ./tui/...
+//
+// AGENTCY_CORE_CMD selects another core command, split on whitespace and run with no shell,
+// for example AGENTCY_CORE_CMD="$PWD/bin/agentcy core". Unset or empty, the test runs
+// `python -I -m agentcy.mcp.core` from that environment.
 
 // repositoryRoot is the agentcy clone, three levels above this package.
 var repositoryRoot = filepath.Join("..", "..", "..")
@@ -50,14 +55,23 @@ func registerFixturePlugin(t *testing.T, home string, python string) {
 	}
 }
 
-// startCore runs `python -I -m agentcy.mcp.core` with a short private AGENTCY_HOME
-// and waits for its socket. The core stops when the test ends.
+// coreCommand returns the core command from AGENTCY_CORE_CMD, or the project's Python core.
+func coreCommand(python string) []string {
+	if configured := strings.Fields(os.Getenv("AGENTCY_CORE_CMD")); len(configured) > 0 {
+		return configured
+	}
+	return []string{python, "-I", "-m", "agentcy.mcp.core"}
+}
+
+// startCore runs the core command with a short private AGENTCY_HOME and waits for its
+// socket. The core stops when the test ends.
 func startCore(t *testing.T) string {
 	t.Helper()
 	python := projectPython(t)
 	home := shortHome(t)
 	registerFixturePlugin(t, home, python)
-	core := exec.Command(python, "-I", "-m", "agentcy.mcp.core")
+	command := coreCommand(python)
+	core := exec.Command(command[0], command[1:]...)
 	core.Dir = home
 	core.Env = []string{"AGENTCY_HOME=" + home, "PATH=/usr/bin:/bin"}
 	logFile, err := os.Create(filepath.Join(home, "core.log"))

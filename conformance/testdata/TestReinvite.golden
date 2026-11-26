@@ -1,0 +1,365 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Worker", "Helper"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Helper": "<code-2>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. worker posts evidence
+-> {"action": "post", "body": "Evidence", "submission_id": "submission-1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 4. lead reinvites the joined worker
+-> {"action": "invite", "name": "worker", "reinvite": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "role": "worker",
+    "code": "<code-3>",
+    "join_prompt": "Review - worker (Worker): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Worker)\"."
+  }
+}
+
+== 5. the old chat lost its token
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 6. status shows the slot as invited again
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Helper": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 7. a new chat joins the slot
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-3>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Evidence"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 2,
+    "more": false
+  }
+}
+
+== 8. the new chat sees the old messages and the event
+-> {"action": "read", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Evidence"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "brief": "Review",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 9. helper joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Helper",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-4>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Evidence"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 2,
+    "more": false
+  }
+}
+
+== 10. lead retires helper
+-> {"action": "retire", "name": "Helper", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Helper",
+    "retired": true
+  }
+}
+
+== 11. retiring again is idempotent
+-> {"action": "retire", "name": "helper", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Helper",
+    "retired": true
+  }
+}
+
+== 12. a retired member cannot post
+-> {"action": "post", "body": "Still here", "submission_id": "x", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You have been retired from this conversation"
+}
+
+== 13. a retired member can still read
+-> {"action": "read", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Evidence"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Retired Helper.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "wake": true,
+    "brief": "Review",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "retired": true
+  }
+}
+
+== 14. a plain invite refuses a retired member
+-> {"action": "invite", "name": "Helper", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Participant is retired: Helper. Pass reinvite to bring them back"
+}
+
+== 15. reinvite brings the retired member back
+-> {"action": "invite", "name": "Helper", "reinvite": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Helper",
+    "role": "worker",
+    "code": "<code-4>",
+    "join_prompt": "Review - worker (Helper): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Helper)\"."
+  }
+}
+
+== 16. the retired chat lost its token
+-> {"action": "read", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 17. helper rejoins
+-> {"action": "join", "code": "<code-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Helper",
+    "role": "worker",
+    "roster": {
+      "Helper": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-5>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Evidence"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Retired Helper.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Reinvited Helper as worker.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 4,
+    "more": false
+  }
+}
+
+== 18. helper posts again
+-> {"action": "post", "body": "Back", "submission_id": "submission-2", "token": "<token-5>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 19. status shows helper replied
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Helper": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 20. reinvite of an unknown name
+-> {"action": "invite", "name": "Nobody", "reinvite": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 21. reinvite of yourself
+-> {"action": "invite", "name": "Lead", "reinvite": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You cannot reinvite yourself"
+}
+
+== 22. a worker cannot reinvite
+-> {"action": "invite", "name": "Lead", "reinvite": true, "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can invite participants"
+}
+

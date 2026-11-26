@@ -1,0 +1,205 @@
+== 1. lead opens a sealed round with the default deadline
+-> {"action": "create", "brief": "Propose", "initiator": "Lead", "invitees": ["Worker", "Idle"], "sealed": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Idle": "<code-2>"
+    },
+    "join_prompt": "Propose: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Propose\".",
+    "role": "lead",
+    "roster": {
+      "Idle": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "round": "sealed",
+    "round_deadline": "<now+10m>"
+  }
+}
+
+== 2. Worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Idle": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Propose",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+10m>"
+  }
+}
+
+== 3. Idle joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Idle",
+    "role": "worker",
+    "roster": {
+      "Idle": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Propose",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+10m>"
+  }
+}
+
+== 4. the lead cannot post a proposal
+-> {"action": "post", "body": "Lead idea", "kind": "proposal", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only workers can post sealed proposals"
+}
+
+== 5. a proposal cannot have an addressee
+-> {"action": "post", "body": "To lead", "kind": "proposal", "submission_id": "submission-2", "to": "Lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A sealed proposal cannot have an addressee or reply target"
+}
+
+== 6. a proposal cannot reply
+-> {"action": "post", "body": "Reply", "kind": "proposal", "reply_to": 1, "submission_id": "submission-3", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A sealed proposal cannot have an addressee or reply target"
+}
+
+== 7. Worker submits
+-> {"action": "post", "body": "My proposal", "kind": "proposal", "submission_id": "w1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 8. a worker cannot release
+-> {"action": "release", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can release proposals"
+}
+
+== 9. lead releases early
+-> {"action": "release", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "round": "critique"
+  }
+}
+
+== 10. lead reads the release event naming the missing worker
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "My proposal",
+        "kind": "proposal"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Proposals released for critique. Missing proposals from: Idle.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "round": "critique",
+    "brief": "Propose",
+    "role": "lead",
+    "roster": {
+      "Idle": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 11. lead creates a plain conversation
+-> {"action": "create", "brief": "Plain", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-4>",
+    "invitations": {
+      "Worker": "<code-3>"
+    },
+    "join_prompt": "Plain: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Plain\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 12. release without a round
+-> {"action": "release", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This conversation has no sealed proposal round"
+}
+
+== 13. worker joins the plain conversation
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Plain",
+    "token": "<token-5>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 14. a proposal without a round
+-> {"action": "post", "body": "Idea", "kind": "proposal", "submission_id": "submission-5", "token": "<token-5>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This conversation has no sealed proposal round"
+}
+
+== 15. deadline without a sealed round
+-> {"action": "create", "brief": "Bad", "deadline_minutes": 5, "initiator": "Lead", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 16. deadline above 60 minutes
+-> {"action": "create", "brief": "Bad", "deadline_minutes": 61, "initiator": "Lead", "invitees": ["W"], "sealed": true, "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 17. deadline of zero
+-> {"action": "create", "brief": "Bad", "deadline_minutes": 0, "initiator": "Lead", "invitees": ["W"], "sealed": true, "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+

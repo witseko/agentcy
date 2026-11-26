@@ -1,0 +1,1084 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Close": {
+      "additionalProperties": false,
+      "description": "Close a conversation and optionally record its outcome.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "close",
+          "title": "Action",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Close",
+      "type": "object"
+    },
+    "Create": {
+      "additionalProperties": false,
+      "description": "Create an open conversation and its invitation slots.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "create",
+          "title": "Action",
+          "type": "string"
+        },
+        "brief": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Brief",
+          "type": "string"
+        },
+        "initiator": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Initiator",
+          "type": "string"
+        },
+        "initiator_model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initiator Model"
+        },
+        "initiator_token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initiator Token Budget"
+        },
+        "invitees": {
+          "items": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/Invitation"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Invitees",
+          "type": "array"
+        },
+        "open_invite": {
+          "default": false,
+          "title": "Open Invite",
+          "type": "boolean"
+        },
+        "sealed": {
+          "default": false,
+          "title": "Sealed",
+          "type": "boolean"
+        },
+        "deadline_minutes": {
+          "anyOf": [
+            {
+              "maximum": 60,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline Minutes"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "brief",
+        "initiator"
+      ],
+      "title": "Create",
+      "type": "object"
+    },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "Reserve a worker or co-lead slot when creating a conversation.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "worker",
+          "enum": [
+            "worker",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "Invite": {
+      "additionalProperties": false,
+      "description": "Create an invitation slot, reissue an unused join code, or reinvite a member.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "invite",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "worker",
+                "co-lead"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
+        },
+        "reinvite": {
+          "default": false,
+          "title": "Reinvite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "name"
+      ],
+      "title": "Invite",
+      "type": "object"
+    },
+    "Join": {
+      "additionalProperties": false,
+      "description": "Redeem a single-use or shared open invitation.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "join",
+          "title": "Action",
+          "type": "string"
+        },
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "token_budget": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Budget"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "code"
+      ],
+      "title": "Join",
+      "type": "object"
+    },
+    "Launch": {
+      "additionalProperties": false,
+      "description": "Reserve a worker slot and dispatch a configured local plugin.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "launch",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "plugin": {
+          "pattern": "^[a-zA-Z0-9-]{1,64}$",
+          "title": "Plugin",
+          "type": "string"
+        },
+        "directory": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Directory",
+          "type": "string"
+        },
+        "mcp_task": {
+          "default": false,
+          "title": "Mcp Task",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "name",
+        "plugin",
+        "directory"
+      ],
+      "title": "Launch",
+      "type": "object"
+    },
+    "ListClosed": {
+      "additionalProperties": false,
+      "description": "List the workspace's closed conversations for a chat that holds no participant token.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "list_closed",
+          "title": "Action",
+          "type": "string"
+        },
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archived"
+        }
+      },
+      "required": [
+        "action",
+        "workspace"
+      ],
+      "title": "ListClosed",
+      "type": "object"
+    },
+    "McpTaskCancel": {
+      "additionalProperties": false,
+      "description": "Ask the fresh-run worker to cancel the run behind an MCP task.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "mcp_task_cancel",
+          "title": "Action",
+          "type": "string"
+        },
+        "task_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "task_id"
+      ],
+      "title": "McpTaskCancel",
+      "type": "object"
+    },
+    "McpTaskStatus": {
+      "additionalProperties": false,
+      "description": "Read the fresh-run state behind an MCP task. The MCP task ID is the only credential.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "mcp_task_status",
+          "title": "Action",
+          "type": "string"
+        },
+        "task_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "task_id"
+      ],
+      "title": "McpTaskStatus",
+      "type": "object"
+    },
+    "OpenInvite": {
+      "additionalProperties": false,
+      "description": "Enable, rotate, or disable a conversation's shared open invite code.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "open_invite",
+          "title": "Action",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "OpenInvite",
+      "type": "object"
+    },
+    "Plugins": {
+      "additionalProperties": false,
+      "description": "List locally configured fresh-run plugins for a lead or co-lead.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "plugins",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Plugins",
+      "type": "object"
+    },
+    "Post": {
+      "additionalProperties": false,
+      "description": "Append a participant message with retry protection.",
+      "properties": {
+        "submission_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Submission Id",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "kind": {
+          "default": "note",
+          "enum": [
+            "note",
+            "question",
+            "finding",
+            "blocker",
+            "resume",
+            "done",
+            "task",
+            "handoff",
+            "accept",
+            "decline",
+            "proposal"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To"
+        },
+        "due_minutes": {
+          "anyOf": [
+            {
+              "maximum": 1440,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due Minutes"
+        },
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "post",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "submission_id",
+        "body",
+        "workspace",
+        "token"
+      ],
+      "title": "Post",
+      "type": "object"
+    },
+    "Read": {
+      "additionalProperties": false,
+      "description": "Read a bounded page after a sequence number.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "read",
+          "title": "Action",
+          "type": "string"
+        },
+        "after": {
+          "default": 0,
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        },
+        "wait_seconds": {
+          "default": 0,
+          "maximum": 45,
+          "minimum": 0,
+          "title": "Wait Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Read",
+      "type": "object"
+    },
+    "ReadClosed": {
+      "additionalProperties": false,
+      "description": "Read one page of a closed conversation of the workspace without a participant token.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "action": {
+          "const": "read_closed",
+          "title": "Action",
+          "type": "string"
+        },
+        "conversation": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Conversation",
+          "type": "string"
+        },
+        "after": {
+          "default": 0,
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "conversation"
+      ],
+      "title": "ReadClosed",
+      "type": "object"
+    },
+    "Release": {
+      "additionalProperties": false,
+      "description": "Release a sealed proposal round as a lead or co-lead.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "release",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Release",
+      "type": "object"
+    },
+    "Reopen": {
+      "additionalProperties": false,
+      "description": "Reopen a closed conversation and optionally record a note.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "reopen",
+          "title": "Action",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Reopen",
+      "type": "object"
+    },
+    "ReportUsage": {
+      "additionalProperties": false,
+      "description": "Report exact cumulative token usage for the authenticated participant.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "report_usage",
+          "title": "Action",
+          "type": "string"
+        },
+        "input_tokens": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9._:/-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "input_tokens",
+        "output_tokens"
+      ],
+      "title": "ReportUsage",
+      "type": "object"
+    },
+    "Retire": {
+      "additionalProperties": false,
+      "description": "Retire a participant from an open conversation as a lead or co-lead.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "retire",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "name"
+      ],
+      "title": "Retire",
+      "type": "object"
+    },
+    "SetRole": {
+      "additionalProperties": false,
+      "description": "Change a participant's role in an open conversation as a lead or co-lead.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "set_role",
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "worker",
+            "lead",
+            "co-lead"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token",
+        "name",
+        "role"
+      ],
+      "title": "SetRole",
+      "type": "object"
+    },
+    "Status": {
+      "additionalProperties": false,
+      "description": "Read the current activity of conversation members.",
+      "properties": {
+        "workspace": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Workspace",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "action": {
+          "const": "status",
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "workspace",
+        "token"
+      ],
+      "title": "Status",
+      "type": "object"
+    }
+  },
+  "title": "agentcy member protocol v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Create"
+    },
+    {
+      "$ref": "#/$defs/Join"
+    },
+    {
+      "$ref": "#/$defs/Post"
+    },
+    {
+      "$ref": "#/$defs/Read"
+    },
+    {
+      "$ref": "#/$defs/Close"
+    },
+    {
+      "$ref": "#/$defs/Reopen"
+    },
+    {
+      "$ref": "#/$defs/Status"
+    },
+    {
+      "$ref": "#/$defs/Invite"
+    },
+    {
+      "$ref": "#/$defs/Retire"
+    },
+    {
+      "$ref": "#/$defs/SetRole"
+    },
+    {
+      "$ref": "#/$defs/Plugins"
+    },
+    {
+      "$ref": "#/$defs/OpenInvite"
+    },
+    {
+      "$ref": "#/$defs/ReportUsage"
+    },
+    {
+      "$ref": "#/$defs/Release"
+    },
+    {
+      "$ref": "#/$defs/Launch"
+    },
+    {
+      "$ref": "#/$defs/ListClosed"
+    },
+    {
+      "$ref": "#/$defs/ReadClosed"
+    },
+    {
+      "$ref": "#/$defs/McpTaskStatus"
+    },
+    {
+      "$ref": "#/$defs/McpTaskCancel"
+    }
+  ]
+}

@@ -1,0 +1,257 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Archive me", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Archive me - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Archive me - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Archive me - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Archive me - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Archive me",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. archive an open conversation
+-> {"action": "operator_archive", "archived": true, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Close the conversation before archiving it"
+}
+
+== 4. archive without the archived field
+-> {"action": "operator_archive", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 5. unarchive an open conversation is allowed
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "archived": false
+  }
+}
+
+== 6. the human closes
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 7. closing again
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "summary": "Ignored", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 8. the human archives
+-> {"action": "operator_archive", "archived": true, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "archived": true
+  }
+}
+
+== 9. active list is empty
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 10. archived list has it
+-> {"action": "operator_list", "archived": true, "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Archive me",
+        "open": false,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 11. the lead still reads
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "wake": false,
+    "brief": "Archive me",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "closed": true
+  }
+}
+
+== 12. show reports archived
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Archive me",
+    "brief": "Archive me",
+    "created": "<now>",
+    "archived": true,
+    "status": {
+      "open": false,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "joined"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "total_messages": 0
+  }
+}
+
+== 13. the human reopens with a note, which unarchives
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "note": "Back again", "version": 1}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 14. reopening again
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 15. active list has it again
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Archive me",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 16. the lead posts again
+-> {"action": "post", "body": "Working", "submission_id": "again", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 17. show after reopen
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Archive me",
+    "brief": "Archive me",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "replied",
+          "idle_seconds": "<idle-seconds>",
+          "messages": 1
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Back again",
+        "created": "<now>"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Working",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "total_messages": 2
+  }
+}
+

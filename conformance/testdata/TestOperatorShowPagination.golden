@@ -1,0 +1,1759 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Paging", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Paging - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Paging - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Paging - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Paging - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. human posts note 0
+-> {"action": "operator_post", "body": "Note 0", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n0", "version": 1}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 3. human posts note 1
+-> {"action": "operator_post", "body": "Note 1", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n1", "version": 1}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 4. human posts note 2
+-> {"action": "operator_post", "body": "Note 2", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n2", "version": 1}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 5. human posts note 3
+-> {"action": "operator_post", "body": "Note 3", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n3", "version": 1}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 6. human posts note 4
+-> {"action": "operator_post", "body": "Note 4", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n4", "version": 1}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 7. human posts note 5
+-> {"action": "operator_post", "body": "Note 5", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n5", "version": 1}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 8. human posts note 6
+-> {"action": "operator_post", "body": "Note 6", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n6", "version": 1}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 9. human posts note 7
+-> {"action": "operator_post", "body": "Note 7", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n7", "version": 1}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 10. human posts note 8
+-> {"action": "operator_post", "body": "Note 8", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n8", "version": 1}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 11. human posts note 9
+-> {"action": "operator_post", "body": "Note 9", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n9", "version": 1}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 12. human posts note 10
+-> {"action": "operator_post", "body": "Note 10", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n10", "version": 1}
+<- {
+  "result": {
+    "message_id": 11
+  }
+}
+
+== 13. human posts note 11
+-> {"action": "operator_post", "body": "Note 11", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n11", "version": 1}
+<- {
+  "result": {
+    "message_id": 12
+  }
+}
+
+== 14. human posts note 12
+-> {"action": "operator_post", "body": "Note 12", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n12", "version": 1}
+<- {
+  "result": {
+    "message_id": 13
+  }
+}
+
+== 15. human posts note 13
+-> {"action": "operator_post", "body": "Note 13", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n13", "version": 1}
+<- {
+  "result": {
+    "message_id": 14
+  }
+}
+
+== 16. human posts note 14
+-> {"action": "operator_post", "body": "Note 14", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n14", "version": 1}
+<- {
+  "result": {
+    "message_id": 15
+  }
+}
+
+== 17. human posts note 15
+-> {"action": "operator_post", "body": "Note 15", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n15", "version": 1}
+<- {
+  "result": {
+    "message_id": 16
+  }
+}
+
+== 18. human posts note 16
+-> {"action": "operator_post", "body": "Note 16", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n16", "version": 1}
+<- {
+  "result": {
+    "message_id": 17
+  }
+}
+
+== 19. human posts note 17
+-> {"action": "operator_post", "body": "Note 17", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n17", "version": 1}
+<- {
+  "result": {
+    "message_id": 18
+  }
+}
+
+== 20. human posts note 18
+-> {"action": "operator_post", "body": "Note 18", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n18", "version": 1}
+<- {
+  "result": {
+    "message_id": 19
+  }
+}
+
+== 21. human posts note 19
+-> {"action": "operator_post", "body": "Note 19", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n19", "version": 1}
+<- {
+  "result": {
+    "message_id": 20
+  }
+}
+
+== 22. human posts note 20
+-> {"action": "operator_post", "body": "Note 20", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n20", "version": 1}
+<- {
+  "result": {
+    "message_id": 21
+  }
+}
+
+== 23. human posts note 21
+-> {"action": "operator_post", "body": "Note 21", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n21", "version": 1}
+<- {
+  "result": {
+    "message_id": 22
+  }
+}
+
+== 24. human posts note 22
+-> {"action": "operator_post", "body": "Note 22", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n22", "version": 1}
+<- {
+  "result": {
+    "message_id": 23
+  }
+}
+
+== 25. human posts note 23
+-> {"action": "operator_post", "body": "Note 23", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n23", "version": 1}
+<- {
+  "result": {
+    "message_id": 24
+  }
+}
+
+== 26. human posts note 24
+-> {"action": "operator_post", "body": "Note 24", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n24", "version": 1}
+<- {
+  "result": {
+    "message_id": 25
+  }
+}
+
+== 27. human posts note 25
+-> {"action": "operator_post", "body": "Note 25", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n25", "version": 1}
+<- {
+  "result": {
+    "message_id": 26
+  }
+}
+
+== 28. human posts note 26
+-> {"action": "operator_post", "body": "Note 26", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n26", "version": 1}
+<- {
+  "result": {
+    "message_id": 27
+  }
+}
+
+== 29. human posts note 27
+-> {"action": "operator_post", "body": "Note 27", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n27", "version": 1}
+<- {
+  "result": {
+    "message_id": 28
+  }
+}
+
+== 30. human posts note 28
+-> {"action": "operator_post", "body": "Note 28", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n28", "version": 1}
+<- {
+  "result": {
+    "message_id": 29
+  }
+}
+
+== 31. human posts note 29
+-> {"action": "operator_post", "body": "Note 29", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n29", "version": 1}
+<- {
+  "result": {
+    "message_id": 30
+  }
+}
+
+== 32. human posts note 30
+-> {"action": "operator_post", "body": "Note 30", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n30", "version": 1}
+<- {
+  "result": {
+    "message_id": 31
+  }
+}
+
+== 33. human posts note 31
+-> {"action": "operator_post", "body": "Note 31", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n31", "version": 1}
+<- {
+  "result": {
+    "message_id": 32
+  }
+}
+
+== 34. human posts note 32
+-> {"action": "operator_post", "body": "Note 32", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n32", "version": 1}
+<- {
+  "result": {
+    "message_id": 33
+  }
+}
+
+== 35. human posts note 33
+-> {"action": "operator_post", "body": "Note 33", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n33", "version": 1}
+<- {
+  "result": {
+    "message_id": 34
+  }
+}
+
+== 36. human posts note 34
+-> {"action": "operator_post", "body": "Note 34", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n34", "version": 1}
+<- {
+  "result": {
+    "message_id": 35
+  }
+}
+
+== 37. human posts note 35
+-> {"action": "operator_post", "body": "Note 35", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n35", "version": 1}
+<- {
+  "result": {
+    "message_id": 36
+  }
+}
+
+== 38. human posts note 36
+-> {"action": "operator_post", "body": "Note 36", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n36", "version": 1}
+<- {
+  "result": {
+    "message_id": 37
+  }
+}
+
+== 39. human posts note 37
+-> {"action": "operator_post", "body": "Note 37", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n37", "version": 1}
+<- {
+  "result": {
+    "message_id": 38
+  }
+}
+
+== 40. human posts note 38
+-> {"action": "operator_post", "body": "Note 38", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n38", "version": 1}
+<- {
+  "result": {
+    "message_id": 39
+  }
+}
+
+== 41. human posts note 39
+-> {"action": "operator_post", "body": "Note 39", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n39", "version": 1}
+<- {
+  "result": {
+    "message_id": 40
+  }
+}
+
+== 42. human posts note 40
+-> {"action": "operator_post", "body": "Note 40", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n40", "version": 1}
+<- {
+  "result": {
+    "message_id": 41
+  }
+}
+
+== 43. human posts note 41
+-> {"action": "operator_post", "body": "Note 41", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n41", "version": 1}
+<- {
+  "result": {
+    "message_id": 42
+  }
+}
+
+== 44. human posts note 42
+-> {"action": "operator_post", "body": "Note 42", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n42", "version": 1}
+<- {
+  "result": {
+    "message_id": 43
+  }
+}
+
+== 45. human posts note 43
+-> {"action": "operator_post", "body": "Note 43", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n43", "version": 1}
+<- {
+  "result": {
+    "message_id": 44
+  }
+}
+
+== 46. human posts note 44
+-> {"action": "operator_post", "body": "Note 44", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n44", "version": 1}
+<- {
+  "result": {
+    "message_id": 45
+  }
+}
+
+== 47. human posts note 45
+-> {"action": "operator_post", "body": "Note 45", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n45", "version": 1}
+<- {
+  "result": {
+    "message_id": 46
+  }
+}
+
+== 48. human posts note 46
+-> {"action": "operator_post", "body": "Note 46", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n46", "version": 1}
+<- {
+  "result": {
+    "message_id": 47
+  }
+}
+
+== 49. human posts note 47
+-> {"action": "operator_post", "body": "Note 47", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n47", "version": 1}
+<- {
+  "result": {
+    "message_id": 48
+  }
+}
+
+== 50. human posts note 48
+-> {"action": "operator_post", "body": "Note 48", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n48", "version": 1}
+<- {
+  "result": {
+    "message_id": 49
+  }
+}
+
+== 51. human posts note 49
+-> {"action": "operator_post", "body": "Note 49", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n49", "version": 1}
+<- {
+  "result": {
+    "message_id": 50
+  }
+}
+
+== 52. human posts note 50
+-> {"action": "operator_post", "body": "Note 50", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n50", "version": 1}
+<- {
+  "result": {
+    "message_id": 51
+  }
+}
+
+== 53. human posts note 51
+-> {"action": "operator_post", "body": "Note 51", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n51", "version": 1}
+<- {
+  "result": {
+    "message_id": 52
+  }
+}
+
+== 54. human posts note 52
+-> {"action": "operator_post", "body": "Note 52", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n52", "version": 1}
+<- {
+  "result": {
+    "message_id": 53
+  }
+}
+
+== 55. human posts note 53
+-> {"action": "operator_post", "body": "Note 53", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n53", "version": 1}
+<- {
+  "result": {
+    "message_id": 54
+  }
+}
+
+== 56. human posts note 54
+-> {"action": "operator_post", "body": "Note 54", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n54", "version": 1}
+<- {
+  "result": {
+    "message_id": 55
+  }
+}
+
+== 57. human posts note 55
+-> {"action": "operator_post", "body": "Note 55", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n55", "version": 1}
+<- {
+  "result": {
+    "message_id": 56
+  }
+}
+
+== 58. human posts note 56
+-> {"action": "operator_post", "body": "Note 56", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n56", "version": 1}
+<- {
+  "result": {
+    "message_id": 57
+  }
+}
+
+== 59. human posts note 57
+-> {"action": "operator_post", "body": "Note 57", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n57", "version": 1}
+<- {
+  "result": {
+    "message_id": 58
+  }
+}
+
+== 60. human posts note 58
+-> {"action": "operator_post", "body": "Note 58", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n58", "version": 1}
+<- {
+  "result": {
+    "message_id": 59
+  }
+}
+
+== 61. human posts note 59
+-> {"action": "operator_post", "body": "Note 59", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n59", "version": 1}
+<- {
+  "result": {
+    "message_id": 60
+  }
+}
+
+== 62. human posts note 60
+-> {"action": "operator_post", "body": "Note 60", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n60", "version": 1}
+<- {
+  "result": {
+    "message_id": 61
+  }
+}
+
+== 63. human posts note 61
+-> {"action": "operator_post", "body": "Note 61", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n61", "version": 1}
+<- {
+  "result": {
+    "message_id": 62
+  }
+}
+
+== 64. human posts note 62
+-> {"action": "operator_post", "body": "Note 62", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n62", "version": 1}
+<- {
+  "result": {
+    "message_id": 63
+  }
+}
+
+== 65. human posts note 63
+-> {"action": "operator_post", "body": "Note 63", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n63", "version": 1}
+<- {
+  "result": {
+    "message_id": 64
+  }
+}
+
+== 66. human posts note 64
+-> {"action": "operator_post", "body": "Note 64", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n64", "version": 1}
+<- {
+  "result": {
+    "message_id": 65
+  }
+}
+
+== 67. human posts note 65
+-> {"action": "operator_post", "body": "Note 65", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n65", "version": 1}
+<- {
+  "result": {
+    "message_id": 66
+  }
+}
+
+== 68. human posts note 66
+-> {"action": "operator_post", "body": "Note 66", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n66", "version": 1}
+<- {
+  "result": {
+    "message_id": 67
+  }
+}
+
+== 69. human posts note 67
+-> {"action": "operator_post", "body": "Note 67", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n67", "version": 1}
+<- {
+  "result": {
+    "message_id": 68
+  }
+}
+
+== 70. human posts note 68
+-> {"action": "operator_post", "body": "Note 68", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n68", "version": 1}
+<- {
+  "result": {
+    "message_id": 69
+  }
+}
+
+== 71. human posts note 69
+-> {"action": "operator_post", "body": "Note 69", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n69", "version": 1}
+<- {
+  "result": {
+    "message_id": 70
+  }
+}
+
+== 72. human posts note 70
+-> {"action": "operator_post", "body": "Note 70", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n70", "version": 1}
+<- {
+  "result": {
+    "message_id": 71
+  }
+}
+
+== 73. human posts note 71
+-> {"action": "operator_post", "body": "Note 71", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n71", "version": 1}
+<- {
+  "result": {
+    "message_id": 72
+  }
+}
+
+== 74. human posts note 72
+-> {"action": "operator_post", "body": "Note 72", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n72", "version": 1}
+<- {
+  "result": {
+    "message_id": 73
+  }
+}
+
+== 75. human posts note 73
+-> {"action": "operator_post", "body": "Note 73", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n73", "version": 1}
+<- {
+  "result": {
+    "message_id": 74
+  }
+}
+
+== 76. human posts note 74
+-> {"action": "operator_post", "body": "Note 74", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n74", "version": 1}
+<- {
+  "result": {
+    "message_id": 75
+  }
+}
+
+== 77. human posts note 75
+-> {"action": "operator_post", "body": "Note 75", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n75", "version": 1}
+<- {
+  "result": {
+    "message_id": 76
+  }
+}
+
+== 78. human posts note 76
+-> {"action": "operator_post", "body": "Note 76", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n76", "version": 1}
+<- {
+  "result": {
+    "message_id": 77
+  }
+}
+
+== 79. human posts note 77
+-> {"action": "operator_post", "body": "Note 77", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n77", "version": 1}
+<- {
+  "result": {
+    "message_id": 78
+  }
+}
+
+== 80. human posts note 78
+-> {"action": "operator_post", "body": "Note 78", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n78", "version": 1}
+<- {
+  "result": {
+    "message_id": 79
+  }
+}
+
+== 81. human posts note 79
+-> {"action": "operator_post", "body": "Note 79", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n79", "version": 1}
+<- {
+  "result": {
+    "message_id": 80
+  }
+}
+
+== 82. human posts note 80
+-> {"action": "operator_post", "body": "Note 80", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n80", "version": 1}
+<- {
+  "result": {
+    "message_id": 81
+  }
+}
+
+== 83. human posts note 81
+-> {"action": "operator_post", "body": "Note 81", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n81", "version": 1}
+<- {
+  "result": {
+    "message_id": 82
+  }
+}
+
+== 84. human posts note 82
+-> {"action": "operator_post", "body": "Note 82", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n82", "version": 1}
+<- {
+  "result": {
+    "message_id": 83
+  }
+}
+
+== 85. human posts note 83
+-> {"action": "operator_post", "body": "Note 83", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n83", "version": 1}
+<- {
+  "result": {
+    "message_id": 84
+  }
+}
+
+== 86. human posts note 84
+-> {"action": "operator_post", "body": "Note 84", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n84", "version": 1}
+<- {
+  "result": {
+    "message_id": 85
+  }
+}
+
+== 87. human posts note 85
+-> {"action": "operator_post", "body": "Note 85", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n85", "version": 1}
+<- {
+  "result": {
+    "message_id": 86
+  }
+}
+
+== 88. human posts note 86
+-> {"action": "operator_post", "body": "Note 86", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n86", "version": 1}
+<- {
+  "result": {
+    "message_id": 87
+  }
+}
+
+== 89. human posts note 87
+-> {"action": "operator_post", "body": "Note 87", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n87", "version": 1}
+<- {
+  "result": {
+    "message_id": 88
+  }
+}
+
+== 90. human posts note 88
+-> {"action": "operator_post", "body": "Note 88", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n88", "version": 1}
+<- {
+  "result": {
+    "message_id": 89
+  }
+}
+
+== 91. human posts note 89
+-> {"action": "operator_post", "body": "Note 89", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n89", "version": 1}
+<- {
+  "result": {
+    "message_id": 90
+  }
+}
+
+== 92. human posts note 90
+-> {"action": "operator_post", "body": "Note 90", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n90", "version": 1}
+<- {
+  "result": {
+    "message_id": 91
+  }
+}
+
+== 93. human posts note 91
+-> {"action": "operator_post", "body": "Note 91", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n91", "version": 1}
+<- {
+  "result": {
+    "message_id": 92
+  }
+}
+
+== 94. human posts note 92
+-> {"action": "operator_post", "body": "Note 92", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n92", "version": 1}
+<- {
+  "result": {
+    "message_id": 93
+  }
+}
+
+== 95. human posts note 93
+-> {"action": "operator_post", "body": "Note 93", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n93", "version": 1}
+<- {
+  "result": {
+    "message_id": 94
+  }
+}
+
+== 96. human posts note 94
+-> {"action": "operator_post", "body": "Note 94", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n94", "version": 1}
+<- {
+  "result": {
+    "message_id": 95
+  }
+}
+
+== 97. human posts note 95
+-> {"action": "operator_post", "body": "Note 95", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n95", "version": 1}
+<- {
+  "result": {
+    "message_id": 96
+  }
+}
+
+== 98. human posts note 96
+-> {"action": "operator_post", "body": "Note 96", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n96", "version": 1}
+<- {
+  "result": {
+    "message_id": 97
+  }
+}
+
+== 99. human posts note 97
+-> {"action": "operator_post", "body": "Note 97", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n97", "version": 1}
+<- {
+  "result": {
+    "message_id": 98
+  }
+}
+
+== 100. human posts note 98
+-> {"action": "operator_post", "body": "Note 98", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n98", "version": 1}
+<- {
+  "result": {
+    "message_id": 99
+  }
+}
+
+== 101. human posts note 99
+-> {"action": "operator_post", "body": "Note 99", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n99", "version": 1}
+<- {
+  "result": {
+    "message_id": 100
+  }
+}
+
+== 102. human posts note 100
+-> {"action": "operator_post", "body": "Note 100", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n100", "version": 1}
+<- {
+  "result": {
+    "message_id": 101
+  }
+}
+
+== 103. human posts note 101
+-> {"action": "operator_post", "body": "Note 101", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n101", "version": 1}
+<- {
+  "result": {
+    "message_id": 102
+  }
+}
+
+== 104. human posts note 102
+-> {"action": "operator_post", "body": "Note 102", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n102", "version": 1}
+<- {
+  "result": {
+    "message_id": 103
+  }
+}
+
+== 105. tail returns the newest page
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "tail": true, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 54,
+        "label": "Human",
+        "body": "Note 53",
+        "created": "<now>"
+      },
+      {
+        "id": 55,
+        "label": "Human",
+        "body": "Note 54",
+        "created": "<now>"
+      },
+      {
+        "id": 56,
+        "label": "Human",
+        "body": "Note 55",
+        "created": "<now>"
+      },
+      {
+        "id": 57,
+        "label": "Human",
+        "body": "Note 56",
+        "created": "<now>"
+      },
+      {
+        "id": 58,
+        "label": "Human",
+        "body": "Note 57",
+        "created": "<now>"
+      },
+      {
+        "id": 59,
+        "label": "Human",
+        "body": "Note 58",
+        "created": "<now>"
+      },
+      {
+        "id": 60,
+        "label": "Human",
+        "body": "Note 59",
+        "created": "<now>"
+      },
+      {
+        "id": 61,
+        "label": "Human",
+        "body": "Note 60",
+        "created": "<now>"
+      },
+      {
+        "id": 62,
+        "label": "Human",
+        "body": "Note 61",
+        "created": "<now>"
+      },
+      {
+        "id": 63,
+        "label": "Human",
+        "body": "Note 62",
+        "created": "<now>"
+      },
+      {
+        "id": 64,
+        "label": "Human",
+        "body": "Note 63",
+        "created": "<now>"
+      },
+      {
+        "id": 65,
+        "label": "Human",
+        "body": "Note 64",
+        "created": "<now>"
+      },
+      {
+        "id": 66,
+        "label": "Human",
+        "body": "Note 65",
+        "created": "<now>"
+      },
+      {
+        "id": 67,
+        "label": "Human",
+        "body": "Note 66",
+        "created": "<now>"
+      },
+      {
+        "id": 68,
+        "label": "Human",
+        "body": "Note 67",
+        "created": "<now>"
+      },
+      {
+        "id": 69,
+        "label": "Human",
+        "body": "Note 68",
+        "created": "<now>"
+      },
+      {
+        "id": 70,
+        "label": "Human",
+        "body": "Note 69",
+        "created": "<now>"
+      },
+      {
+        "id": 71,
+        "label": "Human",
+        "body": "Note 70",
+        "created": "<now>"
+      },
+      {
+        "id": 72,
+        "label": "Human",
+        "body": "Note 71",
+        "created": "<now>"
+      },
+      {
+        "id": 73,
+        "label": "Human",
+        "body": "Note 72",
+        "created": "<now>"
+      },
+      {
+        "id": 74,
+        "label": "Human",
+        "body": "Note 73",
+        "created": "<now>"
+      },
+      {
+        "id": 75,
+        "label": "Human",
+        "body": "Note 74",
+        "created": "<now>"
+      },
+      {
+        "id": 76,
+        "label": "Human",
+        "body": "Note 75",
+        "created": "<now>"
+      },
+      {
+        "id": 77,
+        "label": "Human",
+        "body": "Note 76",
+        "created": "<now>"
+      },
+      {
+        "id": 78,
+        "label": "Human",
+        "body": "Note 77",
+        "created": "<now>"
+      },
+      {
+        "id": 79,
+        "label": "Human",
+        "body": "Note 78",
+        "created": "<now>"
+      },
+      {
+        "id": 80,
+        "label": "Human",
+        "body": "Note 79",
+        "created": "<now>"
+      },
+      {
+        "id": 81,
+        "label": "Human",
+        "body": "Note 80",
+        "created": "<now>"
+      },
+      {
+        "id": 82,
+        "label": "Human",
+        "body": "Note 81",
+        "created": "<now>"
+      },
+      {
+        "id": 83,
+        "label": "Human",
+        "body": "Note 82",
+        "created": "<now>"
+      },
+      {
+        "id": 84,
+        "label": "Human",
+        "body": "Note 83",
+        "created": "<now>"
+      },
+      {
+        "id": 85,
+        "label": "Human",
+        "body": "Note 84",
+        "created": "<now>"
+      },
+      {
+        "id": 86,
+        "label": "Human",
+        "body": "Note 85",
+        "created": "<now>"
+      },
+      {
+        "id": 87,
+        "label": "Human",
+        "body": "Note 86",
+        "created": "<now>"
+      },
+      {
+        "id": 88,
+        "label": "Human",
+        "body": "Note 87",
+        "created": "<now>"
+      },
+      {
+        "id": 89,
+        "label": "Human",
+        "body": "Note 88",
+        "created": "<now>"
+      },
+      {
+        "id": 90,
+        "label": "Human",
+        "body": "Note 89",
+        "created": "<now>"
+      },
+      {
+        "id": 91,
+        "label": "Human",
+        "body": "Note 90",
+        "created": "<now>"
+      },
+      {
+        "id": 92,
+        "label": "Human",
+        "body": "Note 91",
+        "created": "<now>"
+      },
+      {
+        "id": 93,
+        "label": "Human",
+        "body": "Note 92",
+        "created": "<now>"
+      },
+      {
+        "id": 94,
+        "label": "Human",
+        "body": "Note 93",
+        "created": "<now>"
+      },
+      {
+        "id": 95,
+        "label": "Human",
+        "body": "Note 94",
+        "created": "<now>"
+      },
+      {
+        "id": 96,
+        "label": "Human",
+        "body": "Note 95",
+        "created": "<now>"
+      },
+      {
+        "id": 97,
+        "label": "Human",
+        "body": "Note 96",
+        "created": "<now>"
+      },
+      {
+        "id": 98,
+        "label": "Human",
+        "body": "Note 97",
+        "created": "<now>"
+      },
+      {
+        "id": 99,
+        "label": "Human",
+        "body": "Note 98",
+        "created": "<now>"
+      },
+      {
+        "id": 100,
+        "label": "Human",
+        "body": "Note 99",
+        "created": "<now>"
+      },
+      {
+        "id": 101,
+        "label": "Human",
+        "body": "Note 100",
+        "created": "<now>"
+      },
+      {
+        "id": 102,
+        "label": "Human",
+        "body": "Note 101",
+        "created": "<now>"
+      },
+      {
+        "id": 103,
+        "label": "Human",
+        "body": "Note 102",
+        "created": "<now>"
+      }
+    ],
+    "more": true,
+    "cursor": 103,
+    "total_messages": 103
+  }
+}
+
+== 106. before returns the older page
+-> {"action": "operator_show", "before": 54, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 4,
+        "label": "Human",
+        "body": "Note 3",
+        "created": "<now>"
+      },
+      {
+        "id": 5,
+        "label": "Human",
+        "body": "Note 4",
+        "created": "<now>"
+      },
+      {
+        "id": 6,
+        "label": "Human",
+        "body": "Note 5",
+        "created": "<now>"
+      },
+      {
+        "id": 7,
+        "label": "Human",
+        "body": "Note 6",
+        "created": "<now>"
+      },
+      {
+        "id": 8,
+        "label": "Human",
+        "body": "Note 7",
+        "created": "<now>"
+      },
+      {
+        "id": 9,
+        "label": "Human",
+        "body": "Note 8",
+        "created": "<now>"
+      },
+      {
+        "id": 10,
+        "label": "Human",
+        "body": "Note 9",
+        "created": "<now>"
+      },
+      {
+        "id": 11,
+        "label": "Human",
+        "body": "Note 10",
+        "created": "<now>"
+      },
+      {
+        "id": 12,
+        "label": "Human",
+        "body": "Note 11",
+        "created": "<now>"
+      },
+      {
+        "id": 13,
+        "label": "Human",
+        "body": "Note 12",
+        "created": "<now>"
+      },
+      {
+        "id": 14,
+        "label": "Human",
+        "body": "Note 13",
+        "created": "<now>"
+      },
+      {
+        "id": 15,
+        "label": "Human",
+        "body": "Note 14",
+        "created": "<now>"
+      },
+      {
+        "id": 16,
+        "label": "Human",
+        "body": "Note 15",
+        "created": "<now>"
+      },
+      {
+        "id": 17,
+        "label": "Human",
+        "body": "Note 16",
+        "created": "<now>"
+      },
+      {
+        "id": 18,
+        "label": "Human",
+        "body": "Note 17",
+        "created": "<now>"
+      },
+      {
+        "id": 19,
+        "label": "Human",
+        "body": "Note 18",
+        "created": "<now>"
+      },
+      {
+        "id": 20,
+        "label": "Human",
+        "body": "Note 19",
+        "created": "<now>"
+      },
+      {
+        "id": 21,
+        "label": "Human",
+        "body": "Note 20",
+        "created": "<now>"
+      },
+      {
+        "id": 22,
+        "label": "Human",
+        "body": "Note 21",
+        "created": "<now>"
+      },
+      {
+        "id": 23,
+        "label": "Human",
+        "body": "Note 22",
+        "created": "<now>"
+      },
+      {
+        "id": 24,
+        "label": "Human",
+        "body": "Note 23",
+        "created": "<now>"
+      },
+      {
+        "id": 25,
+        "label": "Human",
+        "body": "Note 24",
+        "created": "<now>"
+      },
+      {
+        "id": 26,
+        "label": "Human",
+        "body": "Note 25",
+        "created": "<now>"
+      },
+      {
+        "id": 27,
+        "label": "Human",
+        "body": "Note 26",
+        "created": "<now>"
+      },
+      {
+        "id": 28,
+        "label": "Human",
+        "body": "Note 27",
+        "created": "<now>"
+      },
+      {
+        "id": 29,
+        "label": "Human",
+        "body": "Note 28",
+        "created": "<now>"
+      },
+      {
+        "id": 30,
+        "label": "Human",
+        "body": "Note 29",
+        "created": "<now>"
+      },
+      {
+        "id": 31,
+        "label": "Human",
+        "body": "Note 30",
+        "created": "<now>"
+      },
+      {
+        "id": 32,
+        "label": "Human",
+        "body": "Note 31",
+        "created": "<now>"
+      },
+      {
+        "id": 33,
+        "label": "Human",
+        "body": "Note 32",
+        "created": "<now>"
+      },
+      {
+        "id": 34,
+        "label": "Human",
+        "body": "Note 33",
+        "created": "<now>"
+      },
+      {
+        "id": 35,
+        "label": "Human",
+        "body": "Note 34",
+        "created": "<now>"
+      },
+      {
+        "id": 36,
+        "label": "Human",
+        "body": "Note 35",
+        "created": "<now>"
+      },
+      {
+        "id": 37,
+        "label": "Human",
+        "body": "Note 36",
+        "created": "<now>"
+      },
+      {
+        "id": 38,
+        "label": "Human",
+        "body": "Note 37",
+        "created": "<now>"
+      },
+      {
+        "id": 39,
+        "label": "Human",
+        "body": "Note 38",
+        "created": "<now>"
+      },
+      {
+        "id": 40,
+        "label": "Human",
+        "body": "Note 39",
+        "created": "<now>"
+      },
+      {
+        "id": 41,
+        "label": "Human",
+        "body": "Note 40",
+        "created": "<now>"
+      },
+      {
+        "id": 42,
+        "label": "Human",
+        "body": "Note 41",
+        "created": "<now>"
+      },
+      {
+        "id": 43,
+        "label": "Human",
+        "body": "Note 42",
+        "created": "<now>"
+      },
+      {
+        "id": 44,
+        "label": "Human",
+        "body": "Note 43",
+        "created": "<now>"
+      },
+      {
+        "id": 45,
+        "label": "Human",
+        "body": "Note 44",
+        "created": "<now>"
+      },
+      {
+        "id": 46,
+        "label": "Human",
+        "body": "Note 45",
+        "created": "<now>"
+      },
+      {
+        "id": 47,
+        "label": "Human",
+        "body": "Note 46",
+        "created": "<now>"
+      },
+      {
+        "id": 48,
+        "label": "Human",
+        "body": "Note 47",
+        "created": "<now>"
+      },
+      {
+        "id": 49,
+        "label": "Human",
+        "body": "Note 48",
+        "created": "<now>"
+      },
+      {
+        "id": 50,
+        "label": "Human",
+        "body": "Note 49",
+        "created": "<now>"
+      },
+      {
+        "id": 51,
+        "label": "Human",
+        "body": "Note 50",
+        "created": "<now>"
+      },
+      {
+        "id": 52,
+        "label": "Human",
+        "body": "Note 51",
+        "created": "<now>"
+      },
+      {
+        "id": 53,
+        "label": "Human",
+        "body": "Note 52",
+        "created": "<now>"
+      }
+    ],
+    "more": true,
+    "cursor": 53,
+    "total_messages": 103
+  }
+}
+
+== 107. before the oldest page
+-> {"action": "operator_show", "before": 4, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Note 0",
+        "created": "<now>"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Note 1",
+        "created": "<now>"
+      },
+      {
+        "id": 3,
+        "label": "Human",
+        "body": "Note 2",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "total_messages": 103
+  }
+}
+
+== 108. after a cursor
+-> {"action": "operator_show", "after": 100, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 101,
+        "label": "Human",
+        "body": "Note 100",
+        "created": "<now>"
+      },
+      {
+        "id": 102,
+        "label": "Human",
+        "body": "Note 101",
+        "created": "<now>"
+      },
+      {
+        "id": 103,
+        "label": "Human",
+        "body": "Note 102",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 103,
+    "total_messages": 103
+  }
+}
+
+== 109. after the end
+-> {"action": "operator_show", "after": 500, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 500,
+    "total_messages": 103
+  }
+}
+
+== 110. before 1 returns an empty page
+-> {"action": "operator_show", "before": 1, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "total_messages": 103
+  }
+}
+
+== 111. after and tail together
+-> {"action": "operator_show", "after": 5, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "tail": true, "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 112. after and before together
+-> {"action": "operator_show", "after": 5, "before": 10, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 113. before and tail together
+-> {"action": "operator_show", "before": 10, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "tail": true, "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 114. before of zero
+-> {"action": "operator_show", "before": 0, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 115. tail false with before is allowed
+-> {"action": "operator_show", "before": 3, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "tail": false, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Paging",
+    "brief": "Paging",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Note 0",
+        "created": "<now>"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Note 1",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "total_messages": 103
+  }
+}
+

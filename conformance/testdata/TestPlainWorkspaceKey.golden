@@ -1,0 +1,154 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Plain workspace", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Plain workspace - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Plain workspace - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Plain workspace - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Plain workspace - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Plain workspace",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. list through a symlink to the checkout
+-> {"action": "operator_list", "directory": "<checkout-symlink>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Plain workspace",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 4. status in the right workspace
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 5. status in another workspace
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-2>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 6. list in the other checkout
+-> {"action": "operator_list", "directory": "<other-checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 7. a chat in the other workspace creates its own conversation
+-> {"action": "create", "brief": "Other", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-2>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-2>",
+    "invitations": {
+      "Worker": "<code-3>"
+    },
+    "join_prompt": "Other: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Other\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 8. list in the other checkout shows it
+-> {"action": "operator_list", "directory": "<other-checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-2>",
+        "title": "Other",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 9. list in the first checkout is unchanged
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Plain workspace",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+

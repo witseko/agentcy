@@ -1,0 +1,112 @@
+== 1. an empty line
+-> <raw: a single newline>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 2. a line of spaces
+-> <raw: three spaces and a newline>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 3. invalid JSON
+-> <raw: {not json>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 4. a JSON array
+-> <raw: [1, 2]>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 5. a JSON string
+-> <raw: "status">
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 6. null
+-> <raw: null>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 7. two JSON objects on one line
+-> <raw: two objects>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 8. invalid UTF-8
+-> <raw: a request with the byte 0xff in a string>
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 9. a duplicate key, last one wins
+-> <raw: action given twice>
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 10. a carriage return before the newline
+-> <raw: CRLF line ending>
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 11. a second line is ignored
+-> <raw: two lines>
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 12. a line at the size limit
+-> <raw: 131072 bytes with the newline>
+<- {
+  "error": "Invalid participant token"
+}
+
+== 13. a line one byte over the limit
+-> <raw: 131073 bytes with the newline>
+<- {
+  "error": "Request exceeds size limit"
+}
+
+== 14. a much larger line
+-> <raw: 300000 bytes>
+<- {
+  "error": "Request exceeds size limit"
+}
+
+== 15. a valid request without a newline, then half-close
+-> <raw: no newline, write side closed>
+<- {
+  "error": "Request exceeds size limit"
+}
+
+== 16. an empty request, then half-close
+-> <raw: no bytes, write side closed>
+<- <no response>
+
+== 17. a stalled request
+-> <raw: no newline, connection kept open>
+<- <no response>
+
+== 18. the daemon still serves after the stall
+-> {"action": "list_closed", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+

@@ -1,0 +1,236 @@
+== 1. human opens a sealed round
+-> {"action": "operator_create", "brief": "Propose privately", "deadline_minutes": 15, "directory": "<checkout>", "invitees": ["First", "Second"], "key": "<operator-key>", "lead": "Lead", "sealed": true, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Propose privately - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Propose privately - lead (Lead)\"."
+      },
+      {
+        "participant": "First",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Propose privately - worker (First): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Propose privately - worker (First)\"."
+      },
+      {
+        "participant": "Second",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "Propose privately - worker (Second): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Propose privately - worker (Second)\"."
+      }
+    ],
+    "roster": {
+      "First": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "round": "sealed",
+    "round_deadline": "<now+15m>"
+  }
+}
+
+== 2. First joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "First",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "brief": "Propose privately",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+15m>"
+  }
+}
+
+== 3. Second joins
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Second",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "brief": "Propose privately",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+15m>"
+  }
+}
+
+== 4. First submits a secret proposal
+-> {"action": "post", "body": "Secret zebra plan", "kind": "proposal", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 5. search does not find a held proposal
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "zebra", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 6. show hides the held proposal
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Propose privately",
+    "brief": "Propose privately",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "invited"
+        },
+        "First": {
+          "role": "worker",
+          "state": "joined",
+          "idle_seconds": "<idle-seconds>"
+        },
+        "Second": {
+          "role": "worker",
+          "state": "joined"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      },
+      "round": "sealed",
+      "round_deadline": "<now+15m>"
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "total_messages": 0
+  }
+}
+
+== 7. the human posts during the round
+-> {"action": "operator_post", "body": "Take your time", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "h", "version": 1}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 8. the human closes with a summary
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "summary": "Stopped early", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 9. the closed record has no proposal
+-> {"action": "read_closed", "conversation": "<room-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "closed": true,
+    "archived": false,
+    "created": "<now>",
+    "brief": "Propose privately",
+    "roster": {
+      "First": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Take your time",
+        "created": "<now>"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Stopped early",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "total_messages": 2
+  }
+}
+
+== 10. search still finds nothing
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "zebra", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 11. First reads the closed conversation
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Take your time",
+        "role": "human"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Stopped early",
+        "role": "human"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "brief": "Propose privately",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "closed": true
+  }
+}
+
+== 12. First cannot post after close
+-> {"action": "post", "body": "Late", "kind": "proposal", "submission_id": "submission-2", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+

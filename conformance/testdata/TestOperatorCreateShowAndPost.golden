@@ -1,0 +1,291 @@
+== 1. human creates with a co-lead and open invite
+-> {"action": "operator_create", "brief": "Review retries\nDetails follow", "directory": "<checkout>", "invitees": ["Worker", {"name": "Partner", "role": "co-lead"}], "key": "<operator-key>", "lead": "Lead", "open_invite": true, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "co-lead",
+        "code": "<code-1>",
+        "join_prompt": "Review retries - co-lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review retries - co-lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Review retries - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries - worker (Worker)\"."
+      },
+      {
+        "participant": "Partner",
+        "role": "co-lead",
+        "code": "<code-3>",
+        "join_prompt": "Review retries - co-lead (Partner): Use agentcy to join with <code-3>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review retries - co-lead (Partner)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "co-lead",
+      "Partner": "co-lead",
+      "Worker": "worker"
+    },
+    "open_invite": {
+      "code": "<code-4>",
+      "join_prompt": "Review retries - worker: Use agentcy to join with <code-4> (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries - worker\"."
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "co-lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "co-lead",
+      "Partner": "co-lead",
+      "Worker": "worker"
+    },
+    "brief": "Review retries\nDetails follow",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. lead status reports the human
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "co-lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Partner": {
+        "role": "co-lead",
+        "state": "invited"
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      }
+    },
+    "participant": "Lead",
+    "open_invite": true
+  }
+}
+
+== 4. the human posts
+-> {"action": "operator_post", "body": "Go ahead.", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n1", "version": 1}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. the human retries the post
+-> {"action": "operator_post", "body": "Go ahead.", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n1", "version": 1}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 6. the human reuses the ID with another body
+-> {"action": "operator_post", "body": "Changed", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n1", "version": 1}
+<- {
+  "error": "Submission ID already used for a different message"
+}
+
+== 7. the human addresses an unknown member
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "n2", "to": "Ghost", "version": 1}
+<- {
+  "error": "Unknown recipient 'Ghost' in this conversation. Active members: Human, Lead, Partner, Worker"
+}
+
+== 8. show returns status, brief and transcript
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Review retries",
+    "brief": "Review retries\nDetails follow",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "co-lead",
+          "state": "joined",
+          "idle_seconds": "<idle-seconds>"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Partner": {
+          "role": "co-lead",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      },
+      "open_invite": true
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Go ahead.",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 1,
+    "total_messages": 1
+  }
+}
+
+== 9. lead reads the human's message with role human
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Go ahead.",
+        "role": "human"
+      }
+    ],
+    "more": false,
+    "cursor": 1,
+    "wake": true,
+    "brief": "Review retries\nDetails follow",
+    "role": "co-lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "co-lead",
+      "Partner": "co-lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 10. list shows the conversation
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Review retries",
+        "open": true,
+        "created": "<now>",
+        "members": 3,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 11. show an unknown conversation
+-> {"action": "operator_show", "conversation": "<room-2>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 12. post to an unknown conversation
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-2>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "x", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 13. operator create without invitees or open invite
+-> {"action": "operator_create", "brief": "Bad", "directory": "<checkout>", "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 14. operator create with duplicate names
+-> {"action": "operator_create", "brief": "Bad", "directory": "<checkout>", "invitees": ["lead"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "error": "Use a different name for each participant"
+}
+
+== 15. operator create with a sealed round
+-> {"action": "operator_create", "brief": "Sealed", "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "Lead", "sealed": true, "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-3>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-5>",
+        "join_prompt": "Sealed - lead (Lead): Use agentcy to join with <code-5>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Sealed - lead (Lead)\"."
+      },
+      {
+        "participant": "W",
+        "role": "worker",
+        "code": "<code-6>",
+        "join_prompt": "Sealed - worker (W): Use agentcy to join with <code-6>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Sealed - worker (W)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    },
+    "round": "sealed",
+    "round_deadline": "<now+10m>"
+  }
+}
+
+== 16. operator create rejects a deadline without a round
+-> {"action": "operator_create", "brief": "Bad", "deadline_minutes": 5, "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 17. a literal CODE in the brief and slot name stays
+-> {"action": "operator_create", "brief": "Fix CODE handling", "directory": "<checkout>", "invitees": ["CODE reviewer"], "key": "<operator-key>", "lead": "CODE", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-4>",
+    "invitations": [
+      {
+        "participant": "CODE",
+        "role": "lead",
+        "code": "<code-7>",
+        "join_prompt": "Fix CODE handling - lead (CODE): Use agentcy to join with <code-7>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Fix CODE handling - lead (CODE)\"."
+      },
+      {
+        "participant": "CODE reviewer",
+        "role": "worker",
+        "code": "<code-8>",
+        "join_prompt": "Fix CODE handling - worker (CODE reviewer): Use agentcy to join with <code-8>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Fix CODE handling - worker (CODE reviewer)\"."
+      }
+    ],
+    "roster": {
+      "CODE": "lead",
+      "CODE reviewer": "worker",
+      "Human": "human"
+    }
+  }
+}
+

@@ -1,0 +1,254 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Roles", "initiator": "Lead", "invitees": ["Alice", "Bob", "Carol"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alice": "<code-1>",
+      "Bob": "<code-2>",
+      "Carol": "<code-3>"
+    },
+    "join_prompt": "Roles: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Roles\".",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Carol": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. Alice joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alice",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Carol": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Roles",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bob joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bob",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Carol": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Roles",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead makes Alice a co-lead
+-> {"action": "set_role", "name": "alice", "role": "co-lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alice",
+    "role": "co-lead",
+    "roster": {
+      "Alice": "co-lead",
+      "Bob": "worker",
+      "Carol": "worker",
+      "Lead": "co-lead"
+    }
+  }
+}
+
+== 5. making Alice a co-lead again records nothing
+-> {"action": "set_role", "name": "Alice", "role": "co-lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alice",
+    "role": "co-lead",
+    "roster": {
+      "Alice": "co-lead",
+      "Bob": "worker",
+      "Carol": "worker",
+      "Lead": "co-lead"
+    }
+  }
+}
+
+== 6. Alice makes Bob the lead, demoting both co-leads
+-> {"action": "set_role", "name": "Bob", "role": "lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Bob",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "lead",
+      "Carol": "worker",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 7. Alice is a worker now and cannot change roles
+-> {"action": "set_role", "name": "Carol", "role": "worker", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can change participant roles"
+}
+
+== 8. the former lead cannot change roles
+-> {"action": "set_role", "name": "Bob", "role": "worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can change participant roles"
+}
+
+== 9. status after the lead change
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Alice": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Bob": {
+        "role": "lead",
+        "state": "joined"
+      },
+      "Carol": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 10. Bob makes the unjoined Carol a co-lead
+-> {"action": "set_role", "name": "Carol", "role": "co-lead", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Carol",
+    "role": "co-lead",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "co-lead",
+      "Carol": "co-lead",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 11. Bob demotes himself, leaving Carol as the lead
+-> {"action": "set_role", "name": "Bob", "role": "worker", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Bob",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Carol": "lead",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 12. status with Carol as the lead
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Alice": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Bob": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Carol": {
+        "role": "lead",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 13. lead reads the role events
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Set Alice as co-lead.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice",
+        "body": "Changed lead to Bob (demoted Lead, Alice to worker).",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Bob",
+        "body": "Set Carol as co-lead.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Bob",
+        "body": "Changed Bob to worker.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": false,
+    "brief": "Roles",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Bob": "worker",
+      "Carol": "lead",
+      "Lead": "worker"
+    }
+  }
+}
+

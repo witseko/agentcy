@@ -1,0 +1,322 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review retries", "initiator": "Lead", "invitees": ["Alpha", "Bravo"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alpha": "<code-1>",
+      "Bravo": "<code-2>"
+    },
+    "join_prompt": "Review retries: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries\".",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. Alpha joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bravo joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead assigns the first task
+-> {"action": "post", "body": "Review retry limits", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. lead assigns the second task
+-> {"action": "post", "body": "Review retry timing", "due_minutes": 30, "kind": "task", "submission_id": "submission-2", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 6. resume without a reply target
+-> {"action": "post", "body": "No target", "kind": "resume", "submission_id": "submission-3", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A resume must reply to the original open task"
+}
+
+== 7. resume of a task that is not blocked
+-> {"action": "post", "body": "Already open", "kind": "resume", "reply_to": 1, "submission_id": "submission-4", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This task is not blocked"
+}
+
+== 8. Alpha blocks the first task
+-> {"action": "post", "body": "I need a fixture", "kind": "blocker", "reply_to": 1, "submission_id": "submission-5", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 9. Alpha blocks the second task
+-> {"action": "post", "body": "I need timing data", "kind": "blocker", "reply_to": 2, "submission_id": "submission-6", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 10. Bravo answers the blocker
+-> {"action": "post", "body": "Here is the fixture", "kind": "finding", "reply_to": 3, "submission_id": "submission-7", "to": "Alpha", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 11. lead reads the blockers
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Review retry limits",
+        "kind": "task",
+        "to": "Alpha",
+        "due_minutes": 30
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Review retry timing",
+        "kind": "task",
+        "to": "Alpha",
+        "due_minutes": 30
+      },
+      {
+        "id": 3,
+        "label": "Alpha",
+        "body": "I need a fixture",
+        "kind": "blocker",
+        "reply_to": 1
+      },
+      {
+        "id": 4,
+        "label": "Alpha",
+        "body": "I need timing data",
+        "kind": "blocker",
+        "reply_to": 2
+      },
+      {
+        "id": 5,
+        "label": "Bravo",
+        "body": "Here is the fixture",
+        "kind": "finding",
+        "to": "Alpha",
+        "reply_to": 3
+      }
+    ],
+    "more": false,
+    "cursor": 5,
+    "wake": true,
+    "_task_blockers": [
+      3,
+      4
+    ],
+    "brief": "Review retries",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 12. resume replying to the blocker instead of the task
+-> {"action": "post", "body": "Wrong reply target", "kind": "resume", "reply_to": 3, "submission_id": "submission-8", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A resume must reply to the original open task"
+}
+
+== 13. Bravo cannot resume Alpha's task
+-> {"action": "post", "body": "I resolved it for Alpha", "kind": "resume", "reply_to": 1, "submission_id": "submission-9", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only the task owner can resume work"
+}
+
+== 14. Alpha resumes the first task
+-> {"action": "post", "body": "The fixture lets me continue", "kind": "resume", "reply_to": 1, "submission_id": "resume-first", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 15. a retry with the same submission ID
+-> {"action": "post", "body": "The fixture lets me continue", "kind": "resume", "reply_to": 1, "submission_id": "resume-first", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 16. a retry with a new submission ID
+-> {"action": "post", "body": "The fixture lets me continue", "kind": "resume", "reply_to": 1, "submission_id": "retry-first", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 17. status: one task open, one blocked
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "blocked",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3,
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          },
+          {
+            "id": 2,
+            "blocked": true,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 18. block the first task again with the same text
+-> {"action": "post", "body": "I need a fixture", "kind": "blocker", "reply_to": 1, "submission_id": "submission-13", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 19. resume again with the same text
+-> {"action": "post", "body": "The fixture lets me continue", "kind": "resume", "reply_to": 1, "submission_id": "submission-14", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 20. Alpha resumes the second task
+-> {"action": "post", "body": "I recovered the timing data", "kind": "resume", "reply_to": 2, "submission_id": "submission-15", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 21. Alpha finishes the first task
+-> {"action": "post", "body": "Retry limits checked", "kind": "done", "reply_to": 1, "submission_id": "submission-16", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 22. resume of a finished task
+-> {"action": "post", "body": "Already closed", "kind": "resume", "reply_to": 1, "submission_id": "submission-17", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A resume must reply to the original open task"
+}
+
+== 23. status after the cycles
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 7,
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      }
+    },
+    "participant": "Lead"
+  }
+}
+

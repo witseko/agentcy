@@ -1,0 +1,539 @@
+== 1. list_closed without a store
+-> {"action": "list_closed", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 2. read_closed without a store
+-> {"action": "read_closed", "conversation": "<room-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown closed conversation in this workspace"
+}
+
+== 3. human creates
+-> {"action": "operator_create", "brief": "History brief\nwith details", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "History brief - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"History brief - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "History brief - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"History brief - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 4. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "History brief\nwith details",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 5. an open conversation looks unknown
+-> {"action": "read_closed", "conversation": "<room-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown closed conversation in this workspace"
+}
+
+== 6. an unknown conversation
+-> {"action": "read_closed", "conversation": "<room-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown closed conversation in this workspace"
+}
+
+== 7. lead posts 1
+-> {"action": "post", "body": "Entry 1", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 8. lead posts 2
+-> {"action": "post", "body": "Entry 2", "submission_id": "submission-2", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 9. lead posts 3
+-> {"action": "post", "body": "Entry 3", "submission_id": "submission-3", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 10. lead posts 4
+-> {"action": "post", "body": "Entry 4", "submission_id": "submission-4", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 11. lead posts 5
+-> {"action": "post", "body": "Entry 5", "submission_id": "submission-5", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 12. lead posts 6
+-> {"action": "post", "body": "Entry 6", "submission_id": "submission-6", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 13. lead posts 7
+-> {"action": "post", "body": "Entry 7", "submission_id": "submission-7", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 14. lead posts 8
+-> {"action": "post", "body": "Entry 8", "submission_id": "submission-8", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 15. lead posts 9
+-> {"action": "post", "body": "Entry 9", "submission_id": "submission-9", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 16. lead posts 10
+-> {"action": "post", "body": "Entry 10", "submission_id": "submission-10", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 17. lead posts 11
+-> {"action": "post", "body": "Entry 11", "submission_id": "submission-11", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 11
+  }
+}
+
+== 18. lead posts 12
+-> {"action": "post", "body": "Entry 12", "submission_id": "submission-12", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 12
+  }
+}
+
+== 19. lead posts 13
+-> {"action": "post", "body": "Entry 13", "submission_id": "submission-13", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 13
+  }
+}
+
+== 20. lead posts 14
+-> {"action": "post", "body": "Entry 14", "submission_id": "submission-14", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 14
+  }
+}
+
+== 21. lead posts 15
+-> {"action": "post", "body": "Entry 15", "submission_id": "submission-15", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 15
+  }
+}
+
+== 22. lead posts 16
+-> {"action": "post", "body": "Entry 16", "submission_id": "submission-16", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 16
+  }
+}
+
+== 23. lead posts 17
+-> {"action": "post", "body": "Entry 17", "submission_id": "submission-17", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 17
+  }
+}
+
+== 24. lead closes
+-> {"action": "close", "summary": "All checks passed.", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 25. lead creates a second conversation
+-> {"action": "create", "brief": "Second", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-3>",
+    "token": "<token-2>",
+    "invitations": {
+      "Worker": "<code-3>"
+    },
+    "join_prompt": "Second: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Second\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 26. the second conversation closes without messages
+-> {"action": "close", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 27. lead creates a third, still open
+-> {"action": "create", "brief": "Third", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-4>",
+    "token": "<token-3>",
+    "invitations": {
+      "Worker": "<code-4>"
+    },
+    "join_prompt": "Third: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Third\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 28. list_closed shows both closed conversations, newest first
+-> {"action": "list_closed", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-3>",
+        "title": "Second",
+        "created": "<now>",
+        "archived": false,
+        "messages": 0
+      },
+      {
+        "conversation": "<room-2>",
+        "title": "History brief",
+        "created": "<now>",
+        "archived": false,
+        "messages": 18
+      }
+    ]
+  }
+}
+
+== 29. read_closed from zero: brief, roster and 16 messages
+-> {"action": "read_closed", "conversation": "<room-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "closed": true,
+    "archived": false,
+    "created": "<now>",
+    "brief": "History brief\nwith details",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Entry 1",
+        "created": "<now>"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Entry 2",
+        "created": "<now>"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Entry 3",
+        "created": "<now>"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Entry 4",
+        "created": "<now>"
+      },
+      {
+        "id": 5,
+        "label": "Lead",
+        "body": "Entry 5",
+        "created": "<now>"
+      },
+      {
+        "id": 6,
+        "label": "Lead",
+        "body": "Entry 6",
+        "created": "<now>"
+      },
+      {
+        "id": 7,
+        "label": "Lead",
+        "body": "Entry 7",
+        "created": "<now>"
+      },
+      {
+        "id": 8,
+        "label": "Lead",
+        "body": "Entry 8",
+        "created": "<now>"
+      },
+      {
+        "id": 9,
+        "label": "Lead",
+        "body": "Entry 9",
+        "created": "<now>"
+      },
+      {
+        "id": 10,
+        "label": "Lead",
+        "body": "Entry 10",
+        "created": "<now>"
+      },
+      {
+        "id": 11,
+        "label": "Lead",
+        "body": "Entry 11",
+        "created": "<now>"
+      },
+      {
+        "id": 12,
+        "label": "Lead",
+        "body": "Entry 12",
+        "created": "<now>"
+      },
+      {
+        "id": 13,
+        "label": "Lead",
+        "body": "Entry 13",
+        "created": "<now>"
+      },
+      {
+        "id": 14,
+        "label": "Lead",
+        "body": "Entry 14",
+        "created": "<now>"
+      },
+      {
+        "id": 15,
+        "label": "Lead",
+        "body": "Entry 15",
+        "created": "<now>"
+      },
+      {
+        "id": 16,
+        "label": "Lead",
+        "body": "Entry 16",
+        "created": "<now>"
+      }
+    ],
+    "more": true,
+    "cursor": 16,
+    "total_messages": 18
+  }
+}
+
+== 30. read_closed after the cursor
+-> {"action": "read_closed", "after": 16, "conversation": "<room-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "closed": true,
+    "archived": false,
+    "created": "<now>",
+    "messages": [
+      {
+        "id": 17,
+        "label": "Lead",
+        "body": "Entry 17",
+        "created": "<now>"
+      },
+      {
+        "id": 18,
+        "label": "Lead",
+        "body": "All checks passed.",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 18,
+    "total_messages": 18
+  }
+}
+
+== 31. the human archives the first conversation
+-> {"action": "operator_archive", "archived": true, "conversation": "<room-2>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "archived": true
+  }
+}
+
+== 32. list_closed archived only
+-> {"action": "list_closed", "archived": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-2>",
+        "title": "History brief",
+        "created": "<now>",
+        "archived": true,
+        "messages": 18
+      }
+    ]
+  }
+}
+
+== 33. list_closed active only
+-> {"action": "list_closed", "archived": false, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-3>",
+        "title": "Second",
+        "created": "<now>",
+        "archived": false,
+        "messages": 0
+      }
+    ]
+  }
+}
+
+== 34. list_closed with null archived lists both
+-> {"action": "list_closed", "archived": null, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-3>",
+        "title": "Second",
+        "created": "<now>",
+        "archived": false,
+        "messages": 0
+      },
+      {
+        "conversation": "<room-2>",
+        "title": "History brief",
+        "created": "<now>",
+        "archived": true,
+        "messages": 18
+      }
+    ]
+  }
+}
+
+== 35. read_closed of an archived conversation
+-> {"action": "read_closed", "after": 17, "conversation": "<room-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "closed": true,
+    "archived": true,
+    "created": "<now>",
+    "messages": [
+      {
+        "id": 18,
+        "label": "Lead",
+        "body": "All checks passed.",
+        "created": "<now>"
+      }
+    ],
+    "more": false,
+    "cursor": 18,
+    "total_messages": 18
+  }
+}
+
+== 36. a malformed conversation ID
+-> {"action": "read_closed", "conversation": "../etc", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 37. an uppercase conversation ID
+-> {"action": "read_closed", "conversation": "0123456789ABCDEF01234567", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 38. a token is not accepted
+-> {"action": "read_closed", "conversation": "<room-2>", "token": "x", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 39. list_closed refuses unknown fields
+-> {"action": "list_closed", "after": 0, "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+

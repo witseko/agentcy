@@ -1,0 +1,150 @@
+== 1. list without a store
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 2. archived list without a store
+-> {"action": "operator_list", "archived": true, "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 3. search without a store
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "retry", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 4. plugins without a configuration
+-> {"action": "operator_plugins", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "plugins": []
+  }
+}
+
+== 5. operator_show without a store
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 6. operator_tasks without a store
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 7. operator_invite without a store
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Extra", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 8. operator_open_invite without a store
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 9. operator_launch without a store
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "W", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 10. operator_retire without a store
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "W", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 11. operator_set_role without a store
+-> {"action": "operator_set_role", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "W", "role": "co-lead", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 12. operator_post without a store
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "k", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 13. operator_close without a store
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 14. operator_reopen without a store
+-> {"action": "operator_reopen", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 15. operator_archive without a store
+-> {"action": "operator_archive", "archived": false, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 16. operator_rename without a store
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "T", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 17. operator_set_member_budget without a store
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "W", "token_budget": 10, "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 18. list_closed without a store
+-> {"action": "list_closed", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 19. mcp_task_status without a store
+-> {"action": "mcp_task_status", "task_id": "task-1", "workspace": "<workspace-1>"}
+<- {
+  "error": "Failed to retrieve task: Task not found"
+}
+
+== 20. mcp_task_cancel without a store
+-> {"action": "mcp_task_cancel", "task_id": "task-1", "workspace": "<workspace-1>"}
+<- {
+  "error": "Failed to retrieve task: Task not found"
+}
+
+== 21. status with an unknown token creates a store
+-> {"action": "status", "token": "unknown", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 22. list after a store exists
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 23. show an unknown conversation in an existing store
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+

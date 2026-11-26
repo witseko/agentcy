@@ -38,7 +38,7 @@ tui: ## Install the terminal UI into .venv/bin: built with Go, else downloaded f
 	@test -d .venv/bin || { echo "Run make deps first."; exit 1; }
 	@if command -v go >/dev/null; then \
 		echo "Building the terminal UI $(VERSION) from source"; \
-		cd tui && go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./cmd/agentcy-tui; \
+		go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./tui/cmd/agentcy-tui; \
 	else \
 		echo "Go is missing. Downloading the terminal UI $(VERSION) for $(HOST_PLATFORM) from the GitHub release"; \
 		sh scripts/install-tui-release.sh "$(RELEASE_URL)" "$(HOST_PLATFORM)" "$(TUI_BINARY)"; \
@@ -49,8 +49,8 @@ release-files: ## Build the terminal UI for every platform and SHA256SUMS into d
 	rm -f "$(RELEASE_DIR)"/agentcy-tui-* "$(RELEASE_DIR)/SHA256SUMS"
 	@for platform in $(PLATFORMS); do \
 		echo "Building $(RELEASE_DIR)/agentcy-tui-$$platform $(VERSION)"; \
-		( cd tui && CGO_ENABLED=0 GOOS=$${platform%-*} GOARCH=$${platform#*-} \
-			go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/$(RELEASE_DIR)/agentcy-tui-$$platform" ./cmd/agentcy-tui ) || exit 1; \
+		( CGO_ENABLED=0 GOOS=$${platform%-*} GOARCH=$${platform#*-} \
+			go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/$(RELEASE_DIR)/agentcy-tui-$$platform" ./tui/cmd/agentcy-tui ) || exit 1; \
 	done
 	cd "$(RELEASE_DIR)" && if command -v sha256sum >/dev/null; then sha256sum agentcy-tui-*; \
 		else shasum -a 256 agentcy-tui-*; fi > SHA256SUMS
@@ -79,3 +79,14 @@ ui: ## Open the terminal UI for WORKSPACE (default: the current folder)
 http: check-workspace ## Serve WORKSPACE over HTTP for a remote chat (PUBLIC_HOST=tunnel host, HTTP_PORT=8765)
 	"$(BRIDGE)" --workspace "$(WORKSPACE_PATH)" --http "$(HTTP_PORT)" \
 		$(if $(PUBLIC_HOST),--http-public-host "$(PUBLIC_HOST)")
+
+.PHONY: bench
+bench: ## Benchmark a core (default: Python). Set AGENTCY_CORE_CMD, AGENTCY_BIN, BENCH_FLAGS
+	AGENTCY_CORE_CMD="$${AGENTCY_CORE_CMD:-$(CURDIR)/.venv/bin/python -I -m agentcy.mcp.core}" \
+		AGENTCY_BIN="$${AGENTCY_BIN:-$(BRIDGE)}" go run -tags bench ./bench $(BENCH_FLAGS)
+
+# The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one.
+AGENTCY_CORE_CMD ?= uv run python -I -m agentcy.mcp.core
+.PHONY: conformance
+conformance: ## Compare the core daemon with the recorded conformance goldens
+	AGENTCY_CORE_CMD="$(AGENTCY_CORE_CMD)" go test -tags conformance ./conformance/...

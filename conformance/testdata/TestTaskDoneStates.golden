@@ -1,0 +1,323 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review retries", "initiator": "Lead", "invitees": ["Alpha", "Bravo"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alpha": "<code-1>",
+      "Bravo": "<code-2>"
+    },
+    "join_prompt": "Review retries: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries\".",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. Alpha joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bravo joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead assigns a task to Alpha
+-> {"action": "post", "body": "Check retries", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. lead assigns a task to Bravo
+-> {"action": "post", "body": "Check timeouts", "due_minutes": 30, "kind": "task", "submission_id": "submission-2", "to": "Bravo", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 6. Bravo cannot finish Alpha's task
+-> {"action": "post", "body": "Done for Alpha", "kind": "done", "reply_to": 1, "submission_id": "submission-3", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3,
+    "warning": "Open task(s) #2 remain open. Reply with reply_to=<task_id> and kind='done' to close."
+  }
+}
+
+== 7. Alpha's done without a reply warns
+-> {"action": "post", "body": "All done", "kind": "done", "submission_id": "submission-4", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4,
+    "warning": "Open task(s) #1 remain open. Reply with reply_to=<task_id> and kind='done' to close."
+  }
+}
+
+== 8. status: Alpha replied with an open task
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 9. Alpha finishes the task
+-> {"action": "post", "body": "Retries checked", "kind": "done", "reply_to": 1, "submission_id": "submission-5", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 10. status: Alpha done
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "done",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 11. a follow-up task clears done
+-> {"action": "post", "body": "Check backoff", "due_minutes": 30, "kind": "task", "submission_id": "submission-6", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 12. status: Alpha replied again
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2,
+        "open_tasks": [
+          {
+            "id": 6,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 13. Alpha finishes the follow-up
+-> {"action": "post", "body": "Backoff checked", "kind": "done", "reply_to": 6, "submission_id": "submission-7", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 14. Alpha posts a note after done
+-> {"action": "post", "body": "One more thing", "submission_id": "submission-8", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 15. Bravo blocks without a task reference
+-> {"action": "post", "body": "Waiting on access", "kind": "blocker", "submission_id": "submission-9", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 16. status: a plain blocker marks Bravo blocked
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 4
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "blocked",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2,
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 17. Bravo resolves it with done on the task
+-> {"action": "post", "body": "Timeouts checked", "kind": "done", "reply_to": 2, "submission_id": "submission-10", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 18. status after every task finished
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 4
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "done",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3
+      }
+    },
+    "participant": "Lead"
+  }
+}
+

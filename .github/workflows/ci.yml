@@ -88,9 +88,6 @@ jobs:
     name: Terminal UI (gofmt, vet, tests, govulncheck)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: tui
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -138,5 +135,4 @@ jobs:
           go-version: '1.27.4'
           cache: false
       - name: Run terminal UI end-to-end tests against a real core
-        working-directory: tui
         run: uv run --locked go test -tags e2e ./...

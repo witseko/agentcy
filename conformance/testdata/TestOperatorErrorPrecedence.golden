@@ -1,0 +1,135 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Precedence", "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Precedence - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Precedence - lead (Lead)\"."
+      },
+      {
+        "participant": "W",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Precedence - worker (W): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Precedence - worker (W)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    }
+  }
+}
+
+== 2. a wrong key and an invalid conversation ID
+-> {"action": "operator_show", "conversation": "not-an-id", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 3. a too-long key and an invalid conversation ID
+-> {"action": "operator_show", "conversation": "not-an-id", "directory": "<checkout>", "key": "<200 characters starting \"kkkkkkkkkkkk\">", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 4. no key and no directory
+-> {"action": "operator_list", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 5. a wrong key and an unknown conversation
+-> {"action": "operator_show", "conversation": "<room-2>", "directory": "<checkout>", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 6. a wrong key and a missing directory
+-> {"action": "operator_list", "directory": "<checkout>/missing", "key": "wrong", "version": 1}
+<- {
+  "error": "Operator key rejected"
+}
+
+== 7. version 2
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 2}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 8. version as a string
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": "1"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 9. no version
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 10. an unknown field
+-> {"action": "operator_list", "directory": "<checkout>", "extra": true, "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 11. an unknown operator action
+-> {"action": "operator_unknown", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 12. a relative directory
+-> {"action": "operator_list", "directory": "work", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 13. a missing directory
+-> {"action": "operator_list", "directory": "<checkout>/missing", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Directory must be an existing directory"
+}
+
+== 14. a file instead of a directory
+-> {"action": "operator_list", "directory": "/etc/hosts", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Directory must be an existing directory"
+}
+
+== 15. a directory with a NUL byte
+-> {"action": "operator_list", "directory": "<checkout>\u0000", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 16. a missing directory for an unknown conversation
+-> {"action": "operator_show", "conversation": "<room-2>", "directory": "<checkout>/missing", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Directory must be an existing directory"
+}
+
+== 17. the human cannot post a task
+-> {"action": "operator_post", "body": "Hi", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "kind": "task", "submission_id": "p", "to": "W", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. a member request with an operator key
+-> {"action": "status", "key": "k", "token": "t", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 19. a member request without a token
+-> {"action": "status", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+

@@ -1,0 +1,281 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review retries", "initiator": "Lead", "invitees": ["Alpha", "Bravo"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alpha": "<code-1>",
+      "Bravo": "<code-2>"
+    },
+    "join_prompt": "Review retries: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries\".",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. Alpha joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bravo joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead assigns a task to Alpha
+-> {"action": "post", "body": "Write the summary", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. the lead cannot be retired
+-> {"action": "retire", "name": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Cannot retire the lead. Assign a new lead first"
+}
+
+== 6. a worker cannot retire anyone
+-> {"action": "retire", "name": "Alpha", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can retire participants"
+}
+
+== 7. retire an unknown name
+-> {"action": "retire", "name": "Ghost", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 8. retire the human
+-> {"action": "retire", "name": "Human", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 9. lead makes Alpha the lead
+-> {"action": "set_role", "name": "Alpha", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alpha",
+    "role": "lead",
+    "roster": {
+      "Alpha": "lead",
+      "Bravo": "worker",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 10. the demoted lead cannot retire
+-> {"action": "retire", "name": "Bravo", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can retire participants"
+}
+
+== 11. Alpha retires the former lead
+-> {"action": "retire", "name": "Lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Lead",
+    "retired": true
+  }
+}
+
+== 12. status: Alpha leads and keeps its task
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "worker",
+        "state": "retired",
+        "messages": 1
+      },
+      "Alpha": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "joined"
+      }
+    },
+    "participant": "Alpha"
+  }
+}
+
+== 13. Alpha makes Bravo a co-lead
+-> {"action": "set_role", "name": "Bravo", "role": "co-lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Bravo",
+    "role": "co-lead",
+    "roster": {
+      "Alpha": "co-lead",
+      "Bravo": "co-lead",
+      "Lead": "worker"
+    }
+  }
+}
+
+== 14. Bravo retires Alpha, the other co-lead
+-> {"action": "retire", "name": "Alpha", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alpha",
+    "retired": true
+  }
+}
+
+== 15. status: Bravo is the lead and holds the task
+-> {"action": "status", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "worker",
+        "state": "retired",
+        "messages": 1
+      },
+      "Alpha": {
+        "role": "co-lead",
+        "state": "retired"
+      },
+      "Bravo": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Bravo"
+  }
+}
+
+== 16. Bravo finishes the moved task
+-> {"action": "post", "body": "Summary written", "kind": "done", "reply_to": 1, "submission_id": "submission-2", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 17. Bravo reads the events
+-> {"action": "read", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Write the summary",
+        "kind": "task",
+        "to": "Alpha",
+        "due_minutes": 30
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Changed lead to Alpha (demoted Lead to worker).",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Alpha",
+        "body": "Retired Lead.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Alpha",
+        "body": "Set Bravo as co-lead.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Bravo",
+        "body": "Retired Alpha.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Bravo",
+        "body": "Reassigned task #1 from Alpha to Bravo because Alpha was retired.",
+        "kind": "reassign",
+        "to": "Bravo",
+        "reply_to": 1
+      },
+      {
+        "id": 7,
+        "label": "Bravo",
+        "body": "Summary written",
+        "kind": "done",
+        "reply_to": 1
+      }
+    ],
+    "more": false,
+    "cursor": 7,
+    "wake": true,
+    "brief": "Review retries",
+    "role": "lead",
+    "roster": {
+      "Alpha": "co-lead",
+      "Bravo": "lead",
+      "Lead": "worker"
+    }
+  }
+}
+

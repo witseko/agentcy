@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import sysconfig
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +10,9 @@ from typing import Any
 
 import httpx2
 import pytest
+from entry_points import shim_command
 from mcp import Client, StdioServerParameters
+from mcp.client.session import ElicitationFnT
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent
 
@@ -25,17 +26,27 @@ EXPECTED_VERSION = {"legacy": LEGACY_VERSION, "auto": MODERN_VERSION}
 
 
 @asynccontextmanager
-async def connect_stdio(home: Path, mode: str) -> AsyncIterator[Client]:
-    """Start the installed CLI shim on stdio and connect in the given protocol mode."""
+async def connect_stdio(
+    home: Path, mode: str, elicitation_callback: ElicitationFnT | None = None
+) -> AsyncIterator[Client]:
+    """Start the CLI shim on stdio and connect in the given protocol mode.
+
+    The client declares form elicitation only when an elicitation callback is given.
+    """
     workspace = home / "workspace"
     workspace.mkdir(exist_ok=True)
     parameters = StdioServerParameters(
-        command=str(Path(sysconfig.get_path("scripts")) / "agentcy"),
+        command=shim_command(),
         args=["--workspace", str(workspace)],
         env={"AGENTCY_HOME": str(home), "PATH": os.defpath},
         cwd=workspace,
     )
-    async with Client(parameters, mode=mode, read_timeout_seconds=TIMEOUT) as client:
+    async with Client(
+        parameters,
+        mode=mode,
+        elicitation_callback=elicitation_callback,
+        read_timeout_seconds=TIMEOUT,
+    ) as client:
         yield client
 
 

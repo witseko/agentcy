@@ -5,8 +5,6 @@ import json
 import os
 import stat
 import subprocess
-import sys
-import sysconfig
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
@@ -15,6 +13,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import pytest
+from entry_points import core_command, shim_command
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import TextContent
@@ -34,8 +33,9 @@ def bridge_home() -> Iterator[Path]:
         socket_path = home / "core.sock"
         log_path = home / "core.log"
         with log_path.open("w") as log:
-            core = subprocess.Popen(
-                [sys.executable, "-I", "-m", "agentcy.mcp.core"],
+            # The test starts the configured core with an argument list and no shell.
+            core = subprocess.Popen(  # noqa: S603
+                core_command(),
                 cwd=home,
                 env={"AGENTCY_HOME": directory, "PATH": os.defpath},
                 stdin=subprocess.DEVNULL,
@@ -61,9 +61,8 @@ def bridge_home() -> Iterator[Path]:
 @asynccontextmanager
 async def connect(home: Path, workspace: Path) -> AsyncIterator[ClientSession]:
     """Start and initialize one installed CLI shim through the MCP SDK."""
-    command = Path(sysconfig.get_path("scripts")) / "agentcy"
     parameters = StdioServerParameters(
-        command=str(command),
+        command=shim_command(),
         args=["--workspace", str(workspace)],
         env={"AGENTCY_HOME": str(home), "PATH": os.defpath},
         cwd=workspace,

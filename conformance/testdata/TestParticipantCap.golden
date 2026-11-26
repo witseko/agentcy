@@ -1,0 +1,1433 @@
+== 1. lead creates with 16 invitees
+-> {"action": "create", "brief": "Cap", "initiator": "Lead", "invitees": ["Worker 0", "Worker 1", "Worker 2", "Worker 3", "Worker 4", "Worker 5", "Worker 6", "Worker 7", "Worker 8", "Worker 9", "Worker 10", "Worker 11", "Worker 12", "Worker 13", "Worker 14", "Worker 15"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker 0": "<code-1>",
+      "Worker 1": "<code-2>",
+      "Worker 2": "<code-3>",
+      "Worker 3": "<code-4>",
+      "Worker 4": "<code-5>",
+      "Worker 5": "<code-6>",
+      "Worker 6": "<code-7>",
+      "Worker 7": "<code-8>",
+      "Worker 8": "<code-9>",
+      "Worker 9": "<code-10>",
+      "Worker 10": "<code-11>",
+      "Worker 11": "<code-12>",
+      "Worker 12": "<code-13>",
+      "Worker 13": "<code-14>",
+      "Worker 14": "<code-15>",
+      "Worker 15": "<code-16>"
+    },
+    "join_prompt": "Cap: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Cap\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker 0": "worker",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 13": "worker",
+      "Worker 14": "worker",
+      "Worker 15": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    }
+  }
+}
+
+== 2. an 18th slot is refused
+-> {"action": "invite", "name": "Another", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation already has 17 participants"
+}
+
+== 3. reissuing an existing slot still works
+-> {"action": "invite", "name": "Worker 0", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker 0",
+    "role": "worker",
+    "code": "<code-17>",
+    "join_prompt": "Cap - worker (Worker 0): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Cap - worker (Worker 0)\"."
+  }
+}
+
+== 4. 17 invitees fail validation
+-> {"action": "create", "brief": "Cap", "initiator": "Lead", "invitees": ["Worker 0", "Worker 1", "Worker 2", "Worker 3", "Worker 4", "Worker 5", "Worker 6", "Worker 7", "Worker 8", "Worker 9", "Worker 10", "Worker 11", "Worker 12", "Worker 13", "Worker 14", "Worker 15", "Worker 16"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 5. lead creates an open room
+-> {"action": "create", "brief": "Open cap", "initiator": "Lead", "invitees": [], "open_invite": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-2>",
+    "invitations": {},
+    "join_prompt": "Open cap: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Open cap\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead"
+    },
+    "open_invite": {
+      "code": "<code-18>",
+      "join_prompt": "Open cap - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Open cap - worker\"."
+    }
+  }
+}
+
+== 6. open join 1
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 1",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-3>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 2,
+    "more": false
+  }
+}
+
+== 7. open join 2
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 2",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-4>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 3,
+    "more": false
+  }
+}
+
+== 8. open join 3
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 3",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-5>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 4,
+    "more": false
+  }
+}
+
+== 9. open join 4
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 4",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-6>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 5,
+    "more": false
+  }
+}
+
+== 10. open join 5
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 5",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-7>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 6,
+    "more": false
+  }
+}
+
+== 11. open join 6
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 6",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-8>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 7,
+    "more": false
+  }
+}
+
+== 12. open join 7
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 7",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-9>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 8,
+    "more": false
+  }
+}
+
+== 13. open join 8
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 8",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-10>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 9,
+    "more": false
+  }
+}
+
+== 14. open join 9
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 9",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-11>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 10,
+    "more": false
+  }
+}
+
+== 15. open join 10
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 10",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-12>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 11,
+    "more": false
+  }
+}
+
+== 16. open join 11
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 11",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-13>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 12,
+    "more": false
+  }
+}
+
+== 17. open join 12
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 12",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-14>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 13,
+        "label": "Worker 12",
+        "body": "Worker 12 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 13,
+    "more": false
+  }
+}
+
+== 18. open join 13
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 13",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 13": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-15>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 13,
+        "label": "Worker 12",
+        "body": "Worker 12 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 14,
+        "label": "Worker 13",
+        "body": "Worker 13 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 14,
+    "more": false
+  }
+}
+
+== 19. open join 14
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 14",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 13": "worker",
+      "Worker 14": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-16>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 13,
+        "label": "Worker 12",
+        "body": "Worker 12 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 14,
+        "label": "Worker 13",
+        "body": "Worker 13 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 15,
+        "label": "Worker 14",
+        "body": "Worker 14 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 15,
+    "more": false
+  }
+}
+
+== 20. open join 15
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 15",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 13": "worker",
+      "Worker 14": "worker",
+      "Worker 15": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-17>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 13,
+        "label": "Worker 12",
+        "body": "Worker 12 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 14,
+        "label": "Worker 13",
+        "body": "Worker 13 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 15,
+        "label": "Worker 14",
+        "body": "Worker 14 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 16,
+        "label": "Worker 15",
+        "body": "Worker 15 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 16,
+    "more": false
+  }
+}
+
+== 21. open join 16
+-> {"action": "join", "code": "<code-18>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Worker 16",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 10": "worker",
+      "Worker 11": "worker",
+      "Worker 12": "worker",
+      "Worker 13": "worker",
+      "Worker 14": "worker",
+      "Worker 15": "worker",
+      "Worker 16": "worker",
+      "Worker 2": "worker",
+      "Worker 3": "worker",
+      "Worker 4": "worker",
+      "Worker 5": "worker",
+      "Worker 6": "worker",
+      "Worker 7": "worker",
+      "Worker 8": "worker",
+      "Worker 9": "worker"
+    },
+    "brief": "Open cap",
+    "token": "<token-18>",
+    "messages": [
+      {
+        "id": 2,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Worker 3",
+        "body": "Worker 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Worker 4",
+        "body": "Worker 4 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 5",
+        "body": "Worker 5 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 6",
+        "body": "Worker 6 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Worker 7",
+        "body": "Worker 7 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Worker 8",
+        "body": "Worker 8 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Worker 9",
+        "body": "Worker 9 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 11,
+        "label": "Worker 10",
+        "body": "Worker 10 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 12,
+        "label": "Worker 11",
+        "body": "Worker 11 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 13,
+        "label": "Worker 12",
+        "body": "Worker 12 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 14,
+        "label": "Worker 13",
+        "body": "Worker 13 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 15,
+        "label": "Worker 14",
+        "body": "Worker 14 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 16,
+        "label": "Worker 15",
+        "body": "Worker 15 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 17,
+        "label": "Worker 16",
+        "body": "Worker 16 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 17,
+    "more": false
+  }
+}
+
+== 22. the 18th open join is refused
+-> {"action": "join", "code": "<code-18>", "name": "Late", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation already has 17 participants"
+}
+
+== 23. lead reads status of the full room
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker 1": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 2": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 3": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 4": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 5": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 6": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 7": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 8": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 9": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 10": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 11": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 12": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 13": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 14": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 15": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 16": {
+        "role": "worker",
+        "state": "joined"
+      }
+    },
+    "participant": "Lead",
+    "open_invite": true
+  }
+}
+

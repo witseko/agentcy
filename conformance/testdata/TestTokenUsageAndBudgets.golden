@@ -1,0 +1,467 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Budget checks", "directory": "<checkout>", "invitees": ["Worker", "Spare"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Budget checks - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Budget checks - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Budget checks - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Budget checks - worker (Worker)\"."
+      },
+      {
+        "participant": "Spare",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "Budget checks - worker (Spare): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Budget checks - worker (Spare)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead joins with a model and budget
+-> {"action": "join", "code": "<code-1>", "model": "lead/model", "token_budget": 100000, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Budget checks",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. worker joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Budget checks",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead posts
+-> {"action": "post", "body": "Please estimate the work for the retry module.", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. worker reads
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Please estimate the work for the retry module."
+      }
+    ],
+    "more": false,
+    "cursor": 1,
+    "wake": true,
+    "brief": "Budget checks",
+    "role": "worker",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 6. the human sets the worker's model and budget
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "model": "gemini-2.5-pro", "name": "worker", "token_budget": 250000, "version": 1}
+<- {
+  "result": {
+    "participant": "Worker",
+    "model": "gemini-2.5-pro",
+    "token_budget": 250000
+  }
+}
+
+== 7. the human sets only a budget
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Spare", "token_budget": 1000, "version": 1}
+<- {
+  "result": {
+    "participant": "Spare",
+    "token_budget": 1000
+  }
+}
+
+== 8. the human sets neither
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 9. a budget of zero fails validation
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "token_budget": 0, "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 10. a model with spaces fails validation
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "model": "bad model", "name": "Worker", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 11. the human cannot have a budget
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Human", "token_budget": 10, "version": 1}
+<- {
+  "error": "Cannot set a token budget for Human"
+}
+
+== 12. an unknown participant
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Ghost", "token_budget": 10, "version": 1}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 13. worker reports exact usage
+-> {"action": "report_usage", "input_tokens": 12000, "output_tokens": 3000, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "usage": {
+      "conversation_tokens": 15000,
+      "input_tokens": 12000,
+      "output_tokens": 3000,
+      "model_tokens_used": 15000,
+      "estimated_tokens": 20,
+      "source": "reported",
+      "actual_tokens": 15000,
+      "model": "gemini-2.5-pro",
+      "initial_tokens": 250000,
+      "remaining_tokens": 235000,
+      "used_percent": 6.0,
+      "remaining_percent": 94.0,
+      "status": "ok"
+    },
+    "token_balance": {
+      "balanced": true,
+      "imbalance_gap_percent": 6.0
+    }
+  }
+}
+
+== 14. lead reports usage with a model
+-> {"action": "report_usage", "input_tokens": 90000, "model": "lead/model", "output_tokens": 5000, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Lead",
+    "usage": {
+      "conversation_tokens": 95000,
+      "input_tokens": 90000,
+      "output_tokens": 5000,
+      "model_tokens_used": 95000,
+      "estimated_tokens": 56,
+      "source": "reported",
+      "actual_tokens": 95000,
+      "model": "lead/model",
+      "initial_tokens": 100000,
+      "remaining_tokens": 5000,
+      "used_percent": 95.0,
+      "remaining_percent": 5.0,
+      "status": "warning"
+    },
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 95.0,
+      "overloaded": [
+        "Lead"
+      ],
+      "preferred": [
+        "Spare",
+        "Worker"
+      ],
+      "recommendation": "Token balance: Lead is at 95.0% of budget (5.0% left) while Spare is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Spare."
+    }
+  }
+}
+
+== 15. negative tokens fail validation
+-> {"action": "report_usage", "input_tokens": -1, "output_tokens": 10, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 16. a model with spaces fails validation
+-> {"action": "report_usage", "input_tokens": 1, "model": "bad model name", "output_tokens": 1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 17. more than a billion tokens fails validation
+-> {"action": "report_usage", "input_tokens": 1000000001, "output_tokens": 0, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. lead status with usage and balance
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "usage": {
+          "conversation_tokens": 95000,
+          "input_tokens": 90000,
+          "output_tokens": 5000,
+          "model_tokens_used": 95000,
+          "estimated_tokens": 56,
+          "source": "reported",
+          "actual_tokens": 95000,
+          "model": "lead/model",
+          "initial_tokens": 100000,
+          "remaining_tokens": 5000,
+          "used_percent": 95.0,
+          "remaining_percent": 5.0,
+          "status": "warning"
+        }
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 15000,
+          "input_tokens": 12000,
+          "output_tokens": 3000,
+          "model_tokens_used": 15000,
+          "estimated_tokens": 20,
+          "source": "reported",
+          "actual_tokens": 15000,
+          "model": "gemini-2.5-pro",
+          "initial_tokens": 250000,
+          "remaining_tokens": 235000,
+          "used_percent": 6.0,
+          "remaining_percent": 94.0,
+          "status": "ok"
+        }
+      },
+      "Spare": {
+        "role": "worker",
+        "state": "invited",
+        "usage": {
+          "conversation_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "model_tokens_used": 0,
+          "estimated_tokens": 0,
+          "source": "estimated",
+          "initial_tokens": 1000,
+          "remaining_tokens": 1000,
+          "used_percent": 0.0,
+          "remaining_percent": 100.0,
+          "status": "ok"
+        }
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      }
+    },
+    "participant": "Lead",
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 95.0,
+      "overloaded": [
+        "Lead"
+      ],
+      "preferred": [
+        "Spare",
+        "Worker"
+      ],
+      "recommendation": "Token balance: Lead is at 95.0% of budget (5.0% left) while Spare is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Spare."
+    },
+    "token_usage": {
+      "total_tokens": 110000,
+      "actual_tokens": 110000,
+      "estimated_tokens": 0,
+      "actual_members": 2,
+      "estimated_members": 0
+    }
+  }
+}
+
+== 19. show with token usage
+-> {"action": "operator_show", "after": 100, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Budget checks",
+    "brief": "Budget checks",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "replied",
+          "idle_seconds": "<idle-seconds>",
+          "messages": 1,
+          "usage": {
+            "conversation_tokens": 95000,
+            "input_tokens": 90000,
+            "output_tokens": 5000,
+            "model_tokens_used": 95000,
+            "estimated_tokens": 56,
+            "source": "reported",
+            "actual_tokens": 95000,
+            "model": "lead/model",
+            "initial_tokens": 100000,
+            "remaining_tokens": 5000,
+            "used_percent": 95.0,
+            "remaining_percent": 5.0,
+            "status": "warning"
+          }
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "joined",
+          "idle_seconds": "<idle-seconds>",
+          "usage": {
+            "conversation_tokens": 15000,
+            "input_tokens": 12000,
+            "output_tokens": 3000,
+            "model_tokens_used": 15000,
+            "estimated_tokens": 20,
+            "source": "reported",
+            "actual_tokens": 15000,
+            "model": "gemini-2.5-pro",
+            "initial_tokens": 250000,
+            "remaining_tokens": 235000,
+            "used_percent": 6.0,
+            "remaining_percent": 94.0,
+            "status": "ok"
+          }
+        },
+        "Spare": {
+          "role": "worker",
+          "state": "invited",
+          "usage": {
+            "conversation_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "model_tokens_used": 0,
+            "estimated_tokens": 0,
+            "source": "estimated",
+            "initial_tokens": 1000,
+            "remaining_tokens": 1000,
+            "used_percent": 0.0,
+            "remaining_percent": 100.0,
+            "status": "ok"
+          }
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      },
+      "token_balance": {
+        "balanced": false,
+        "imbalance_gap_percent": 95.0,
+        "overloaded": [
+          "Lead"
+        ],
+        "preferred": [
+          "Spare",
+          "Worker"
+        ],
+        "recommendation": "Token balance: Lead is at 95.0% of budget (5.0% left) while Spare is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Spare."
+      },
+      "token_usage": {
+        "total_tokens": 110000,
+        "actual_tokens": 110000,
+        "estimated_tokens": 0,
+        "actual_members": 2,
+        "estimated_members": 0
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 100,
+    "total_messages": 1
+  }
+}
+
+== 20. lead retires the worker
+-> {"action": "retire", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker",
+    "retired": true
+  }
+}
+
+== 21. a retired worker cannot report usage
+-> {"action": "report_usage", "input_tokens": 1, "output_tokens": 1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You have been retired from this conversation"
+}
+
+== 22. the human closes
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "summary": "Done", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 23. report usage after close
+-> {"action": "report_usage", "input_tokens": 1, "output_tokens": 1, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 24. set budget after close
+-> {"action": "operator_set_member_budget", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Lead", "token_budget": 100000, "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+
