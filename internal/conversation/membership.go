@@ -58,46 +58,47 @@ func retiredResult(label string) wire.Value {
 
 // retire retires a participant, expiring its unused invite and stopping further writes.
 // The lead cannot be retired until another participant becomes lead. The retired
-// participant's unfinished tasks move to an available worker, or to the lead.
-func retire(ctx context.Context, tx *sql.Tx, actor *participant, name string, now int64) (wire.Value, error) {
+// participant's unfinished tasks move to an available worker, or to the lead. It returns
+// the reply and the retired member's ID so the daemon can close any open session streams.
+func retire(ctx context.Context, tx *sql.Tx, actor *participant, name string, now int64) (wire.Value, int64, error) {
 	if err := checkManager(actor, "Only a lead, co-lead or the human can retire participants"); err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	slots, err := roomSlots(ctx, tx, selectRoomSlots, actor.Room)
 	if err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	target := findSlot(slots, name)
 	if target == nil {
-		return wire.Value{}, reject(unknownParticipant)
+		return wire.Value{}, 0, reject(unknownParticipant)
 	}
 	if target.role == roleHuman {
-		return wire.Value{}, rejectf("Cannot retire %s", humanLabel)
+		return wire.Value{}, 0, rejectf("Cannot retire %s", humanLabel)
 	}
 	if target.retired {
-		return retiredResult(target.label), nil
+		return retiredResult(target.label), target.id, nil
 	}
 	if target.role == roleLead {
-		return wire.Value{}, reject("Cannot retire the lead. Assign a new lead first")
+		return wire.Value{}, 0, reject("Cannot retire the lead. Assign a new lead first")
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE participant SET expires=?, retired=? WHERE participant.id = ?", 0, 1, target.id); err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	if target.role == roleCoLead {
 		if err := promoteSoleCoLead(ctx, tx, actor.Room); err != nil {
-			return wire.Value{}, err
+			return wire.Value{}, 0, err
 		}
 	}
 	if err := recordEvent(ctx, tx, actor.Room, actor.ID, "Retired "+target.label+".", now); err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	if err := redelegateTasks(ctx, tx, actor, target.id, target.label, now); err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	if err := releaseIfSealedComplete(ctx, tx, actor, target.id, now); err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
-	return retiredResult(target.label), nil
+	return retiredResult(target.label), target.id, nil
 }
 
 // releaseIfSealedComplete discards a retired author's proposal and releases the round

@@ -153,3 +153,166 @@ func TestSessionStreamReportsPresenceProbesAndCleansUpOnEOF(t *testing.T) {
 		t.Errorf("post-EOF ping status %q, want disconnected (%s)", status.StringOf(), reply3.Compact())
 	}
 }
+
+func TestOutcomeRevokeSessionsClosesStreams(t *testing.T) {
+	handler := &fakeHandler{
+		openSession: func(request *wire.Session) (WaitStart, error) {
+			if request.Token == "token-member-1" {
+				return WaitStart{Room: testRoom, MemberID: 10}, nil
+			}
+			return WaitStart{Room: testRoom, MemberID: 20}, nil
+		},
+		member: func(_ context.Context, request wire.Request) (Outcome, error) {
+			outcome := resultNaming(request.Action())
+			if request.Action() == "retire" {
+				outcome.RevokeSessions = []SessionTarget{{Room: testRoom, MemberID: 10}}
+			}
+			if request.Action() == "close" {
+				outcome.RevokeSessions = []SessionTarget{{Room: testRoom}}
+			}
+			return outcome, nil
+		},
+	}
+	daemon := startDaemon(t, handler, Options{})
+
+	open := func(token string) (*bufio.Reader, func()) {
+		conn, err := dialUnix(daemon.socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wire.WriteLine(conn, []byte(line("action", "session", "workspace", testWorkspace, "token", token))); err != nil {
+			t.Fatal(err)
+		}
+		reader := bufio.NewReader(conn)
+		ack, err := reader.ReadString('\n')
+		if err != nil || !strings.Contains(ack, `"connected":true`) {
+			t.Fatalf("session ack %q, err %v", ack, err)
+		}
+		return reader, func() { _ = conn.Close() }
+	}
+	reader1, close1 := open("token-member-1")
+	defer close1()
+	reader2, close2 := open("token-member-2")
+	defer close2()
+
+	if !eventually(t, time.Second, func() bool {
+		p := daemon.server.hub.presence(testRoom)
+		return p.Connected(10) && p.Connected(20)
+	}) {
+		t.Fatal("both sessions did not register")
+	}
+
+	// Revoking member 10 closes only member 10's stream.
+	daemon.send(line("action", "retire", "workspace", testWorkspace, "token", testToken, "name", "Worker"), false)
+	if daemon.server.hub.presence(testRoom).Connected(10) {
+		t.Error("member 10 remained connected after session revocation")
+	}
+	if !daemon.server.hub.presence(testRoom).Connected(20) {
+		t.Error("member 20 lost connection when only member 10 was revoked")
+	}
+	if _, err := reader1.ReadString('\n'); err == nil {
+		t.Error("member 10 stream did not see EOF after revocation")
+	}
+
+	// Revoking the whole room closes member 20's stream.
+	daemon.send(line("action", "close", "workspace", testWorkspace, "token", testToken), false)
+	if daemon.server.hub.presence(testRoom).Connected(20) {
+		t.Error("member 20 remained connected after room revocation")
+	}
+	if _, err := reader2.ReadString('\n'); err == nil {
+		t.Error("member 20 stream did not see EOF after room revocation")
+	}
+}
+
+func TestPingSkipsSettleWindowWhenMessagesPending(t *testing.T) {
+	calls := 0
+	handler := &fakeHandler{
+		openWait: func(*wire.Read) (WaitStart, error) {
+			return WaitStart{Room: testRoom, MemberID: 10}, nil
+		},
+		readPage: func(*wire.Read) (wire.Value, error) {
+			calls++
+			if calls == 1 {
+				return pageWith(0), nil
+			}
+			return pageWith(1), nil
+		},
+		resolvePing: func(wire.Incoming) (PingTarget, error) {
+			return PingTarget{Room: testRoom, MemberID: 10, Label: "Worker", State: "replied"}, nil
+		},
+	}
+	daemon := startDaemon(t, handler, Options{SettleWindow: 5 * time.Second})
+
+	replies := make(chan string, 1)
+	go func() {
+		reply, _ := exchange(daemon.socket, []byte(line("action", "read", "workspace", testWorkspace, "token", testToken, "wait_seconds", 30)), false)
+		replies <- reply
+	}()
+	if !eventually(t, time.Second, func() bool { return daemon.server.hub.presence(testRoom).Listening(10) }) {
+		t.Fatal("waiting read did not join hub")
+	}
+
+	started := time.Now()
+	daemon.send(line("action", "ping", "workspace", testWorkspace, "token", testToken, "name", "Worker"), false)
+	reply := <-replies
+	if time.Since(started) > time.Second {
+		t.Fatalf("pinged ready read settled instead of returning immediately (%v)", time.Since(started))
+	}
+	result := resultOf(t, reply)
+	if pinged, _ := result.Get("pinged"); !pinged.Truthy() {
+		t.Errorf("pinged ready read missing pinged=true: %s", reply)
+	}
+}
+
+func TestProbeSessionRunsConcurrentlyUnderSharedBudget(t *testing.T) {
+	handler := &fakeHandler{
+		openSession: func(*wire.Session) (WaitStart, error) {
+			return WaitStart{Room: testRoom, MemberID: 42}, nil
+		},
+		resolvePing: func(wire.Incoming) (PingTarget, error) {
+			return PingTarget{Room: testRoom, MemberID: 42, Label: "Worker", State: "replied"}, nil
+		},
+	}
+	daemon := startDaemon(t, handler, Options{})
+
+	// Open one unresponsive stream (never replies) and one responsive stream.
+	slowConn, err := dialUnix(daemon.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slowConn.Close()
+	if err := wire.WriteLine(slowConn, []byte(line("action", "session", "workspace", testWorkspace, "token", testToken))); err != nil {
+		t.Fatal(err)
+	}
+	slowReader := bufio.NewReader(slowConn)
+	if ack, err := slowReader.ReadString('\n'); err != nil || !strings.Contains(ack, `"connected":true`) {
+		t.Fatalf("slow ack %q, err %v", ack, err)
+	}
+
+	fastConn, err := dialUnix(daemon.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fastConn.Close()
+	if err := wire.WriteLine(fastConn, []byte(line("action", "session", "workspace", testWorkspace, "token", testToken))); err != nil {
+		t.Fatal(err)
+	}
+	fastReader := bufio.NewReader(fastConn)
+	if ack, err := fastReader.ReadString('\n'); err != nil || !strings.Contains(ack, `"connected":true`) {
+		t.Fatalf("fast ack %q, err %v", ack, err)
+	}
+	go func() {
+		if probe, err := fastReader.ReadString('\n'); err == nil && strings.Contains(probe, `"ping":true`) {
+			_ = wire.WriteLine(fastConn, []byte(`{"pong":true}`))
+		}
+	}()
+
+	started := time.Now()
+	reply := resultOf(t, daemon.send(line("action", "ping", "workspace", testWorkspace, "token", testToken, "name", "Worker"), false))
+	if time.Since(started) > time.Second {
+		t.Fatalf("concurrent probe waited on slow stream (%v)", time.Since(started))
+	}
+	if status, _ := reply.Get("status"); status.StringOf() != wire.PingStatusConnected {
+		t.Errorf("status = %q, want connected", status.StringOf())
+	}
+}

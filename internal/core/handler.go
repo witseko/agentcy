@@ -69,9 +69,13 @@ type Handler interface {
 	// OpenSession authenticates a shim session stream and returns its room and member ID.
 	OpenSession(ctx context.Context, request *wire.Session, now time.Time) (WaitStart, error)
 
-	// ResolvePing authorizes a member or operator ping and returns the target member's
+	// ResolveMemberPing authorizes a member ping and returns the target member's persisted
+	// metadata before the daemon probes live hub state outside any transaction.
+	ResolveMemberPing(ctx context.Context, request *wire.Ping, now time.Time) (PingTarget, error)
+
+	// ResolveOperatorPing authorizes an operator ping and returns the target member's
 	// persisted metadata before the daemon probes live hub state outside any transaction.
-	ResolvePing(ctx context.Context, incoming wire.Incoming, now time.Time) (PingTarget, error)
+	ResolveOperatorPing(ctx context.Context, request *wire.OperatorPing, now time.Time) (PingTarget, error)
 
 	// HasActiveWork reports whether any workspace store has an open conversation or a
 	// pending assignment, stores of earlier processes included. The daemon exits after an
@@ -97,6 +101,16 @@ type Outcome struct {
 	// listed (port plan fix L3). Only the waiting reads that one of the messages concerns
 	// wake. A write that might have changed anything else in a room names it in Notify.
 	Added []AddedMessages
+	// RevokeSessions closes open shim session streams after a reinvite, retire, relaunch,
+	// or close commits. MemberID == 0 closes every session stream in Room.
+	RevokeSessions []SessionTarget
+}
+
+// SessionTarget identifies one member's session streams in Room, or every stream in Room
+// when MemberID is zero.
+type SessionTarget struct {
+	Room     Room
+	MemberID int64
 }
 
 // AddedMessages is every message that one committed write added to a room.

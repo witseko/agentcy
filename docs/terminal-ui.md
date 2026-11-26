@@ -44,7 +44,9 @@ A join code works once and expires after one hour. The UI keeps codes in memory 
 
 To bring back a retired member, or to replace a member whose chat stopped, select the member and press `r`, or type `/reinvite Name`. The member gets a new code and keeps its name, messages, and open tasks. Its previous chat loses access.
 
-To check whether a member is still connected or wake it out of a waiting read without sending a chat message, select the member in the team panel and press `p`, or type `/ping Name`. To start a new plugin run for a worker slot whose previous run ended, type `/relaunch Name plugin` (or press `l` on the member in the team panel).
+To check whether a member is still connected or wake it out of a waiting read without sending a chat message, select the member in the team panel and press `p`, right-click the member and choose **Ping member**, or type `/ping Name`. The team panel shows `listening` while a member holds an active waiting read and `connected` while its shim session stream is open.
+
+To start a new plugin run for a worker slot whose previous run ended, type `/relaunch Name [plugin]` (the plugin name is optional when only one plugin is configured), press `l` on the member in the team panel, or right-click the member and choose **Relaunch worker…**. Relaunch keeps the slot's name, history, and open tasks; it does not replace a live manual chat or an active/unknown run.
 
 ## Rename a chat
 

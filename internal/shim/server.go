@@ -233,6 +233,7 @@ func (shim *shimServer) toolHandler(name string, function toolFunction) mcp.Tool
 		if err != nil {
 			return textResult("Error executing tool "+name+": "+clientErrorText(err), true), nil
 		}
+		shim.touchPresence(call, result)
 		if viaCallTool {
 			exchange.value = result
 			exchange.hasValue = true

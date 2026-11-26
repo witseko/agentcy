@@ -60,11 +60,17 @@ func checkFields(errors *fieldErrors, location string, specs []fieldSpec) {
 	}
 }
 
+// omittableField is an optional interface implemented by fieldSpecs that omit their
+// default value during encoding.
+type omittableField interface {
+	omit() bool
+}
+
 // encodeFields returns the fields of specs as an ordered JSON object.
 func encodeFields(specs []fieldSpec) Value {
 	object := NewObject()
 	for _, spec := range specs {
-		if flag, ok := spec.(*boolField); ok && flag.omitFalse && !*flag.target {
+		if omittable, ok := spec.(omittableField); ok && omittable.omit() {
 			continue
 		}
 		object.Set(spec.name(), spec.encode())
@@ -280,6 +286,8 @@ func (field *boolField) read(errors *fieldErrors, location string, value Value, 
 func (field *boolField) check(*fieldErrors, string) {}
 
 func (field *boolField) encode() Value { return BoolValue(*field.target) }
+
+func (field *boolField) omit() bool { return field.omitFalse && !*field.target }
 
 // optionalBoolField is a lenient boolean that may be absent or null.
 type optionalBoolField struct {

@@ -76,9 +76,16 @@ func (fake *fakeHandler) OpenSession(_ context.Context, request *wire.Session, _
 	return WaitStart{Room: testRoom, MemberID: 1}, nil
 }
 
-func (fake *fakeHandler) ResolvePing(_ context.Context, incoming wire.Incoming, _ time.Time) (PingTarget, error) {
+func (fake *fakeHandler) ResolveMemberPing(_ context.Context, request *wire.Ping, _ time.Time) (PingTarget, error) {
 	if fake.resolvePing != nil {
-		return fake.resolvePing(incoming)
+		return fake.resolvePing(wire.Incoming{Member: request})
+	}
+	return PingTarget{Room: testRoom, MemberID: 1, Label: "Worker", State: "joined"}, nil
+}
+
+func (fake *fakeHandler) ResolveOperatorPing(_ context.Context, request *wire.OperatorPing, _ time.Time) (PingTarget, error) {
+	if fake.resolvePing != nil {
+		return fake.resolvePing(wire.Incoming{Operator: request})
 	}
 	return PingTarget{Room: testRoom, MemberID: 1, Label: "Worker", State: "joined"}, nil
 }

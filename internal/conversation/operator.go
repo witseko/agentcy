@@ -141,19 +141,19 @@ func operatorShow(ctx context.Context, tx *sql.Tx, book *usageBook, request *wir
 }
 
 // operatorInvite adds, reissues, or reinvites a slot as the human and returns its ready
-// join prompt.
-func operatorInvite(ctx context.Context, tx *sql.Tx, workspace string, request *wire.OperatorInvite, now int64) (wire.Value, error) {
+// join prompt along with the slot ID.
+func operatorInvite(ctx context.Context, tx *sql.Tx, workspace string, request *wire.OperatorInvite, now int64) (wire.Value, int64, error) {
 	human, err := writingActor(ctx, tx, request.Conversation)
 	if err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
 	invited, err := invite(ctx, tx, &human.participant, inviteRequest{
 		workspace: workspace, name: request.Name, role: request.Role, reinvite: request.Reinvite,
 	}, now)
 	if err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, 0, err
 	}
-	return invitationValue(invited.label, invited.role, invited.code, human.Brief), nil
+	return invitationValue(invited.label, invited.role, invited.code, human.Brief), invited.slotID, nil
 }
 
 // operatorOpenInvite enables, rotates, or disables the open invite as the human.

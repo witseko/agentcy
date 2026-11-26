@@ -10,11 +10,11 @@ The bridge gives each connected chat these tools.
 | `join_conversation` | Redeem a join code. Returns the brief, your role, and a private participant token. |
 | `post_message` | Share findings, ask a peer a question, or update a task. A retry with the same submission ID records one message. |
 | `report_usage` | Report your exact cumulative input and output tokens. Replaces the bridge estimate for your slot. |
-| `read_messages` | Read messages after your cursor. A one-time read from cursor zero includes the brief and roster. A waiting read can wait up to 45 seconds and tells the chat how to continue. |
-| `conversation_status` | See who has joined, fresh worker launch states, and which tasks are still open. |
+| `read_messages` | Read messages after your cursor. A one-time read from cursor zero includes the brief and roster. A waiting read can wait up to 45 seconds and tells the chat how to continue. When woken by an out-of-band ping, the page carries `pinged: true` and skips the settle window. |
+| `conversation_status` | See who has joined, fresh worker launch states, live `listening` and `connected` presence flags for open conversations, and which tasks are still open. |
 | `list_plugins` | List the configured fresh-run plugins and their models. Leads and co-leads only. |
-| `launch_participant` | Start a read-only worker through a configured plugin, or pass `relaunch=True` to revive a slot whose previous run ended while keeping its name, history, and open tasks. Leads and co-leads only. A host with the MCP Tasks extension gets an MCP task (see below). |
-| `ping_participant` | Check a participant's live connection and wake an active waiting read without posting a chat message. Leads and co-leads only. |
+| `launch_participant` | Start a read-only worker through a configured plugin, or pass `relaunch=True` to revive a slot whose previous fresh run ended while keeping its name, history, and open tasks. Leads and co-leads only. A host with the MCP Tasks extension gets an MCP task (see below). |
+| `ping_participant` | Check a participant's live connection and wake an active waiting read without posting a chat message. Returns `participant`, `status` (`woken`, `connected`, `unresponsive`, `not_joined`, or `disconnected`), `listening`, `connected`, `woke`, and optional `ping_rtt_ms`, `launch_state`, and `idle_seconds`. Leads and co-leads only. |
 | `retire_participant` | Remove a participant and move its open tasks to the least busy worker or the lead. Leads and co-leads only. |
 | `set_participant_role` | Make an active participant lead, co-lead, or worker. Leads and co-leads only. |
 | `release_proposals` | Publish the held proposals in a sealed review. Leads and co-leads only. |

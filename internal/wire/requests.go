@@ -17,6 +17,15 @@ var (
 	AssignableRoles = []string{"worker", "lead", "co-lead"}
 )
 
+// Ping status values returned by ping and operator_ping.
+const (
+	PingStatusWoken        = "woken"
+	PingStatusConnected    = "connected"
+	PingStatusUnresponsive = "unresponsive"
+	PingStatusNotJoined    = "not_joined"
+	PingStatusDisconnected = "disconnected"
+)
+
 // Invitation reserves a worker or co-lead slot when creating a conversation.
 type Invitation struct {
 	Name        string

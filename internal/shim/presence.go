@@ -12,12 +12,13 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Presence timing bounds.
+// Presence timing and tracking bounds.
 const (
-	presenceAckTimeout   = 5 * time.Second
-	presencePingTimeout  = 3 * time.Second
-	presenceRetryBackoff = 2 * time.Second
-	maxPresenceLineBytes = 1024
+	presenceAckTimeout         = 5 * time.Second
+	presencePingTimeout        = 3 * time.Second
+	presenceRetryBackoff       = 2 * time.Second
+	maxPresenceLineBytes       = 1024
+	maxTrackedPresenceSessions = 256
 )
 
 // SessionDialer opens a passive connection to the running core socket without spawning a
@@ -30,6 +31,11 @@ type presenceKey struct {
 	digest  string
 }
 
+// presenceRun identifies one active background session stream goroutine.
+type presenceRun struct {
+	cancel context.CancelFunc
+}
+
 // presenceTracker maintains one background session stream to the core per active stateful
 // MCP session and member token, answering core ping probes via ServerSession.Ping.
 type presenceTracker struct {
@@ -37,7 +43,10 @@ type presenceTracker struct {
 	dial      SessionDialer
 	overHTTP  bool
 	mutex     sync.Mutex
-	active    map[presenceKey]context.CancelFunc
+	active    map[presenceKey]*presenceRun
+	// sessions holds one shared cancellation context per MCP ServerSession so Wait() is
+	// watched at most once per MCP session instead of once per stream run.
+	sessions map[*mcp.ServerSession]context.Context
 }
 
 // newPresenceTracker returns a tracker when dial is set, or nil in unit tests without a
@@ -50,8 +59,28 @@ func newPresenceTracker(workspace string, dial SessionDialer, overHTTP bool) *pr
 		workspace: workspace,
 		dial:      dial,
 		overHTTP:  overHTTP,
-		active:    map[presenceKey]context.CancelFunc{},
+		active:    map[presenceKey]*presenceRun{},
+		sessions:  map[*mcp.ServerSession]context.Context{},
 	}
+}
+
+// sessionContext returns a context cancelled when session closes. Caller holds tracker.mutex.
+func (tracker *presenceTracker) sessionContext(session *mcp.ServerSession) context.Context {
+	if existing, ok := tracker.sessions[session]; ok {
+		return existing
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	tracker.sessions[session] = ctx
+	go func() {
+		_ = session.Wait()
+		cancel()
+		tracker.mutex.Lock()
+		if tracker.sessions[session] == ctx {
+			delete(tracker.sessions, session)
+		}
+		tracker.mutex.Unlock()
+	}()
+	return ctx
 }
 
 // touch ensures a background session stream is running for the request's stateful MCP
@@ -73,30 +102,31 @@ func (tracker *presenceTracker) touch(request *mcp.CallToolRequest, token string
 		tracker.mutex.Unlock()
 		return
 	}
-	if len(tracker.active) >= maxTrackedListeners {
-		for existing, cancel := range tracker.active {
-			cancel()
+	if len(tracker.active) >= maxTrackedPresenceSessions {
+		for existing, oldRun := range tracker.active {
+			oldRun.cancel()
 			delete(tracker.active, existing)
+			break
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	tracker.active[key] = cancel
+	sessionCtx := tracker.sessionContext(session)
+	ctx, cancel := context.WithCancel(sessionCtx)
+	run := &presenceRun{cancel: cancel}
+	tracker.active[key] = run
 	tracker.mutex.Unlock()
-	go tracker.runSession(ctx, cancel, key, token)
+	go tracker.runSession(ctx, run, key, token)
 }
 
-// runSession keeps one session stream open until the MCP session closes or the core
-// permanently rejects the token.
-func (tracker *presenceTracker) runSession(ctx context.Context, cancel context.CancelFunc, key presenceKey, token string) {
+// runSession keeps one session stream open until the MCP session closes or streamOnce
+// signals not to retry.
+func (tracker *presenceTracker) runSession(ctx context.Context, run *presenceRun, key presenceKey, token string) {
 	defer func() {
-		cancel()
+		run.cancel()
 		tracker.mutex.Lock()
-		delete(tracker.active, key)
+		if tracker.active[key] == run {
+			delete(tracker.active, key)
+		}
 		tracker.mutex.Unlock()
-	}()
-	go func() {
-		_ = key.session.Wait()
-		cancel()
 	}()
 	for ctx.Err() == nil {
 		accepted := tracker.streamOnce(ctx, key.session, token)
@@ -114,8 +144,10 @@ func (tracker *presenceTracker) runSession(ctx context.Context, cancel context.C
 }
 
 // streamOnce opens one session socket to the core, reads ping frames, and answers each
-// with the result of ServerSession.Ping. It returns true when the core accepted the
-// session before disconnecting (so a restart may be retried), and false on rejection.
+// with the result of ServerSession.Ping. It returns true only when the core accepted the
+// session and later closed the stream (so a daemon restart may be retried); it returns
+// false on dial, I/O, or rejection errors so rejected tokens and stopped idle daemons do
+// not spin in background reconnects.
 func (tracker *presenceTracker) streamOnce(ctx context.Context, session *mcp.ServerSession, token string) bool {
 	dialCtx, stopDial := context.WithTimeout(ctx, presenceAckTimeout)
 	connection, err := tracker.dial(dialCtx)

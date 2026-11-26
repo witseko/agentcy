@@ -36,46 +36,31 @@ func (handler *Handler) OpenSession(ctx context.Context, request *wire.Session, 
 	return start, err
 }
 
-// ResolvePing checks a member or operator ping request and returns the target member's
-// stored state before the daemon probes live hub presence.
-func (handler *Handler) ResolvePing(ctx context.Context, incoming wire.Incoming, now time.Time) (core.PingTarget, error) {
-	if incoming.Operator != nil {
-		opPing, ok := incoming.Operator.(*wire.OperatorPing)
-		if !ok {
-			return core.PingTarget{}, errUnknownOperation
-		}
-		return handler.resolveOperatorPing(ctx, opPing, now.Unix())
-	}
-	memberPing, ok := incoming.Member.(*wire.Ping)
-	if !ok {
-		return core.PingTarget{}, errUnknownOperation
-	}
-	return handler.resolveMemberPing(ctx, memberPing, now.Unix())
-}
-
-// resolveMemberPing authorizes a lead or co-lead ping and loads the target participant.
-func (handler *Handler) resolveMemberPing(ctx context.Context, request *wire.Ping, now int64) (core.PingTarget, error) {
+// ResolveMemberPing authorizes a lead or co-lead ping and loads the target participant.
+func (handler *Handler) ResolveMemberPing(ctx context.Context, request *wire.Ping, now time.Time) (core.PingTarget, error) {
+	unix := now.Unix()
 	if !handler.stores.Exists(request.Workspace) {
 		return core.PingTarget{}, reject(invalidToken)
 	}
 	var target core.PingTarget
 	_, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
-		actor, err := refreshParticipant(ctx, tx, request.Token, true, now)
+		actor, err := refreshParticipant(ctx, tx, request.Token, true, unix)
 		if err != nil {
 			return wire.Value{}, err
 		}
 		if err := checkManager(actor, "Only a lead or co-lead can ping participants"); err != nil {
 			return wire.Value{}, err
 		}
-		resolved, err := findPingTarget(ctx, tx, request.Workspace, actor.Room, request.Name, actor.ID, now)
+		resolved, err := findPingTarget(ctx, tx, request.Workspace, actor.Room, request.Name, actor.ID, true, unix)
 		target = resolved
 		return wire.Value{}, err
 	})
 	return target, err
 }
 
-// resolveOperatorPing authorizes a human operator ping and loads the target participant.
-func (handler *Handler) resolveOperatorPing(ctx context.Context, request *wire.OperatorPing, now int64) (core.PingTarget, error) {
+// ResolveOperatorPing authorizes a human operator ping and loads the target participant.
+func (handler *Handler) ResolveOperatorPing(ctx context.Context, request *wire.OperatorPing, now time.Time) (core.PingTarget, error) {
+	unix := now.Unix()
 	workspace, err := handler.checkoutWorkspace(request.Directory)
 	if err != nil {
 		return core.PingTarget{}, err
@@ -92,7 +77,7 @@ func (handler *Handler) resolveOperatorPing(ctx context.Context, request *wire.O
 		if !human.Open {
 			return wire.Value{}, reject(conversationClosed)
 		}
-		resolved, err := findPingTarget(ctx, tx, workspace, request.Conversation, request.Name, 0, now)
+		resolved, err := findPingTarget(ctx, tx, workspace, request.Conversation, request.Name, 0, false, unix)
 		target = resolved
 		return wire.Value{}, err
 	})
@@ -101,7 +86,7 @@ func (handler *Handler) resolveOperatorPing(ctx context.Context, request *wire.O
 
 // findPingTarget resolves name in room and rejects pinging Human, oneself, or a retired
 // slot.
-func findPingTarget(ctx context.Context, tx *sql.Tx, workspace, room, name string, callerID, now int64) (core.PingTarget, error) {
+func findPingTarget(ctx context.Context, tx *sql.Tx, workspace, room, name string, callerID int64, hasCaller bool, now int64) (core.PingTarget, error) {
 	members, err := statusMembers(ctx, tx, room, now)
 	if err != nil {
 		return core.PingTarget{}, err
@@ -113,7 +98,7 @@ func findPingTarget(ctx context.Context, tx *sql.Tx, workspace, room, name strin
 		if entry.role == roleHuman {
 			return core.PingTarget{}, rejectf("Cannot ping %s", humanLabel)
 		}
-		if callerID != 0 && entry.id == callerID {
+		if hasCaller && entry.id == callerID {
 			return core.PingTarget{}, reject("You cannot ping yourself")
 		}
 		if entry.retired {

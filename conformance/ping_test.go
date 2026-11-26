@@ -181,6 +181,15 @@ func TestPingAndPresence(t *testing.T) {
 	s.waitForMemberPresence(lead, "Worker", false, false)
 
 	s.member("transcript stays empty after out-of-band pings", "read", fields{"token": lead})
+
+	// Reinviting a connected worker immediately revokes its open session stream.
+	closeBeforeReinvite := s.openSessionStream(worker, true)
+	defer closeBeforeReinvite()
+	s.waitForMemberPresence(lead, "Worker", false, true)
+	s.member("lead reinvites worker", "invite", fields{"token": lead, "name": "Worker", "reinvite": true})
+	s.waitForMemberPresence(lead, "Worker", false, false)
+	s.member("ping after reinvite reports not_joined", "ping", fields{"token": lead, "name": "Worker"})
+
 	s.member("lead retires worker", "retire", fields{"token": lead, "name": "Worker"})
 	s.member("lead cannot ping retired worker", "ping", fields{"token": lead, "name": "Worker"})
 	s.member("lead closes conversation", "close", fields{"token": lead})

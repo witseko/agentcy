@@ -30,10 +30,15 @@ func watchClientDisconnect(ctx context.Context) (<-chan struct{}, func()) {
 	readerDone := make(chan struct{})
 	go func() {
 		defer close(readerDone)
-		var scratch [1]byte
-		_, _ = connection.Read(scratch[:])
-		if !stopped.Load() {
-			close(disconnected)
+		var scratch [64]byte
+		for !stopped.Load() {
+			_, err := connection.Read(scratch[:])
+			if err != nil {
+				if !stopped.Load() {
+					close(disconnected)
+				}
+				return
+			}
 		}
 	}()
 	stop := func() {
@@ -132,15 +137,15 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (Wait
 			return WaitPage{}, err
 		}
 		roundDeadline = page.RoundDeadline
+		if pinged {
+			page.Page.Set("pinged", wire.BoolValue(true))
+			return page, nil
+		}
 		if page.Ready {
 			if server.stopping(ctx) {
 				return page, nil
 			}
 			return server.settle(ctx, request, listener, page, disconnected)
-		}
-		if pinged {
-			page.Page.Set("pinged", wire.BoolValue(true))
-			return page, nil
 		}
 	}
 }
@@ -174,11 +179,16 @@ func (server *server) settle(ctx context.Context, request *wire.Read, listener *
 		if server.stopping(ctx) {
 			return page, nil
 		}
+		pinged := listener.takePing()
 		next, err := server.readPage(ctx, request, listener)
 		if err != nil {
 			return WaitPage{}, err
 		}
 		page = next
+		if pinged {
+			page.Page.Set("pinged", wire.BoolValue(true))
+			return page, nil
+		}
 	}
 	return page, nil
 }

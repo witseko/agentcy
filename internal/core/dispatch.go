@@ -16,13 +16,13 @@ func (server *server) dispatch(ctx context.Context, incoming wire.Incoming) (wir
 		if !server.key.matches(incoming.Operator.OperatorKey()) {
 			return wire.Value{}, Reject(wire.OperatorKeyRejected)
 		}
-		if _, isPing := incoming.Operator.(*wire.OperatorPing); isPing {
-			return server.ping(ctx, incoming)
+		if operatorPing, isPing := incoming.Operator.(*wire.OperatorPing); isPing {
+			return server.pingOperator(ctx, operatorPing, now)
 		}
 		return server.wakeAfter(server.handler.Operator(ctx, incoming.Operator, now))
 	}
-	if _, isPing := incoming.Member.(*wire.Ping); isPing {
-		return server.ping(ctx, incoming)
+	if memberPing, isPing := incoming.Member.(*wire.Ping); isPing {
+		return server.pingMember(ctx, memberPing, now)
 	}
 	if read, isRead := incoming.Member.(*wire.Read); isRead && read.WaitSeconds > 0 {
 		return server.waitForRead(ctx, read)
@@ -33,10 +33,14 @@ func (server *server) dispatch(ctx context.Context, incoming wire.Incoming) (wir
 	return server.wakeAfter(server.handler.Member(ctx, incoming.Member, now))
 }
 
-// wakeAfter wakes the rooms of a successful outcome and returns its result.
+// wakeAfter wakes the rooms and closes any revoked sessions of a successful outcome,
+// returning its result.
 func (server *server) wakeAfter(outcome Outcome, err error) (wire.Value, error) {
 	if err != nil {
 		return wire.Value{}, err
+	}
+	for _, target := range outcome.RevokeSessions {
+		server.hub.closeSessions(target.Room, target.MemberID)
 	}
 	for _, room := range outcome.Notify {
 		server.hub.notify(room)

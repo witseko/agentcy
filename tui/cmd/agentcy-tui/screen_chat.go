@@ -12,6 +12,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/witseko/agentcy/internal/wire"
 )
 
 const (
@@ -1382,13 +1384,13 @@ func (m model) showPingNotice(result PingResult) model {
 		rtt = fmt.Sprintf(" (%dms)", *result.PingRTTMs)
 	}
 	switch result.Status {
-	case "woken":
+	case wire.PingStatusWoken:
 		return m.showSuccess(fmt.Sprintf("Woke %s from waiting read%s.", name, rtt))
-	case "connected":
-		return m.showSuccess(fmt.Sprintf("%s is connected%s — busy or between reads.", name, rtt))
-	case "unresponsive":
+	case wire.PingStatusConnected:
+		return m.showSuccess(fmt.Sprintf("%s is connected%s, busy or between reads.", name, rtt))
+	case wire.PingStatusUnresponsive:
 		return m.showError(fmt.Sprintf("%s shim is open, but its MCP host did not respond to ping.", name))
-	case "not_joined":
+	case wire.PingStatusNotJoined:
 		return m.inform(fmt.Sprintf("%s has not joined yet.", name))
 	default:
 		detail := ""
@@ -1399,9 +1401,16 @@ func (m model) showPingNotice(result PingResult) model {
 	}
 }
 
-// needsRelaunch reports whether launching a plugin into member requires relaunch=true.
+// needsRelaunch reports whether member has a confirmed ended fresh run that can be
+// relaunched from a plugin.
 func needsRelaunch(member MemberStatus) bool {
-	return isLaunchEnded(member.LaunchState) || member.State != "invited"
+	return isLaunchEnded(member.LaunchState) && member.LaunchState != "unknown"
+}
+
+// canLaunchFromPlugin reports whether member can be launched or relaunched from a plugin
+// without cutting off a live manual chat or an active/unknown fresh run.
+func canLaunchFromPlugin(member MemberStatus) bool {
+	return (member.State == "invited" && member.LaunchState == "") || needsRelaunch(member)
 }
 
 // prefillLaunch puts a launch or relaunch command for the selected member into the message line.

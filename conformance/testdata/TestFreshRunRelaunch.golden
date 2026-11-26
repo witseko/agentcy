@@ -35,15 +35,7 @@
   }
 }
 
-== 3. lead assigns a task to Manual
--> {"action": "post", "body": "Keep this task across relaunch.", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Manual", "token": "<token-1>", "workspace": "<workspace-1>"}
-<- {
-  "result": {
-    "message_id": 1
-  }
-}
-
-== 4. lead launches Tasked as an MCP task
+== 3. lead launches Tasked as an MCP task
 -> {"action": "launch", "directory": "<checkout>", "mcp_task": true, "name": "Tasked", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
 <- {
   "result": {
@@ -56,6 +48,14 @@
       "created": "<now>",
       "updated": "<now>"
     }
+  }
+}
+
+== 4. lead assigns a task to Tasked
+-> {"action": "post", "body": "Keep this task across relaunch.", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Tasked", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
   }
 }
 
@@ -77,13 +77,19 @@
   "error": "Unknown participant in this conversation"
 }
 
-== 8. the host cancels the MCP task
+== 8. operator relaunch of a live manual chat is refused
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Manual", "plugin": "fixture", "relaunch": true, "version": 1}
+<- {
+  "error": "Participant Manual has no ended fresh run; use reinvite to replace a live chat"
+}
+
+== 9. the host cancels the MCP task
 -> {"action": "mcp_task_cancel", "task_id": "<token-3>", "workspace": "<workspace-1>"}
 <- {
   "result": {}
 }
 
-== 9. repeated member launch without relaunch returns the ended assignment
+== 10. repeated member launch without relaunch returns the ended assignment
 -> {"action": "launch", "directory": "<checkout>", "name": "Tasked", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
 <- {
   "result": {
@@ -92,7 +98,7 @@
   }
 }
 
-== 10. lead relaunches Tasked
+== 11. lead relaunches Tasked
 -> {"action": "launch", "directory": "<checkout>", "name": "Tasked", "plugin": "fixture", "relaunch": true, "token": "<token-1>", "workspace": "<workspace-1>"}
 <- {
   "result": {
@@ -101,16 +107,7 @@
   }
 }
 
-== 11. operator relaunches Manual onto the plugin
--> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Manual", "plugin": "fixture", "relaunch": true, "version": 1}
-<- {
-  "result": {
-    "assignment_id": "<proposal-3>",
-    "state": "queued"
-  }
-}
-
-== 12. status shows both relaunched runs and the preserved open task
+== 12. status shows the relaunched run and the preserved open task
 -> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
 <- {
   "result": {
@@ -124,42 +121,21 @@
       },
       "Manual": {
         "role": "worker",
-        "state": "invited",
-        "launch_state": "running",
-        "open_tasks": [
-          {
-            "id": 1,
-            "due": "<now+30m>"
-          }
-        ],
-        "usage": {
-          "conversation_tokens": 4,
-          "input_tokens": 4,
-          "output_tokens": 0,
-          "model_tokens_used": 4,
-          "estimated_tokens": 4,
-          "source": "estimated",
-          "model": "test/model"
-        }
+        "state": "joined"
       },
       "Tasked": {
         "role": "worker",
         "state": "invited",
-        "launch_state": "running"
-      },
-      "Human": {
-        "role": "human",
-        "state": "human"
+        "launch_state": "running",
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
       }
     },
-    "participant": "Lead",
-    "token_usage": {
-      "total_tokens": 52,
-      "actual_tokens": 0,
-      "estimated_tokens": 52,
-      "actual_members": 0,
-      "estimated_members": 2
-    }
+    "participant": "Lead"
   }
 }
 
@@ -185,42 +161,21 @@
       },
       "Manual": {
         "role": "worker",
-        "state": "invited",
-        "launch_state": "cancelled",
-        "open_tasks": [
-          {
-            "id": 1,
-            "due": "<now+30m>"
-          }
-        ],
-        "usage": {
-          "conversation_tokens": 4,
-          "input_tokens": 4,
-          "output_tokens": 0,
-          "model_tokens_used": 4,
-          "estimated_tokens": 4,
-          "source": "estimated",
-          "model": "test/model"
-        }
+        "state": "joined"
       },
       "Tasked": {
         "role": "worker",
         "state": "invited",
-        "launch_state": "cancelled"
-      },
-      "Human": {
-        "role": "human",
-        "state": "human"
+        "launch_state": "cancelled",
+        "open_tasks": [
+          {
+            "id": 2,
+            "due": "<now+30m>"
+          }
+        ]
       }
     },
-    "participant": "Lead",
-    "token_usage": {
-      "total_tokens": 52,
-      "actual_tokens": 0,
-      "estimated_tokens": 52,
-      "actual_members": 0,
-      "estimated_members": 2
-    }
+    "participant": "Lead"
   }
 }
 

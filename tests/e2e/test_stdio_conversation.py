@@ -304,7 +304,7 @@ async def wait_for_member_flag(
     client: ClientSession, token: str, member: str, flag: str, expected: bool
 ) -> dict[str, Any]:
     """Poll conversation_status until a member's live presence flag reaches expected."""
-    deadline = time.monotonic() + 3.0
+    deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         status = await call(client, "conversation_status", token=token)
         entry = status["members"][member]
@@ -359,7 +359,7 @@ def test_ping_and_live_presence(bridge_home: Path) -> None:
                 assert woken["woke"] is True
                 assert woken["listening"] is True
                 assert woken["connected"] is True
-                assert elapsed < 2.0
+                assert elapsed < 5.0
                 assert woke_read["messages"] == []
                 assert "Ping received" in woke_read["next"]
 

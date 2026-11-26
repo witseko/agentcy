@@ -17,11 +17,16 @@ func coreClient() *wire.Client {
 	return &wire.Client{Connect: connectCore}
 }
 
+// coreDataDir resolves and validates the configured bridge data directory.
+func coreDataDir() (string, error) {
+	home, homeSet := os.LookupEnv(paths.HomeVariable)
+	return paths.DataDir(home, homeSet)
+}
+
 // connectCore connects to the core of the configured data directory, starting it when
 // none listens.
 func connectCore(ctx context.Context) (net.Conn, error) {
-	home, homeSet := os.LookupEnv(paths.HomeVariable)
-	dataDir, err := paths.DataDir(home, homeSet)
+	dataDir, err := coreDataDir()
 	if err != nil {
 		return nil, err
 	}
@@ -31,8 +36,7 @@ func connectCore(ctx context.Context) (net.Conn, error) {
 
 // dialCorePassive connects to an already-running core socket without starting a daemon.
 func dialCorePassive(ctx context.Context) (net.Conn, error) {
-	home, homeSet := os.LookupEnv(paths.HomeVariable)
-	dataDir, err := paths.DataDir(home, homeSet)
+	dataDir, err := coreDataDir()
 	if err != nil {
 		return nil, err
 	}

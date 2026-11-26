@@ -16,11 +16,19 @@ import "sync"
 // others note that they skipped a change, which matters when their filter changes or
 // they start to settle (see setFilter and startSettle).
 //
-// mutex guards rooms and every listener's filter and skipped flag.
+// Session stream caps prevent unbounded open sockets in the core.
+const (
+	maxSessionsPerMember = 8
+	maxTotalSessions     = 256
+)
+
+// mutex guards rooms, sessions, totalSessions, and every listener's filter, skipped,
+// settling, and pinged flags.
 type hub struct {
-	mutex    sync.Mutex
-	rooms    map[Room]map[*listener]struct{}
-	sessions map[Room]map[*sessionPeer]struct{}
+	mutex         sync.Mutex
+	rooms         map[Room]map[*listener]struct{}
+	sessions      map[Room]map[*sessionPeer]struct{}
+	totalSessions int
 }
 
 // listener is one waiting read's membership in a room.
@@ -48,12 +56,6 @@ func newHub() *hub {
 		rooms:    map[Room]map[*listener]struct{}{},
 		sessions: map[Room]map[*sessionPeer]struct{}{},
 	}
-}
-
-// join adds a listener to room. It wakes for every change until setFilter narrows it.
-// Call leave exactly once when the wait ends.
-func (hub *hub) join(room Room) *listener {
-	return hub.joinMember(room, 0)
 }
 
 // joinMember adds a listener for memberID to room. Call leave once when the wait ends.
@@ -195,19 +197,32 @@ func (hub *hub) pingListener(room Room, memberID int64) bool {
 	return woke
 }
 
-// joinSession registers an active shim session stream for memberID in room.
-func (hub *hub) joinSession(room Room, memberID int64, peer *sessionPeer) {
+// joinSession registers an active shim session stream if within the per-member and
+// daemon-wide stream caps.
+func (hub *hub) joinSession(peer *sessionPeer) bool {
 	hub.mutex.Lock()
 	defer hub.mutex.Unlock()
-	peers, found := hub.sessions[room]
-	if !found {
-		peers = map[*sessionPeer]struct{}{}
-		hub.sessions[room] = peers
+	if hub.totalSessions >= maxTotalSessions {
+		return false
 	}
-	peer.hub = hub
-	peer.room = room
-	peer.memberID = memberID
+	peers, found := hub.sessions[peer.room]
+	if found {
+		memberCount := 0
+		for existing := range peers {
+			if existing.memberID == peer.memberID {
+				memberCount++
+			}
+		}
+		if memberCount >= maxSessionsPerMember {
+			return false
+		}
+	} else {
+		peers = map[*sessionPeer]struct{}{}
+		hub.sessions[peer.room] = peers
+	}
 	peers[peer] = struct{}{}
+	hub.totalSessions++
+	return true
 }
 
 // leaveSession removes a shim session stream and drops an empty room entry.
@@ -215,9 +230,35 @@ func (hub *hub) leaveSession(peer *sessionPeer) {
 	hub.mutex.Lock()
 	defer hub.mutex.Unlock()
 	peers := hub.sessions[peer.room]
+	if _, exists := peers[peer]; !exists {
+		return
+	}
 	delete(peers, peer)
+	hub.totalSessions--
 	if len(peers) == 0 {
 		delete(hub.sessions, peer.room)
+	}
+}
+
+// closeSessions unregisters and closes every open session stream for memberID in room,
+// or every stream in room when memberID is zero.
+func (hub *hub) closeSessions(room Room, memberID int64) {
+	hub.mutex.Lock()
+	peers := hub.sessions[room]
+	var toClose []*sessionPeer
+	for peer := range peers {
+		if memberID == 0 || peer.memberID == memberID {
+			delete(peers, peer)
+			hub.totalSessions--
+			toClose = append(toClose, peer)
+		}
+	}
+	if len(peers) == 0 {
+		delete(hub.sessions, room)
+	}
+	hub.mutex.Unlock()
+	for _, peer := range toClose {
+		_ = peer.connection.Close()
 	}
 }
 

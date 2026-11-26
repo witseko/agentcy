@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,12 +46,16 @@ func TestPresenceTrackerStreamsSessionAndAnswersMCPHostPing(t *testing.T) {
 		"join": `{"conversation":"c1","token":"member-token-1","brief":"Brief"}`,
 		"ping": `{"participant":"Worker","status":"connected","listening":false,"connected":true,"woke":false,"ping_rtt_ms":1}`,
 	}}
+	var dialed atomic.Bool
 	server, err := NewServer(Config{
 		Workspace: testWorkspace,
 		Directory: "/tmp/checkout",
 		Version:   "9.9.9",
 		Core:      coreMock,
 		DialSession: func(context.Context) (net.Conn, error) {
+			if dialed.Swap(true) {
+				return nil, net.ErrClosed
+			}
 			return shimSide, nil
 		},
 	})
@@ -120,5 +125,52 @@ func TestPresenceTrackerStreamsSessionAndAnswersMCPHostPing(t *testing.T) {
 	_ = coreSide.SetReadDeadline(time.Now().Add(time.Second))
 	if _, err := reader.ReadString('\n'); err == nil {
 		t.Error("session stream stayed open after MCP client closed")
+	}
+}
+
+func TestPresenceTrackerDoesNotLeakWaitGoroutinesOnDialFailure(t *testing.T) {
+	coreMock := &fakeCore{answers: map[string]string{
+		"status": `{"open":true,"participant":"Worker","members":{"Worker":{"role":"worker","state":"joined"}}}`,
+	}}
+	var dialCount atomic.Int64
+	server, err := NewServer(Config{
+		Workspace: testWorkspace,
+		Directory: "/tmp/checkout",
+		Version:   "9.9.9",
+		Core:      coreMock,
+		DialSession: func(context.Context) (net.Conn, error) {
+			dialCount.Add(1)
+			return nil, net.ErrClosed
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-host", Version: "1.0"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	for range 10 {
+		if _, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "conversation_status",
+			Arguments: map[string]any{"token": "member-token-1"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if dialCount.Load() == 0 {
+		t.Fatal("expected passive session dial attempts")
 	}
 }

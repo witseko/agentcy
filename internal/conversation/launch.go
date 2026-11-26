@@ -157,7 +157,11 @@ func (handler *Handler) dispatch(workspace, directory string, plugin *fresh.Plug
 			TokenCap: plugin.TokenCap, CostCapMicroUSD: plugin.CostCapMicroUSD,
 		},
 	})
-	outcome.Notify = []core.Room{{Workspace: workspace, Conversation: queued.room}}
+	room := core.Room{Workspace: workspace, Conversation: queued.room}
+	outcome.Notify = []core.Room{room}
+	if queued.revokedMemberID != 0 {
+		outcome.RevokeSessions = []core.SessionTarget{{Room: room, MemberID: queued.revokedMemberID}}
+	}
 	return outcome
 }
 

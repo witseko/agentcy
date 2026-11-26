@@ -2448,6 +2448,18 @@ func TestPingAndRelaunchCommandsAndPresenceState(t *testing.T) {
 		t.Fatalf("launches = %+v", fake.launches)
 	}
 
+	// Pressing l on a live manual chat does not prefill /relaunch.
+	m.chat.focus = focusTeam
+	m.chat.selected = 0 // Lead is a live manual chat with no LaunchState.
+	m.chat.input.Reset()
+	m, _ = press(t, m, "l")
+	if got := m.chat.input.Value(); got != "" {
+		t.Fatalf("prefilled input for live manual chat = %q, want empty", got)
+	}
+	if !strings.Contains(m.status, "live chat") {
+		t.Fatalf("status = %q, want live chat notice", m.status)
+	}
+
 	// Live presence keeps a long-idle connected member bright and labels listening/connected.
 	staleIdle := int64(900)
 	glyph, detail := memberState(MemberStatus{Role: "worker", State: "replied", Connected: true, IdleSeconds: &staleIdle})

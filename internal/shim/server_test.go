@@ -393,7 +393,7 @@ func TestSkillsAndResourcesAreServed(t *testing.T) {
 
 func TestFreshWorkerRequiresAJoinAndHidesTheToken(t *testing.T) {
 	core := &fakeCore{answers: map[string]string{"join": `{"conversation": "c", "token": "secret-token", "brief": "B"}`, "post": `{"message_id": 1}`}}
-	server, err := NewFreshWorkerServer(testWorkspace, "join-code", core)
+	server, err := NewFreshWorkerServer(testWorkspace, "join-code", core, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

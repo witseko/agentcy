@@ -31,11 +31,13 @@ type queueRequest struct {
 }
 
 // queuedLaunch is the result of queueing. code is "" for a repeated launch of an
-// existing assignment, which dispatches nothing.
+// existing assignment, which dispatches nothing. revokedMemberID is set when relaunch
+// reinvited a previously joined slot whose old session stream must be closed.
 type queuedLaunch struct {
-	result wire.Value
-	code   string
-	room   string
+	result          wire.Value
+	code            string
+	room            string
+	revokedMemberID int64
 }
 
 // previousAssignment is an existing assignment of a slot, as find_assignment reads it.
@@ -77,10 +79,10 @@ const replaceAssignment = `UPDATE assignment SET id=?, plugin=?, invite_hash=?, 
 
 // reservedWorker holds the worker slot and fresh join code prepared for an assignment.
 type reservedWorker struct {
-	slotID          int64
-	label           string
-	code            string
-	replaceExisting bool
+	slotID    int64
+	label     string
+	code      string
+	reinvited bool
 }
 
 // queueAssignment persists an approved assignment before its code goes to the worker
@@ -103,6 +105,9 @@ func queueAssignment(ctx context.Context, tx *sql.Tx, actor *participant, reques
 	if previous != nil && progress.IsPendingState(previous.state) {
 		return queuedLaunch{}, rejectf("Fresh run is still active: %s", previous.label)
 	}
+	if previous != nil && previous.state == fresh.StateUnknown {
+		return queuedLaunch{}, rejectf("Fresh run state is unknown for %s. Check the provider before launching a replacement", previous.label)
+	}
 	if err := protectLeadSlot(ctx, tx, actor.Room, request.name); err != nil {
 		return queuedLaunch{}, err
 	}
@@ -110,11 +115,11 @@ func queueAssignment(ctx context.Context, tx *sql.Tx, actor *participant, reques
 	if err != nil {
 		return queuedLaunch{}, err
 	}
-	return storeQueuedAssignment(ctx, tx, actor, request, reserved, now)
+	return storeQueuedAssignment(ctx, tx, actor, request, reserved, previous != nil, now)
 }
 
 // storeQueuedAssignment inserts a new assignment row or replaces an ended one in place.
-func storeQueuedAssignment(ctx context.Context, tx *sql.Tx, actor *participant, request queueRequest, reserved reservedWorker, now int64) (queuedLaunch, error) {
+func storeQueuedAssignment(ctx context.Context, tx *sql.Tx, actor *participant, request queueRequest, reserved reservedWorker, replaceExisting bool, now int64) (queuedLaunch, error) {
 	assignmentID := tokenHex(16)
 	var taskID string
 	var taskHash any
@@ -128,7 +133,7 @@ func storeQueuedAssignment(ctx context.Context, tx *sql.Tx, actor *participant, 
 	}
 	deadline := now + request.timeout
 	var err error
-	if reserved.replaceExisting {
+	if replaceExisting {
 		_, err = tx.ExecContext(ctx, replaceAssignment, assignmentID, request.plugin, digest(reserved.code),
 			fresh.StateQueued, deadline, round, taskHash, now, now, reserved.slotID)
 	} else {
@@ -147,7 +152,11 @@ func storeQueuedAssignment(ctx context.Context, tx *sql.Tx, actor *participant, 
 		task.Set("updated", wire.IntValue(now))
 		result.Set("mcp_task", task)
 	}
-	return queuedLaunch{result: result, code: reserved.code, room: actor.Room}, nil
+	var revokedID int64
+	if reserved.reinvited {
+		revokedID = reserved.slotID
+	}
+	return queuedLaunch{result: result, code: reserved.code, room: actor.Room, revokedMemberID: revokedID}, nil
 }
 
 // assignmentResult is the answer to a launch: the assignment ID and its state.
@@ -184,11 +193,11 @@ func protectLeadSlot(ctx context.Context, tx *sql.Tx, room, name string) error {
 
 // reserveWorker invites or reinvites the worker slot and returns the join code, slot ID
 // and canonical label (reserve_worker).
-func reserveWorker(ctx context.Context, tx *sql.Tx, actor *participant, request queueRequest, replaceExisting bool, now int64) (reservedWorker, error) {
+func reserveWorker(ctx context.Context, tx *sql.Tx, actor *participant, request queueRequest, hasPreviousAssignment bool, now int64) (reservedWorker, error) {
 	reinvite := false
 	if request.relaunch {
 		var err error
-		reinvite, err = relaunchNeedsReinvite(ctx, tx, actor.Room, request.name)
+		reinvite, err = relaunchNeedsReinvite(ctx, tx, actor.Room, request.name, hasPreviousAssignment)
 		if err != nil {
 			return reservedWorker{}, err
 		}
@@ -202,19 +211,22 @@ func reserveWorker(ctx context.Context, tx *sql.Tx, actor *participant, request 
 		return reservedWorker{}, err
 	}
 	return reservedWorker{
-		slotID: invited.slotID, label: invited.label, code: invited.code, replaceExisting: replaceExisting,
+		slotID: invited.slotID, label: invited.label, code: invited.code, reinvited: reinvite,
 	}, nil
 }
 
-// relaunchNeedsReinvite checks that the relaunched slot exists and reports whether it
-// must be reinvited (joined or retired) rather than reissued.
-func relaunchNeedsReinvite(ctx context.Context, tx *sql.Tx, room, name string) (bool, error) {
+// relaunchNeedsReinvite checks that the relaunched slot exists, refuses to cut off a live
+// manual chat that never had a fresh run, and reports whether the slot must be reinvited.
+func relaunchNeedsReinvite(ctx context.Context, tx *sql.Tx, room, name string, hasPreviousAssignment bool) (bool, error) {
 	slots, err := inviteSlots(ctx, tx, room)
 	if err != nil {
 		return false, err
 	}
 	for _, slot := range slots {
 		if sameName(slot.label, name) {
+			if slot.joined && !slot.retired && !hasPreviousAssignment {
+				return false, rejectf("Participant %s has no ended fresh run; use reinvite to replace a live chat", slot.label)
+			}
 			return slot.joined || slot.retired, nil
 		}
 	}

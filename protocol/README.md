@@ -145,14 +145,25 @@ status, and answers `{"page": <the read result>, "status": <the status result>}`
 sends one exchange instead of a read and a status.
 
 `ping` lets a lead or co-lead check a participant's live connection and wake an active waiting
-read without posting a message. `session` registers a stateful shim's MCP session on a
-persistent socket connection so the core can report `connected` presence and run on-demand
-MCP `ping` probes.
+read without posting a message. Both `ping` and `operator_ping` return `participant`, `status`
+(`woken`, `connected`, `unresponsive`, `not_joined`, or `disconnected`), `listening`, `connected`,
+`woke`, and optional `ping_rtt_ms` (when a session stream answered), `launch_state`, and
+`idle_seconds`. When a waiting read is woken by a ping, it returns immediately without settling
+and sets `pinged: true` on the page. In open conversations, `status` and `operator_show` member
+entries also include `listening: true` while a waiting read is active and `connected: true` while
+a waiting read or session stream is open.
 
-It is additive. Old shims never send it and keep working against the Go core. A Go shim
-that gets `Invalid bridge arguments` for a `listen` (the answer of the former Python core, or of
-an older Go core, to an unknown action) falls back to `read` and `status` for the rest of
-its process.
+`session` registers a stateful shim's MCP session on a persistent socket connection so the core
+can report `connected` presence and run on-demand MCP `ping` probes within a shared 3-second
+budget. The core closes matching session streams immediately when a member is reinvited,
+relaunched, or retired, or when the conversation closes.
+
+All three actions are additive. Old shims never send them and keep working against the Go core.
+A Go shim that gets `Invalid bridge arguments` for `listen` (the answer of the former Python core
+or an older Go core to an unknown action) falls back to `read` and `status` for the rest of its
+process. Against an older core that rejects `session` with `Invalid bridge arguments`, the shim
+stops retrying the background session stream without affecting tool calls; `ping` and
+`operator_ping` return the core's rejection error directly.
 
 The `listen` cases were derived from the `read` cases by renaming the action, giving each
 case without a wait a `wait_seconds` of 45 unless the case is about the missing wait, and

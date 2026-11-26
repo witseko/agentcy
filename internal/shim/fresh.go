@@ -29,21 +29,17 @@ type freshWorker struct {
 }
 
 // NewFreshWorkerServer builds the MCP server that exposes only the joined worker's join,
-// post, read and status operations.
-func NewFreshWorkerServer(workspace, code string, core Exchanger, dialSession ...SessionDialer) (*mcp.Server, error) {
+// post, read and status operations. dialSession may be nil in unit tests.
+func NewFreshWorkerServer(workspace, code string, core Exchanger, dialSession SessionDialer) (*mcp.Server, error) {
 	signer, err := newRequestStateSigner(time.Now)
 	if err != nil {
 		return nil, err
-	}
-	var dial SessionDialer
-	if len(dialSession) > 0 {
-		dial = dialSession[0]
 	}
 	shim := &shimServer{
 		workspace: workspace,
 		core:      core,
 		state:     newListenState(false),
-		presence:  newPresenceTracker(workspace, dial, false),
+		presence:  newPresenceTracker(workspace, dialSession, false),
 		signer:    signer,
 	}
 	worker := &freshWorker{shim: shim, code: code}

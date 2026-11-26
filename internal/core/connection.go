@@ -61,18 +61,6 @@ func (server *server) serveConnection(ctx context.Context, connection net.Conn) 
 	_ = wire.WriteLine(connection, reply)
 }
 
-// answer turns one validated request line into one reply line.
-func (server *server) answer(ctx context.Context, line []byte) []byte {
-	incoming, err := wire.DecodeIncoming(line)
-	if errors.Is(err, wire.ErrOperatorKeyRejected) {
-		return errorReply(wire.OperatorKeyRejected)
-	}
-	if err != nil {
-		return errorReply(wire.InvalidArguments)
-	}
-	return server.answerDecoded(withPresence(ctx, server.hub), incoming)
-}
-
 // answerDecoded dispatches one decoded request and encodes its JSON line reply.
 func (server *server) answerDecoded(ctx context.Context, incoming wire.Incoming) []byte {
 	result, err := server.dispatchSafely(ctx, incoming)

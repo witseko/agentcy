@@ -92,19 +92,22 @@ func (handler *Handler) operator(ctx context.Context, request wire.OperatorReque
 	}
 	unix := now.Unix()
 	var result wire.Value
+	var revoked []core.SessionTarget
 	if meta.readOnly {
 		result, err = handler.readResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 			return handler.applyOperatorRead(ctx, tx, request, unix)
 		})
 	} else {
 		result, err = handler.writeResult(ctx, workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
-			return handler.applyOperatorWrite(ctx, tx, workspace, meta.conversation, request, unix)
+			res, targets, writeErr := handler.applyOperatorWrite(ctx, tx, workspace, meta.conversation, request, unix)
+			revoked = targets
+			return res, writeErr
 		})
 	}
 	if err != nil {
 		return core.Outcome{}, err
 	}
-	outcome := core.Outcome{Result: result}
+	outcome := core.Outcome{Result: result, RevokeSessions: revoked}
 	if meta.notifiesRoom {
 		outcome.Notify = []core.Room{{Workspace: workspace, Conversation: meta.conversation}}
 	}
@@ -150,47 +153,72 @@ func (handler *Handler) applyOperatorRead(ctx context.Context, tx *sql.Tx, reque
 	return wire.Value{}, errUnknownOperation
 }
 
-// applyOperatorWrite runs one operator action that may write (apply in operator.py).
-func (handler *Handler) applyOperatorWrite(ctx context.Context, tx *sql.Tx, workspace, conversation string, request wire.OperatorRequest, now int64) (wire.Value, error) {
+// applyOperatorWrite runs one operator action that may write (apply in operator.py) and
+// returns any session streams that must close once the write commits.
+func (handler *Handler) applyOperatorWrite(ctx context.Context, tx *sql.Tx, workspace, conversation string, request wire.OperatorRequest, now int64) (wire.Value, []core.SessionTarget, error) {
+	room := core.Room{Workspace: workspace, Conversation: conversation}
 	switch typed := request.(type) {
 	case *wire.OperatorCreate:
-		return operatorCreate(ctx, tx, workspace, typed, now)
+		res, err := operatorCreate(ctx, tx, workspace, typed, now)
+		return res, nil, err
 	case *wire.OperatorArchive:
-		return archiveConversation(ctx, tx, typed, now)
+		res, err := archiveConversation(ctx, tx, typed, now)
+		return res, nil, err
 	case *wire.OperatorRename:
-		return renameConversation(ctx, tx, typed)
+		res, err := renameConversation(ctx, tx, typed)
+		return res, nil, err
 	case *wire.OperatorInvite:
-		return operatorInvite(ctx, tx, workspace, typed, now)
+		res, slotID, err := operatorInvite(ctx, tx, workspace, typed, now)
+		var revoked []core.SessionTarget
+		if err == nil && typed.Reinvite {
+			revoked = []core.SessionTarget{{Room: room, MemberID: slotID}}
+		}
+		return res, revoked, err
 	case *wire.OperatorOpenInvite:
-		return operatorOpenInvite(ctx, tx, workspace, typed, now)
+		res, err := operatorOpenInvite(ctx, tx, workspace, typed, now)
+		return res, nil, err
 	case *wire.OperatorSetMemberBudget:
-		return setMemberBudget(ctx, tx, handler.book, workspace, typed)
+		res, err := setMemberBudget(ctx, tx, handler.book, workspace, typed)
+		return res, nil, err
 	case *wire.OperatorClose:
-		return operatorClose(ctx, tx, typed, now)
+		res, err := operatorClose(ctx, tx, typed, now)
+		var revoked []core.SessionTarget
+		if err == nil {
+			revoked = []core.SessionTarget{{Room: room}}
+		}
+		return res, revoked, err
 	}
-	return handler.applyHumanAction(ctx, tx, conversation, request, now)
+	return handler.applyHumanAction(ctx, tx, workspace, conversation, request, now)
 }
 
 // applyHumanAction runs an action that the human performs as a member of the room.
-func (handler *Handler) applyHumanAction(ctx context.Context, tx *sql.Tx, conversation string, request wire.OperatorRequest, now int64) (wire.Value, error) {
+func (handler *Handler) applyHumanAction(ctx context.Context, tx *sql.Tx, workspace, conversation string, request wire.OperatorRequest, now int64) (wire.Value, []core.SessionTarget, error) {
 	human, err := writingActor(ctx, tx, conversation)
 	if err != nil {
-		return wire.Value{}, err
+		return wire.Value{}, nil, err
 	}
 	switch typed := request.(type) {
 	case *wire.OperatorRetire:
-		return retire(ctx, tx, &human.participant, typed.Name, now)
+		res, retiredID, err := retire(ctx, tx, &human.participant, typed.Name, now)
+		var revoked []core.SessionTarget
+		if err == nil {
+			revoked = []core.SessionTarget{{Room: core.Room{Workspace: workspace, Conversation: conversation}, MemberID: retiredID}}
+		}
+		return res, revoked, err
 	case *wire.OperatorSetRole:
-		return setRole(ctx, tx, &human.participant, typed.Name, typed.Role, now)
+		res, err := setRole(ctx, tx, &human.participant, typed.Name, typed.Role, now)
+		return res, nil, err
 	case *wire.OperatorPost:
 		// The human's usage is not recorded, so the scope names no workspace.
 		scope := writeScope{tx: tx, book: handler.book, now: now}
-		return postInRound(ctx, scope, &human.participant, submissionRequest{
+		res, err := postInRound(ctx, scope, &human.participant, submissionRequest{
 			submissionID: typed.SubmissionID, body: typed.Body, kind: typed.Kind, to: typed.To,
 			replyTo: typed.ReplyTo, dueMinutes: typed.DueMinutes,
 		})
+		return res, nil, err
 	case *wire.OperatorReopen:
-		return reopenConversation(ctx, tx, &human.participant, typed.Note, now)
+		res, err := reopenConversation(ctx, tx, &human.participant, typed.Note, now)
+		return res, nil, err
 	}
-	return wire.Value{}, errUnknownOperation
+	return wire.Value{}, nil, errUnknownOperation
 }

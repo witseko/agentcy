@@ -647,10 +647,6 @@ func (m model) teamMemberMenuItems(name string, member MemberStatus) []contextIt
 		})
 	}
 	if isOpen && member.State != "retired" {
-		launchLabel := "Launch from plugin…"
-		if needsRelaunch(member) {
-			launchLabel = "Relaunch from plugin…"
-		}
 		items = append(items,
 			contextItem{
 				id: "member:ping", label: "Ping member", key: "p",
@@ -658,11 +654,17 @@ func (m model) teamMemberMenuItems(name string, member MemberStatus) []contextIt
 					return m.inform("Pinging " + displayName + "."), m.pingMember(name)
 				},
 			},
-			contextItem{
+		)
+		if canLaunchFromPlugin(member) {
+			launchLabel := "Launch from plugin…"
+			if needsRelaunch(member) {
+				launchLabel = "Relaunch worker…"
+			}
+			items = append(items, contextItem{
 				id: "member:launch", label: launchLabel, key: "l",
 				action: func(m model) (tea.Model, tea.Cmd) { return m.prefillLaunchFor(name) },
-			},
-		)
+			})
+		}
 		items = append(items, m.teamMemberRoleItems(name, member)...)
 		items = append(items,
 			contextItem{
@@ -717,12 +719,22 @@ func (m model) teamMemberRoleItems(name string, member MemberStatus) []contextIt
 
 // prefillLaunchFor puts a launch or relaunch command for name into the composer.
 func (m model) prefillLaunchFor(name string) (tea.Model, tea.Cmd) {
+	member, found := m.chat.view.Status.Members[name]
+	if found && !canLaunchFromPlugin(member) {
+		if member.LaunchState == "unknown" {
+			return m.inform(cleanLine(name) + " has an unknown fresh-run state. Check the provider first."), nil
+		}
+		if member.LaunchState != "" {
+			return m.inform(cleanLine(name) + " already has an active fresh run."), nil
+		}
+		return m.inform(cleanLine(name) + " is a live chat. Use /reinvite to replace it."), nil
+	}
 	plugin := "plugin"
 	if len(m.plugins) > 0 {
 		plugin = m.plugins[0]
 	}
 	command := "/launch "
-	if member, found := m.chat.view.Status.Members[name]; found && needsRelaunch(member) {
+	if found && needsRelaunch(member) {
 		command = "/relaunch "
 	}
 	return m.prefillComposer(command+name+" "+plugin, "Edit the plugin name if needed and press enter.")

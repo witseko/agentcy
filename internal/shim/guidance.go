@@ -38,6 +38,7 @@ var (
 	overdueLeadHelp    = "For each overdue task, ask the owner for progress with the owner's name in 'to', or move the work to a free teammate."
 	overdueWorkerHelp  = "Report progress on each overdue task to the lead, or reply to the task with kind='blocker'."
 	leadCheckinHelp    = "Check in on quiet teammates or post a brief team update so waiting peers stay active."
+	pingReceivedPrefix = "Ping received; your connection is active."
 	compactUsageFields = []string{"model", "conversation_tokens", "used_percent", "remaining_percent", "status"}
 	// contextFields are left out of a waiting read: the chat holds them from create, join
 	// or a one-time read.
@@ -390,7 +391,7 @@ func workerGuidance(wait waitContext) string {
 	}
 	pingPrefix := ""
 	if wait.pinged {
-		pingPrefix = "Ping received; your connection is active. "
+		pingPrefix = pingReceivedPrefix + " "
 	}
 	for _, task := range caller.OpenTasks {
 		if !task.Blocked {
@@ -405,7 +406,7 @@ func workerGuidance(wait waitContext) string {
 		return pingPrefix + "You have not posted your part. Do the work and post your findings or blockers."
 	}
 	if wait.pinged {
-		return fmt.Sprintf("Ping received; your connection is active. Skip empty acknowledgments and %s.", listenText)
+		return fmt.Sprintf("%s Skip empty acknowledgments and %s.", pingReceivedPrefix, listenText)
 	}
 	if wait.silentWaits >= workerIdleLimit(members, wait.me, caller.State) {
 		return "Stop listening and tell your user that the conversation is quiet."
@@ -433,14 +434,14 @@ func guidance(wait waitContext) string {
 	if status.Round == roundSealed {
 		next := sealedGuidance(status, caller, wait.hasMessages)
 		if wait.pinged && !wait.hasMessages {
-			return "Ping received; your connection is active. " + next
+			return pingReceivedPrefix + " " + next
 		}
 		return next
 	}
 	if caller.Role != progress.RoleWorker {
 		next := leadGuidance(wait) + tokenBalanceNote(status)
 		if wait.pinged && !wait.hasMessages {
-			next = "Ping received; your connection is active. " + next
+			next = pingReceivedPrefix + " " + next
 		}
 		if wait.actionHint != "" && wait.hasMessages {
 			next = wait.actionHint + " " + next
