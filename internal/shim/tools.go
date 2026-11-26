@@ -68,6 +68,7 @@ var (
 		{Name: "token", Field: "token"},
 		{Name: "name", Field: "name"},
 		{Name: "plugin", Field: "plugin", TypeOnly: true},
+		{Name: "relaunch", Field: "relaunch"},
 	}
 	closeArguments      = sameNames("token", "summary")
 	reopenArguments     = sameNames("token", "note")
@@ -83,6 +84,7 @@ func (shim *shimServer) memberTools() map[string]toolFunction {
 		"invite_participant":        shim.sender(func() wire.Request { return &wire.Invite{Workspace: shim.workspace} }, inviteArguments),
 		"open_invite":               shim.sender(func() wire.Request { return &wire.OpenInvite{Workspace: shim.workspace} }, openInviteArguments),
 		"retire_participant":        shim.sender(func() wire.Request { return &wire.Retire{Workspace: shim.workspace} }, nameArguments),
+		"ping_participant":          shim.sender(func() wire.Request { return &wire.Ping{Workspace: shim.workspace} }, nameArguments),
 		"set_participant_role":      shim.sender(func() wire.Request { return &wire.SetRole{Workspace: shim.workspace} }, setRoleArguments),
 		"list_plugins":              shim.sender(func() wire.Request { return &wire.Plugins{Workspace: shim.workspace} }, tokenArguments),
 		"join_conversation":         shim.sender(func() wire.Request { return &wire.Join{Workspace: shim.workspace} }, joinArguments),
@@ -125,6 +127,21 @@ func exchangeRest(ctx context.Context, core Exchanger, request wire.Request, bin
 	return core.Exchange(ctx, request)
 }
 
+// touchPresence ensures a session stream is active for any member token returned by or
+// passed to a successful tool call.
+func (shim *shimServer) touchPresence(call toolCall, result wire.Value) {
+	if shim.presence == nil {
+		return
+	}
+	if token, found := result.Get("token"); found && token.Kind == wire.String && token.Text != "" {
+		shim.presence.touch(call.request, token.Text)
+		return
+	}
+	if token, found := call.arguments.Get("token"); found && token.Kind == wire.String && token.Text != "" {
+		shim.presence.touch(call.request, token.Text)
+	}
+}
+
 // postMessage posts and then forgets the poster's quiet waits.
 func (shim *shimServer) postMessage(call toolCall) (wire.Value, error) {
 	request := &wire.Post{Workspace: shim.workspace}
@@ -149,6 +166,7 @@ func (shim *shimServer) readFor(call toolCall, request *wire.Read, bindings []wi
 	if err := wire.ValidateRest(request, bindings); err != nil {
 		return wire.Value{}, err
 	}
+	shim.presence.touch(call.request, request.Token)
 	return readMember(call.ctx, shim.core, shim.state, request.Workspace, request.Token, request.After, request.WaitSeconds)
 }
 

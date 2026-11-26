@@ -115,6 +115,7 @@ var operatorRequests = map[string]func() OperatorRequest{
 	"operator_invite":            func() OperatorRequest { return &OperatorInvite{} },
 	"operator_open_invite":       func() OperatorRequest { return &OperatorOpenInvite{} },
 	"operator_launch":            func() OperatorRequest { return &OperatorLaunch{} },
+	"operator_ping":              func() OperatorRequest { return &OperatorPing{} },
 	"operator_retire":            func() OperatorRequest { return &OperatorRetire{} },
 	"operator_set_role":          func() OperatorRequest { return &OperatorSetRole{} },
 	"operator_post":              func() OperatorRequest { return &OperatorPost{} },

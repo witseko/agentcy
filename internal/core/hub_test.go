@@ -30,7 +30,7 @@ func isClosed(channel <-chan struct{}) bool {
 func TestHubWakesEveryListenerOfTheRoomOnly(t *testing.T) {
 	hub := newHub()
 	other := Room{Workspace: testWorkspace, Conversation: "ffffffffffffffffffffffff"}
-	first, second, elsewhere := hub.join(testRoom), hub.join(testRoom), hub.join(other)
+	first, second, elsewhere := hub.joinMember(testRoom, 0), hub.joinMember(testRoom, 0), hub.joinMember(other, 0)
 	firstChanged, secondChanged, elsewhereChanged := first.changed(), second.changed(), elsewhere.changed()
 	hub.notify(testRoom)
 	if !isClosed(firstChanged) || !isClosed(secondChanged) {
@@ -50,7 +50,7 @@ func TestHubDropsARoomWithItsLastListener(t *testing.T) {
 	if hub.roomCount() != 0 {
 		t.Error("a notify without listeners created an entry")
 	}
-	first, second := hub.join(testRoom), hub.join(testRoom)
+	first, second := hub.joinMember(testRoom, 0), hub.joinMember(testRoom, 0)
 	first.leave()
 	if hub.roomCount() != 1 {
 		t.Error("the room was dropped while a listener remained")
@@ -63,7 +63,7 @@ func TestHubDropsARoomWithItsLastListener(t *testing.T) {
 
 func TestHubKeepsAWakeThatArrivesDuringARead(t *testing.T) {
 	hub := newHub()
-	listener := hub.join(testRoom)
+	listener := hub.joinMember(testRoom, 0)
 	defer listener.leave()
 	// The waiting read takes the channel before it reads the page; a commit and notify
 	// during that read must still end the following wait.

@@ -215,6 +215,7 @@ var exampleTypes = map[string][2]reflect.Type{
 	"operator_invite":            {reflect.TypeFor[InviteRequest](), reflect.TypeFor[JoinInvitation]()},
 	"operator_open_invite":       {reflect.TypeFor[OpenInviteRequest](), reflect.TypeFor[OpenInviteStatus]()},
 	"operator_launch":            {reflect.TypeFor[LaunchRequest](), reflect.TypeFor[LaunchQueued]()},
+	"operator_ping":              {reflect.TypeFor[PingRequest](), reflect.TypeFor[PingResult]()},
 	"operator_retire":            {reflect.TypeFor[RetireRequest](), reflect.TypeFor[RetiredParticipant]()},
 	"operator_set_role":          {reflect.TypeFor[SetRoleRequest](), reflect.TypeFor[ParticipantRoleChanged]()},
 	"operator_set_member_budget": {reflect.TypeFor[SetMemberBudgetRequest](), reflect.TypeFor[MemberBudgetUpdated]()},

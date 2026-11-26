@@ -142,6 +142,7 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 	var room string
 	var added []core.Message
 	var roundReleased bool
+	var revoked []core.SessionTarget
 	targeted := meta.addsOnlyMessages
 	result, err := handler.writeResult(ctx, meta.workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
 		member, released, err := refreshParticipantReleasing(ctx, tx, meta.token, meta.releasesRound, now)
@@ -152,23 +153,26 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 		roundReleased = released
 		targeted = targeted && !released
 		if !targeted {
-			return handler.applyParticipant(ctx, tx, member, request, now)
+			res, targets, applyErr := handler.applyParticipant(ctx, tx, meta.workspace, member, request, now)
+			revoked = targets
+			return res, applyErr
 		}
 		lastMessage, err := lastRoomMessage(ctx, tx, room)
 		if err != nil {
 			return wire.Value{}, err
 		}
-		result, err := handler.applyParticipant(ctx, tx, member, request, now)
+		result, targets, err := handler.applyParticipant(ctx, tx, meta.workspace, member, request, now)
 		if err != nil {
 			return wire.Value{}, err
 		}
+		revoked = targets
 		added, err = addedMessages(ctx, tx, room, lastMessage)
 		return result, err
 	})
 	if err != nil {
 		return core.Outcome{}, err
 	}
-	outcome := core.Outcome{Result: result}
+	outcome := core.Outcome{Result: result, RevokeSessions: revoked}
 	changed := core.Room{Workspace: meta.workspace, Conversation: room}
 	switch {
 	case meta.noWake:
@@ -184,41 +188,61 @@ func (handler *Handler) participantRequest(ctx context.Context, request wire.Req
 }
 
 // applyParticipant dispatches one request of an authenticated member (apply in
-// repository.py).
-func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, member *participant, request wire.Request, now int64) (wire.Value, error) {
+// repository.py) and returns any session streams that must close once the write commits.
+func (handler *Handler) applyParticipant(ctx context.Context, tx *sql.Tx, workspace string, member *participant, request wire.Request, now int64) (wire.Value, []core.SessionTarget, error) {
+	room := core.Room{Workspace: workspace, Conversation: member.Room}
 	switch typed := request.(type) {
 	case *wire.Status:
 		current, err := status(ctx, tx, handler.book, member, now)
-		return current.value, err
+		return current.value, nil, err
 	case *wire.Invite:
 		invited, err := invite(ctx, tx, member, inviteRequest{
 			workspace: typed.Workspace, name: typed.Name, role: typed.Role, model: typed.Model,
 			tokenBudget: typed.TokenBudget, reinvite: typed.Reinvite,
 		}, now)
-		return invited.value(), err
+		var revoked []core.SessionTarget
+		if err == nil && typed.Reinvite {
+			revoked = []core.SessionTarget{{Room: room, MemberID: invited.slotID}}
+		}
+		return invited.value(), revoked, err
 	case *wire.Retire:
-		return retire(ctx, tx, member, typed.Name, now)
+		res, retiredID, err := retire(ctx, tx, member, typed.Name, now)
+		var revoked []core.SessionTarget
+		if err == nil {
+			revoked = []core.SessionTarget{{Room: room, MemberID: retiredID}}
+		}
+		return res, revoked, err
 	case *wire.SetRole:
-		return setRole(ctx, tx, member, typed.Name, typed.Role, now)
+		res, err := setRole(ctx, tx, member, typed.Name, typed.Role, now)
+		return res, nil, err
 	case *wire.OpenInvite:
 		opened, err := setOpenInvite(ctx, tx, member, typed.Workspace, typed.Enabled, now)
-		return opened.value(), err
+		return opened.value(), nil, err
 	case *wire.Post:
 		scope := writeScope{tx: tx, book: handler.book, workspace: typed.Workspace, now: now}
-		return postInRound(ctx, scope, member, submissionRequest{
+		res, err := postInRound(ctx, scope, member, submissionRequest{
 			submissionID: typed.SubmissionID, body: typed.Body, kind: typed.Kind, to: typed.To,
 			replyTo: typed.ReplyTo, dueMinutes: typed.DueMinutes,
 		})
+		return res, nil, err
 	case *wire.Read:
-		return read(ctx, tx, handler.book, member, typed, now)
+		res, err := read(ctx, tx, handler.book, member, typed, now)
+		return res, nil, err
 	case *wire.Close:
-		return closeConversation(ctx, tx, member, typed.Summary, now)
+		res, err := closeConversation(ctx, tx, member, typed.Summary, now)
+		var revoked []core.SessionTarget
+		if err == nil {
+			revoked = []core.SessionTarget{{Room: room}}
+		}
+		return res, revoked, err
 	case *wire.Reopen:
-		return reopenConversation(ctx, tx, member, typed.Note, now)
+		res, err := reopenConversation(ctx, tx, member, typed.Note, now)
+		return res, nil, err
 	case *wire.Release:
-		return release(ctx, tx, member, now)
+		res, err := release(ctx, tx, member, now)
+		return res, nil, err
 	}
-	return wire.Value{}, errUnknownOperation
+	return wire.Value{}, nil, errUnknownOperation
 }
 
 // listClosed lists the closed conversations without creating a store.

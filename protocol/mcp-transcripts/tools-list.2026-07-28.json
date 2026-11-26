@@ -284,6 +284,32 @@
       "name": "retire_participant"
     },
     {
+      "description": "As a lead or co-lead, check a participant's live connection and wake an active waiting read without posting a message.\n\nReturns status ('woken', 'connected', 'unresponsive', 'disconnected', or 'not_joined'), listening, connected, woke, and ping_rtt_ms when the participant's MCP host responds.\n",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "name"
+        ],
+        "title": "ping_participantArguments"
+      },
+      "name": "ping_participant"
+    },
+    {
       "description": "As a lead or co-lead, change an active participant's role in an open conversation.\n\nSetting role='lead' promotes that participant to sole lead and demotes any previous\nlead or co-leads to worker while keeping them active. Setting role='co-lead' shares\nleadership. Cannot demote the only lead or change a retired participant's role.\n",
       "inputSchema": {
         "type": "object",
@@ -571,7 +597,7 @@
       "name": "read_messages"
     },
     {
-      "description": "Queue a read-only fresh worker as a lead using a locally configured plugin.",
+      "description": "Queue a read-only fresh worker as a lead using a locally configured plugin. Pass relaunch=True to start a new run for a slot whose previous run ended, keeping its name, history, and open tasks.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -590,6 +616,11 @@
           "plugin": {
             "title": "Plugin",
             "type": "string"
+          },
+          "relaunch": {
+            "default": false,
+            "title": "Relaunch",
+            "type": "boolean"
           }
         },
         "required": [

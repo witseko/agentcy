@@ -40,7 +40,7 @@ var ErrInvalidResponse = errors.New("Invalid bridge response")
 var idempotentActions = map[string]bool{
 	"read": true, "listen": true, "status": true, "plugins": true, "post": true, "close": true,
 	"reopen": true, "release": true, "report_usage": true, "mcp_task_status": true,
-	"mcp_task_cancel": true,
+	"mcp_task_cancel": true, "ping": true,
 }
 
 // CoreError is a rejection that the core sent as {"error": "..."}.

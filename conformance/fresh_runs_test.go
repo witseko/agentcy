@@ -107,6 +107,37 @@ func TestFreshRunLifecycle(t *testing.T) {
 	s.operator("operator launch after the close", "operator_launch", fields{"conversation": conversation, "name": "Fifth", "plugin": "fixture"})
 }
 
+// TestFreshRunRelaunch checks relaunching an ended plugin run while preserving open tasks
+// and refusing active-run, live-manual-chat, or unknown-slot relaunches.
+func TestFreshRunRelaunch(t *testing.T) {
+	s := newScenario(t)
+	registerFixturePlugin(s)
+	created := s.member("lead creates", "create", fields{"brief": "Relaunch runs", "initiator": "Lead", "invitees": []any{"Manual"}})
+	lead := created.text("token")
+	conversation := created.text("conversation")
+	s.member("manual worker joins", "join", fields{"code": created.text("invitations", "Manual")})
+
+	task := s.member("lead launches Tasked as an MCP task", "launch", fields{"token": lead, "name": "Tasked", "plugin": "fixture", "directory": s.directory, "mcp_task": true})
+	taskID := task.text("mcp_task", "task_id")
+	s.waitForLaunchState(lead, "running", "Tasked")
+	s.post("lead assigns a task to Tasked", lead, fields{"body": "Keep this task across relaunch.", "kind": "task", "to": "Tasked", "due_minutes": 30})
+	s.member("relaunch is refused while the run is active", "launch", fields{"token": lead, "name": "Tasked", "plugin": "fixture", "directory": s.directory, "relaunch": true})
+	s.operator("operator relaunch is refused while the run is active", "operator_launch", fields{"conversation": conversation, "name": "Tasked", "plugin": "fixture", "relaunch": true})
+	s.member("relaunch of an unknown slot is refused", "launch", fields{"token": lead, "name": "Unknown", "plugin": "fixture", "directory": s.directory, "relaunch": true})
+	s.operator("operator relaunch of a live manual chat is refused", "operator_launch", fields{"conversation": conversation, "name": "Manual", "plugin": "fixture", "relaunch": true})
+
+	s.member("the host cancels the MCP task", "mcp_task_cancel", fields{"task_id": taskID})
+	s.waitForLaunchState(lead, "cancelled", "Tasked")
+	s.member("repeated member launch without relaunch returns the ended assignment", "launch", fields{"token": lead, "name": "Tasked", "plugin": "fixture", "directory": s.directory})
+	s.member("lead relaunches Tasked", "launch", fields{"token": lead, "name": "Tasked", "plugin": "fixture", "directory": s.directory, "relaunch": true})
+	s.waitForLaunchState(lead, "running", "Tasked")
+	s.member("status shows the relaunched run and the preserved open task", "status", fields{"token": lead})
+
+	s.member("lead closes", "close", fields{"token": lead})
+	s.waitForLaunchState(lead, "cancelled", "Tasked")
+	s.member("status after the close", "status", fields{"token": lead})
+}
+
 // From test_fresh_runs.py: a running fresh run survives a daemon restart, the new
 // daemon's startup reconciliation keeps it running, and a close then cancels it.
 func TestFreshRunSurvivesRestart(t *testing.T) {

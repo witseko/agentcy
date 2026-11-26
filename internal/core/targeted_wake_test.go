@@ -39,7 +39,7 @@ func woken(listener *listener) bool {
 
 func TestHubWakesOnlyTheListenersThatAnAddedMessageConcerns(t *testing.T) {
 	hub := newHub()
-	addressee, bystander, unfiltered := hub.join(testRoom), hub.join(testRoom), hub.join(testRoom)
+	addressee, bystander, unfiltered := hub.joinMember(testRoom, 0), hub.joinMember(testRoom, 0), hub.joinMember(testRoom, 0)
 	addressee.setFilter(recipientFilter{member: 2})
 	bystander.setFilter(recipientFilter{member: 3})
 	hub.notifyAdded(addressedTo(2))
@@ -64,7 +64,7 @@ func TestHubWakesOnlyTheListenersThatAnAddedMessageConcerns(t *testing.T) {
 
 func TestHubIgnoresAWriteThatAddedNoMessage(t *testing.T) {
 	hub := newHub()
-	listener := hub.join(testRoom)
+	listener := hub.joinMember(testRoom, 0)
 	hub.notifyAdded(AddedMessages{Room: testRoom})
 	if woken(listener) || skippedChange(listener) {
 		t.Error("a write without messages woke or marked a listener")
@@ -73,7 +73,7 @@ func TestHubIgnoresAWriteThatAddedNoMessage(t *testing.T) {
 
 func TestHubWakesAListenerWhoseFilterChangedAfterASkip(t *testing.T) {
 	hub := newHub()
-	listener := hub.join(testRoom)
+	listener := hub.joinMember(testRoom, 0)
 	listener.setFilter(recipientFilter{member: 3})
 	listener.beginRead()
 	// A role change lets the next read see the reader as someone else, while a message
@@ -92,7 +92,7 @@ func TestHubWakesAListenerWhoseFilterChangedAfterASkip(t *testing.T) {
 
 func TestHubWakesASettlingListenerForEveryAddedMessage(t *testing.T) {
 	hub := newHub()
-	listener := hub.join(testRoom)
+	listener := hub.joinMember(testRoom, 0)
 	listener.setFilter(recipientFilter{member: 3})
 	listener.beginRead()
 	hub.notifyAdded(addressedTo(2))

@@ -33,7 +33,7 @@ The tool descriptions and the `next` field are authoritative. If this skill diff
 
 1. Call `list_plugins` to see the configured plugins and their models.
 2. Call `launch_participant` with a worker `name` and a `plugin`. The plugin delivers the invitation. The fresh worker is read-only.
-3. Watch `launch_state` in `conversation_status`. A launch that ends before the worker joins leaves its work open. Relaunch it, reassign the work, or do it yourself.
+3. Watch `launch_state` in `conversation_status`. A launch that ends before the worker joins leaves its work open. Relaunch it (`launch_participant` with `relaunch=True`), reassign the work, or do it yourself.
 
 ## 5. Plan and assign
 
@@ -59,7 +59,7 @@ The tool descriptions and the `next` field are authoritative. If this skill diff
 - **Imbalance:** when `token_balance` shows an imbalance, give more work to the model with more budget left.
 - **Free teammate:** assign a new `kind='task'` or post a team update.
 - **Shared load:** when a member reports a slow or overloaded computer, lower the process limits or put the heavy runs in sequence. Keep message traffic low: send a message to the member who needs it, and post to all only what all must read.
-- **Quiet teammate:** check in with `to` set to that name.
+- **Quiet teammate:** call `ping_participant` first to check their live connection and wake an active waiting read without posting chat noise; send a message with `to` only when you need a status reply.
 
 ## 8. Sealed rounds
 

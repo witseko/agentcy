@@ -104,10 +104,13 @@ func (n *normalizer) value(value any, key string) any {
 	return value
 }
 
-// number replaces idle seconds and timestamps, which depend on the clock.
+// number replaces idle seconds, ping round-trip times and timestamps, which depend on the clock.
 func (n *normalizer) number(number json.Number, key string) any {
 	if key == "idle_seconds" {
 		return "<idle-seconds>"
+	}
+	if key == "ping_rtt_ms" {
+		return "<ping-rtt-ms>"
 	}
 	whole, err := number.Int64()
 	if err != nil || whole < n.startUnix-timestampWindowSeconds || whole > n.startUnix+timestampWindowSeconds {

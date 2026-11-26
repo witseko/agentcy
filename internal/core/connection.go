@@ -37,7 +37,22 @@ func (server *server) serveConnection(ctx context.Context, connection net.Conn) 
 	case err != nil:
 		return
 	default:
-		reply = server.answer(ctx, line)
+		incoming, decodeErr := wire.DecodeIncoming(line)
+		if errors.Is(decodeErr, wire.ErrOperatorKeyRejected) {
+			reply = errorReply(wire.OperatorKeyRejected)
+			break
+		}
+		if decodeErr != nil {
+			reply = errorReply(wire.InvalidArguments)
+			break
+		}
+		if session, isSession := incoming.Member.(*wire.Session); isSession {
+			server.serveSession(ctx, connection, session)
+			return
+		}
+		_ = connection.SetReadDeadline(time.Time{})
+		requestCtx := withDisconnectConn(withPresence(ctx, server.hub), connection)
+		reply = server.answerDecoded(requestCtx, incoming)
 	}
 	if err := connection.SetWriteDeadline(time.Now().Add(requestTimeout)); err != nil {
 		return
@@ -46,15 +61,8 @@ func (server *server) serveConnection(ctx context.Context, connection net.Conn) 
 	_ = wire.WriteLine(connection, reply)
 }
 
-// answer turns one validated request line into one reply line.
-func (server *server) answer(ctx context.Context, line []byte) []byte {
-	incoming, err := wire.DecodeIncoming(line)
-	if errors.Is(err, wire.ErrOperatorKeyRejected) {
-		return errorReply(wire.OperatorKeyRejected)
-	}
-	if err != nil {
-		return errorReply(wire.InvalidArguments)
-	}
+// answerDecoded dispatches one decoded request and encodes its JSON line reply.
+func (server *server) answerDecoded(ctx context.Context, incoming wire.Incoming) []byte {
 	result, err := server.dispatchSafely(ctx, incoming)
 	if err != nil {
 		return server.failureReply(incoming, err)

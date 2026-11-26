@@ -109,6 +109,20 @@ func (handler *Handler) openStore(ctx context.Context, workspace string) (*store
 	return workspaceStore, err
 }
 
+type workspaceContextKey struct{}
+
+// withWorkspace attaches the workspace key to ctx so status queries can resolve room
+// presence from the daemon hub.
+func withWorkspace(ctx context.Context, workspace string) context.Context {
+	return context.WithValue(ctx, workspaceContextKey{}, workspace)
+}
+
+// workspaceFromContext returns the workspace key attached to ctx, or "".
+func workspaceFromContext(ctx context.Context) string {
+	workspace, _ := ctx.Value(workspaceContextKey{}).(string)
+	return workspace
+}
+
 // writeResult runs work in a write transaction of a workspace store, creating the store
 // when it is missing, as Python's transaction() does.
 func (handler *Handler) writeResult(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
@@ -116,6 +130,7 @@ func (handler *Handler) writeResult(ctx context.Context, workspace string, work 
 	if err != nil {
 		return wire.Value{}, err
 	}
+	ctx = withWorkspace(ctx, workspace)
 	ctx, rooms := withRoomCache(ctx, handler.rooms, workspaceStore.Path())
 	ctx, syncs := withLedgerSync(ctx)
 	var result wire.Value
@@ -140,6 +155,7 @@ func (handler *Handler) readResult(ctx context.Context, workspace string, work f
 	if err != nil {
 		return wire.Value{}, err
 	}
+	ctx = withWorkspace(ctx, workspace)
 	ctx, rooms := withRoomCache(ctx, handler.rooms, workspaceStore.Path())
 	var result wire.Value
 	err = workspaceStore.Read(ctx, func(tx *sql.Tx) error {
@@ -165,7 +181,10 @@ func (handler *Handler) OpenWait(ctx context.Context, request *wire.Read, now ti
 	if err != nil {
 		return core.WaitStart{}, err
 	}
-	start := core.WaitStart{Room: core.Room{Workspace: request.Workspace, Conversation: member.Room}}
+	start := core.WaitStart{
+		Room:     core.Room{Workspace: request.Workspace, Conversation: member.Room},
+		MemberID: member.ID,
+	}
 	if member.RoundDeadline.Valid {
 		deadline := member.RoundDeadline.Int64
 		start.RoundDeadline = &deadline

@@ -17,16 +17,31 @@ func coreClient() *wire.Client {
 	return &wire.Client{Connect: connectCore}
 }
 
+// coreDataDir resolves and validates the configured bridge data directory.
+func coreDataDir() (string, error) {
+	home, homeSet := os.LookupEnv(paths.HomeVariable)
+	return paths.DataDir(home, homeSet)
+}
+
 // connectCore connects to the core of the configured data directory, starting it when
 // none listens.
 func connectCore(ctx context.Context) (net.Conn, error) {
-	home, homeSet := os.LookupEnv(paths.HomeVariable)
-	dataDir, err := paths.DataDir(home, homeSet)
+	dataDir, err := coreDataDir()
 	if err != nil {
 		return nil, err
 	}
 	connector := &wire.Connector{DataDir: dataDir, Environment: os.Environ(), Command: coreCommand}
 	return connector.Connect(ctx)
+}
+
+// dialCorePassive connects to an already-running core socket without starting a daemon.
+func dialCorePassive(ctx context.Context) (net.Conn, error) {
+	dataDir, err := coreDataDir()
+	if err != nil {
+		return nil, err
+	}
+	dialer := net.Dialer{}
+	return dialer.DialContext(ctx, "unix", filepath.Join(dataDir, wire.SocketFileName))
 }
 
 // coreCommand returns the daemon command: AGENTCY_CORE_BIN when set, else this program

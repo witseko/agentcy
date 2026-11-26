@@ -186,7 +186,7 @@
 == 18. operator cannot relaunch an ended run
 -> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Tasked", "plugin": "fixture", "version": 1}
 <- {
-  "error": "The fresh run for this slot has ended. Relaunch is not supported yet"
+  "error": "The fresh run for this slot has ended. Pass relaunch to start a new run"
 }
 
 == 19. operator launch of an unconfigured plugin

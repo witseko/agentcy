@@ -38,6 +38,7 @@ var (
 	overdueLeadHelp    = "For each overdue task, ask the owner for progress with the owner's name in 'to', or move the work to a free teammate."
 	overdueWorkerHelp  = "Report progress on each overdue task to the lead, or reply to the task with kind='blocker'."
 	leadCheckinHelp    = "Check in on quiet teammates or post a brief team update so waiting peers stay active."
+	pingReceivedPrefix = "Ping received; your connection is active."
 	compactUsageFields = []string{"model", "conversation_tokens", "used_percent", "remaining_percent", "status"}
 	// contextFields are left out of a waiting read: the chat holds them from create, join
 	// or a one-time read.
@@ -49,6 +50,7 @@ type waitContext struct {
 	status          progress.Status
 	me              string
 	hasMessages     bool
+	pinged          bool
 	silentWaits     int
 	blockerReceived bool
 	actionHint      string
@@ -387,17 +389,24 @@ func workerGuidance(wait waitContext) string {
 	if wait.hasMessages {
 		return workerMessageGuidance(caller.OpenTasks, wait.actionHint)
 	}
+	pingPrefix := ""
+	if wait.pinged {
+		pingPrefix = pingReceivedPrefix + " "
+	}
 	for _, task := range caller.OpenTasks {
 		if !task.Blocked {
 			overdue := ""
 			if hasOverdueTask(caller.OpenTasks) {
 				overdue = " " + overdueWorkerHelp
 			}
-			return "Continue your open tasks. Reply to each task with kind='done' or 'blocker'." + overdue
+			return pingPrefix + "Continue your open tasks. Reply to each task with kind='done' or 'blocker'." + overdue
 		}
 	}
 	if caller.State == "joined" {
-		return "You have not posted your part. Do the work and post your findings or blockers."
+		return pingPrefix + "You have not posted your part. Do the work and post your findings or blockers."
+	}
+	if wait.pinged {
+		return fmt.Sprintf("%s Skip empty acknowledgments and %s.", pingReceivedPrefix, listenText)
 	}
 	if wait.silentWaits >= workerIdleLimit(members, wait.me, caller.State) {
 		return "Stop listening and tell your user that the conversation is quiet."
@@ -423,10 +432,17 @@ func guidance(wait waitContext) string {
 		return nextAfterRetire
 	}
 	if status.Round == roundSealed {
-		return sealedGuidance(status, caller, wait.hasMessages)
+		next := sealedGuidance(status, caller, wait.hasMessages)
+		if wait.pinged && !wait.hasMessages {
+			return pingReceivedPrefix + " " + next
+		}
+		return next
 	}
 	if caller.Role != progress.RoleWorker {
 		next := leadGuidance(wait) + tokenBalanceNote(status)
+		if wait.pinged && !wait.hasMessages {
+			next = pingReceivedPrefix + " " + next
+		}
 		if wait.actionHint != "" && wait.hasMessages {
 			next = wait.actionHint + " " + next
 		}

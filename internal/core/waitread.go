@@ -2,10 +2,52 @@ package core
 
 import (
 	"context"
+	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/witseko/agentcy/internal/wire"
 )
+
+type disconnectConnKey struct{}
+
+// withDisconnectConn attaches the client socket to ctx so a waiting read can stop
+// sleeping as soon as the client disconnects.
+func withDisconnectConn(ctx context.Context, connection net.Conn) context.Context {
+	return context.WithValue(ctx, disconnectConnKey{}, connection)
+}
+
+// watchClientDisconnect starts a reader on connection, if present in ctx, that closes the
+// returned channel when the client closes or resets the socket. Call stop before writing
+// the response so no read remains in flight.
+func watchClientDisconnect(ctx context.Context) (<-chan struct{}, func()) {
+	connection, ok := ctx.Value(disconnectConnKey{}).(net.Conn)
+	if !ok || connection == nil {
+		return nil, func() {}
+	}
+	var stopped atomic.Bool
+	disconnected := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		var scratch [64]byte
+		for !stopped.Load() {
+			_, err := connection.Read(scratch[:])
+			if err != nil {
+				if !stopped.Load() {
+					close(disconnected)
+				}
+				return
+			}
+		}
+	}()
+	stop := func() {
+		stopped.Store(true)
+		_ = connection.SetReadDeadline(time.Now())
+		<-readerDone
+	}
+	return disconnected, stop
+}
 
 // waitForRead runs a waiting read and records the delivery of the page it returns.
 func (server *server) waitForRead(ctx context.Context, request *wire.Read) (wire.Value, error) {
@@ -55,7 +97,7 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (Wait
 	if err != nil {
 		return WaitPage{}, err
 	}
-	listener := server.hub.join(start.Room)
+	listener := server.hub.joinMember(start.Room, start.MemberID)
 	defer listener.leave()
 	deadline := time.Now().Add(time.Duration(request.WaitSeconds) * time.Second)
 	roundDeadline := start.RoundDeadline
@@ -66,6 +108,8 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (Wait
 	if page.RoundDeadline != nil {
 		roundDeadline = page.RoundDeadline
 	}
+	disconnected, stopWatch := watchClientDisconnect(ctx)
+	defer stopWatch()
 	var lastExpiredRound *int64
 	for {
 		remaining := time.Until(deadline)
@@ -82,19 +126,26 @@ func (server *server) waitForPage(ctx context.Context, request *wire.Read) (Wait
 				remaining = 0
 			}
 		}
-		server.sleep(ctx, listener.changed(), remaining)
+		if server.sleepOrDisconnect(ctx, listener.changed(), disconnected, remaining) {
+			return page, nil
+		}
 		if ctx.Err() != nil {
 			return page, nil
 		}
+		pinged := listener.takePing()
 		if page, err = server.readPage(ctx, request, listener); err != nil {
 			return WaitPage{}, err
 		}
 		roundDeadline = page.RoundDeadline
+		if pinged {
+			page.Page.Set("pinged", wire.BoolValue(true))
+			return page, nil
+		}
 		if page.Ready {
 			if server.stopping(ctx) {
 				return page, nil
 			}
-			return server.settle(ctx, request, listener, page)
+			return server.settle(ctx, request, listener, page, disconnected)
 		}
 	}
 }
@@ -114,7 +165,7 @@ func (server *server) readPage(ctx context.Context, request *wire.Read, listener
 // full. Port of settle in concurrency.py. Every added message wakes the read while it
 // settles, as every write did in Python, so the settled page shows the whole burst and a
 // burst that fills the page ends the settle at once.
-func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, page WaitPage) (WaitPage, error) {
+func (server *server) settle(ctx context.Context, request *wire.Read, listener *listener, page WaitPage, disconnected <-chan struct{}) (WaitPage, error) {
 	listener.startSettle()
 	deadline := time.Now().Add(server.settings.settleWindow)
 	for !page.EndsSettle && !server.stopping(ctx) {
@@ -122,32 +173,50 @@ func (server *server) settle(ctx context.Context, request *wire.Read, listener *
 		if remaining <= 0 {
 			break
 		}
-		server.sleep(ctx, listener.changed(), remaining)
+		if server.sleepOrDisconnect(ctx, listener.changed(), disconnected, remaining) {
+			return page, nil
+		}
 		if server.stopping(ctx) {
 			return page, nil
 		}
+		pinged := listener.takePing()
 		next, err := server.readPage(ctx, request, listener)
 		if err != nil {
 			return WaitPage{}, err
 		}
 		page = next
+		if pinged {
+			page.Page.Set("pinged", wire.BoolValue(true))
+			return page, nil
+		}
 	}
 	return page, nil
 }
 
-// sleep returns after duration, when changed closes, or when the daemon stops. A zero
-// duration returns at once, as Condition.wait(0) does.
-func (server *server) sleep(ctx context.Context, changed <-chan struct{}, duration time.Duration) {
+// sleepOrDisconnect returns after duration, when changed wakes, when the client socket
+// disconnects, or when the daemon stops. It reports true when disconnected closed.
+func (server *server) sleepOrDisconnect(ctx context.Context, changed, disconnected <-chan struct{}, duration time.Duration) bool {
 	if duration <= 0 {
-		return
+		select {
+		case <-disconnected:
+			return true
+		default:
+			return false
+		}
 	}
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-changed:
+		return false
+	case <-disconnected:
+		return true
 	case <-timer.C:
+		return false
 	case <-server.draining:
+		return false
 	case <-ctx.Done():
+		return false
 	}
 }
 

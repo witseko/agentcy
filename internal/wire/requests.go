@@ -17,6 +17,15 @@ var (
 	AssignableRoles = []string{"worker", "lead", "co-lead"}
 )
 
+// Ping status values returned by ping and operator_ping.
+const (
+	PingStatusWoken        = "woken"
+	PingStatusConnected    = "connected"
+	PingStatusUnresponsive = "unresponsive"
+	PingStatusNotJoined    = "not_joined"
+	PingStatusDisconnected = "disconnected"
+)
+
 // Invitation reserves a worker or co-lead slot when creating a conversation.
 type Invitation struct {
 	Name        string
@@ -133,6 +142,21 @@ type Launch struct {
 	Plugin    string
 	Directory string
 	McpTask   bool
+	Relaunch  bool
+}
+
+// Ping checks a participant's live connection and wakes a waiting read without posting.
+type Ping struct {
+	Workspace string
+	Token     string
+	Name      string
+}
+
+// Session registers an active shim's MCP session so the core can track live presence and
+// run on-demand liveness probes.
+type Session struct {
+	Workspace string
+	Token     string
 }
 
 // Retire retires a participant from an open conversation.
@@ -229,6 +253,12 @@ func (*Release) Action() string { return "release" }
 
 // Action returns "launch".
 func (*Launch) Action() string { return "launch" }
+
+// Action returns "ping".
+func (*Ping) Action() string { return "ping" }
+
+// Action returns "session".
+func (*Session) Action() string { return "session" }
 
 // Action returns "retire".
 func (*Retire) Action() string { return "retire" }

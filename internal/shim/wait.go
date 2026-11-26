@@ -212,10 +212,11 @@ func finishWait(page wire.Value, status progress.Status, statusValue wire.Value,
 	me := status.Participant
 	caller, _ := status.Member(me)
 	retired := progress.IsRetired(caller)
+	pinged := flag(page, "pinged")
 	messages := messagesOf(page).Items
 	hasMessages := len(messages) > 0
 	callerListener := listener{state: state, digest: digest}
-	count := updateSilentWait(page, status, retired, callerListener)
+	count := updateSilentWait(page, status, retired, pinged, callerListener)
 	for _, field := range contextFields {
 		page.Delete(field)
 	}
@@ -242,6 +243,7 @@ func finishWait(page wire.Value, status progress.Status, statusValue wire.Value,
 		status:          status,
 		me:              me,
 		hasMessages:     hasMessages,
+		pinged:          pinged,
 		silentWaits:     count,
 		blockerReceived: blockerReceived,
 		actionHint:      actionHint,
@@ -251,9 +253,14 @@ func finishWait(page wire.Value, status progress.Status, statusValue wire.Value,
 
 // updateSilentWait resets or increments the caller's quiet-wait count and attaches
 // waiting_on to a quiet page outside the sealed round.
-func updateSilentWait(page wire.Value, status progress.Status, retired bool, caller listener) int {
-	if messagesOf(page).Truthy() || !status.Open || retired {
+func updateSilentWait(page wire.Value, status progress.Status, retired, pinged bool, caller listener) int {
+	if messagesOf(page).Truthy() || !status.Open || retired || pinged {
 		caller.state.resetWaits(caller.digest)
+		if pinged && status.Open && !retired && status.Round != roundSealed {
+			if pending := progress.LeadWaitingOn(status, status.Participant); len(pending) > 0 {
+				page.Set("waiting_on", wire.TextList(pending))
+			}
+		}
 		return 0
 	}
 	count := caller.state.countWait(caller.digest)
@@ -318,7 +325,7 @@ func teamSnapshot(statusValue wire.Value, me string) wire.Value {
 		state, _ := member.Get("state")
 		entry := wire.NewObject()
 		entry.Set("state", state)
-		for _, field := range []string{"open_tasks", "launch_state", "idle_seconds"} {
+		for _, field := range []string{"open_tasks", "launch_state", "idle_seconds", "listening", "connected"} {
 			if value, found := member.Get(field); found {
 				entry.Set(field, value)
 			}
@@ -344,6 +351,7 @@ func teamFingerprint(snapshot wire.Value) string {
 	for _, name := range fingerprint.Keys() {
 		entry, _ := fingerprint.Get(name)
 		entry.Delete("idle_seconds")
+		entry.Delete("listening")
 	}
 	return fingerprint.Compact()
 }
