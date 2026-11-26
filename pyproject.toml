@@ -23,8 +23,8 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-# Sample code shown in the tutorial videos, not part of agentcy.
-extend-exclude = ["docs/videos/sample"]
+# Tutorial sample code, throwaway spikes and transcript capture scripts are not part of agentcy.
+extend-exclude = ["docs/videos/sample", "spikes", "protocol/mcp-transcripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "docs/videos/tools"]
