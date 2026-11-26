@@ -221,17 +221,32 @@ func (handler *Handler) recordDelivery(ctx context.Context, tx *sql.Tx, request 
 }
 
 // FinishListen records the delivery of a listen's page, when deliver is true, and
-// returns the caller's status in one transaction. The steps are those of a delivery
-// record followed by a status request, which is what the shim sent before listen.
+// returns the caller's status. When deliver is true, the delivery write commits and
+// flushes the token ledger before reading status so model_tokens_used and token_balance
+// reflect the delivered page.
 func (handler *Handler) FinishListen(ctx context.Context, request *wire.Read, page wire.Value, deliver bool, now time.Time) (wire.Value, error) {
 	unix := now.Unix()
-	return handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
-		if deliver {
-			if err := handler.recordDelivery(ctx, tx, request, page, unix); err != nil {
+	if !deliver {
+		return handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+			member, err := refreshParticipant(ctx, tx, request.Token, true, unix)
+			if err != nil {
 				return wire.Value{}, err
 			}
+			current, err := status(ctx, tx, handler.book, member, unix)
+			return current.value, err
+		})
+	}
+	if _, err := handler.writeResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		if err := handler.recordDelivery(ctx, tx, request, page, unix); err != nil {
+			return wire.Value{}, err
 		}
-		member, err := refreshParticipant(ctx, tx, request.Token, true, unix)
+		_, err := refreshParticipant(ctx, tx, request.Token, true, unix)
+		return wire.Value{}, err
+	}); err != nil {
+		return wire.Value{}, err
+	}
+	return handler.readResult(ctx, request.Workspace, func(ctx context.Context, tx *sql.Tx) (wire.Value, error) {
+		member, err := authenticate(ctx, tx, request.Token)
 		if err != nil {
 			return wire.Value{}, err
 		}

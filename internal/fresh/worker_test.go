@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -459,4 +460,168 @@ func TestWorkerLogsOnlyFixedMessages(t *testing.T) {
 			t.Errorf("the log holds %q", secret)
 		}
 	}
+}
+
+func TestWorkerDoesNotBusySpinDuringInFlightWorkspaceCheck(t *testing.T) {
+	base := time.Now()
+	var currentUnix atomic.Int64
+	currentUnix.Store(base.Unix())
+	var nowCalls atomic.Int64
+
+	run := openRun(StateRunning)
+	run.Deadline = base.Add(60 * time.Second).Unix()
+	store := newFakeStore(run)
+
+	cancelStarted := make(chan struct{}, 1)
+	releaseCancel := make(chan struct{})
+	var firstReconcile atomic.Bool
+	firstReconcile.Store(true)
+
+	provider := providerFunc(func(_ context.Context, tool, _ string) (RunResult, error) {
+		if firstReconcile.CompareAndSwap(true, false) {
+			return RunResult{State: StateRunning}, nil
+		}
+		if tool == ToolCancel {
+			select {
+			case cancelStarted <- struct{}{}:
+			default:
+			}
+			<-releaseCancel
+			return RunResult{State: StateCancelled}, nil
+		}
+		return RunResult{State: StateRunning}, nil
+	})
+
+	worker := NewWorker(WorkerConfig{
+		Store:    store,
+		Provider: provider,
+		Plugins:  func(string) (*Plugin, error) { return &Plugin{Name: "fake"}, nil },
+		Now: func() time.Time {
+			nowCalls.Add(1)
+			return time.Unix(currentUnix.Load(), 0)
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.Run(ctx, func(string, string) {})
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	waitFor(t, worker.Ready)
+
+	// Advance past the deadline so StopReason(run, now) != "", then wake the workspace.
+	currentUnix.Store(base.Add(61 * time.Second).Unix())
+	worker.Wake(run.Workspace)
+
+	select {
+	case <-cancelStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancel did not start")
+	}
+
+	if due, found := worker.nextDue(); found {
+		t.Fatalf("nextDue() = %v while workspace check is in flight; want no due run", due)
+	}
+
+	before := nowCalls.Load()
+	time.Sleep(100 * time.Millisecond)
+	delta := nowCalls.Load() - before
+	close(releaseCancel)
+
+	if delta > 10 {
+		t.Fatalf("Worker.Run called Now() %d times during a 100ms in-flight cancel; expected idle wait", delta)
+	}
+}
+
+func TestWorkerRequeuesWakeDuringInFlightWorkspaceCheck(t *testing.T) {
+	run := openRun(StateRunning)
+	run.Deadline = time.Now().Add(10 * time.Minute).Unix()
+	store := newFakeStore(run)
+
+	inspectStarted := make(chan struct{}, 1)
+	releaseInspect := make(chan struct{})
+	cancelCalled := make(chan struct{}, 1)
+	var firstReconcile atomic.Bool
+	firstReconcile.Store(true)
+
+	provider := providerFunc(func(_ context.Context, tool, _ string) (RunResult, error) {
+		if firstReconcile.CompareAndSwap(true, false) {
+			return RunResult{State: StateRunning}, nil
+		}
+		if tool == ToolInspect {
+			select {
+			case inspectStarted <- struct{}{}:
+			default:
+			}
+			<-releaseInspect
+			return RunResult{State: StateRunning}, nil
+		}
+		if tool == ToolCancel {
+			select {
+			case cancelCalled <- struct{}{}:
+			default:
+			}
+			return RunResult{State: StateCancelled}, nil
+		}
+		return RunResult{State: StateRunning}, nil
+	})
+
+	worker := NewWorker(WorkerConfig{
+		Store:    store,
+		Provider: provider,
+		Plugins:  func(string) (*Plugin, error) { return &Plugin{Name: "fake"}, nil },
+		Timing:   Timing{InspectInterval: 5 * time.Second},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.Run(ctx, func(string, string) {})
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	waitFor(t, worker.Ready)
+
+	// Make nextInspect due and trigger a routine inspect.
+	worker.state.mutex.Lock()
+	worker.state.nextInspect[run.ID] = time.Now().Add(-time.Second)
+	worker.state.mutex.Unlock()
+	worker.Wake(run.Workspace)
+
+	select {
+	case <-inspectStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("routine inspect did not start")
+	}
+
+	// Commit a cancel and wake the workspace while the routine inspect is in flight.
+	store.change(run.ID, func(stored *Run) { stored.CancelRequested = true })
+	worker.Wake(run.Workspace)
+
+	// Wait until Run has drained the Wake into pendingWakes while the check is in flight.
+	waitFor(t, func() bool {
+		worker.state.mutex.Lock()
+		defer worker.state.mutex.Unlock()
+		return worker.state.pendingWakes[run.Workspace]
+	})
+
+	close(releaseInspect)
+
+	select {
+	case <-cancelCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("cancel was not triggered promptly after in-flight inspect finished")
+	}
+
+	waitFor(t, func() bool { return store.state(run.ID) == StateCancelled })
 }

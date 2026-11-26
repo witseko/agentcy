@@ -108,8 +108,12 @@ type workerState struct {
 	retries map[string]retry
 	// nextInspect is when a run without a stop reason is inspected next.
 	nextInspect map[string]time.Time
-	// inFlight tracks assignment IDs that currently have a blocking plugin call running.
+	// inFlight tracks assignment IDs and workspace keys that currently have a blocking
+	// plugin call running.
 	inFlight map[string]bool
+	// pendingWakes records workspaces woken while their workspace check was in flight,
+	// so they are re-serviced as soon as the in-flight check finishes.
+	pendingWakes map[string]bool
 }
 
 // retry schedules another check of one run while counting consecutive failures (Retry
@@ -149,11 +153,12 @@ func NewWorker(config WorkerConfig) *Worker {
 		inbox:    inbox{woken: map[string]bool{}, signal: make(chan struct{}, 1)},
 		sem:      make(chan struct{}, maxConcurrentPluginCalls),
 		state: workerState{
-			notify:      func(string, string) {},
-			runs:        map[string]Run{},
-			retries:     map[string]retry{},
-			nextInspect: map[string]time.Time{},
-			inFlight:    map[string]bool{},
+			notify:       func(string, string) {},
+			runs:         map[string]Run{},
+			retries:      map[string]retry{},
+			nextInspect:  map[string]time.Time{},
+			inFlight:     map[string]bool{},
+			pendingWakes: map[string]bool{},
 		},
 	}
 }
@@ -236,27 +241,64 @@ func (worker *Worker) resetTimer(timer *time.Timer) {
 	timer.Reset(max(due.Sub(worker.now()), 0))
 }
 
-// spawnPluginTask runs task in a goroutine bounded by worker.sem while marking runID
-// in-flight so no duplicate call is launched for the same run. It signals the worker
-// loop when done.
-func (worker *Worker) spawnPluginTask(ctx context.Context, wg *sync.WaitGroup, runID string, task func()) {
+// workspaceTaskKey returns the inFlight map key for a workspace check.
+func workspaceTaskKey(workspace string) string {
+	return "workspace:" + workspace
+}
+
+// runInFlightLocked reports whether run or its workspace check currently has a plugin
+// call in flight. Caller must hold state.mutex.
+func (worker *Worker) runInFlightLocked(run Run) bool {
+	return worker.state.inFlight[run.ID] || worker.state.inFlight[workspaceTaskKey(run.Workspace)]
+}
+
+// acquirePluginTask marks taskKey in flight if it is not already running. When taskKey
+// is busy and rewakeWorkspace is non-empty, it records a pending wake for that workspace.
+func (worker *Worker) acquirePluginTask(taskKey, rewakeWorkspace string) bool {
 	worker.state.mutex.Lock()
-	if worker.state.inFlight[runID] {
-		worker.state.mutex.Unlock()
+	defer worker.state.mutex.Unlock()
+	if worker.state.inFlight[taskKey] {
+		if rewakeWorkspace != "" {
+			worker.state.pendingWakes[rewakeWorkspace] = true
+		}
+		return false
+	}
+	worker.state.inFlight[taskKey] = true
+	if rewakeWorkspace != "" {
+		delete(worker.state.pendingWakes, rewakeWorkspace)
+	}
+	return true
+}
+
+// releasePluginTask clears taskKey from inFlight and wakes the worker loop, re-queuing
+// rewakeWorkspace when a wake arrived while the task was running.
+func (worker *Worker) releasePluginTask(taskKey, rewakeWorkspace string) {
+	worker.state.mutex.Lock()
+	delete(worker.state.inFlight, taskKey)
+	rewake := rewakeWorkspace != "" && worker.state.pendingWakes[rewakeWorkspace]
+	if rewake {
+		delete(worker.state.pendingWakes, rewakeWorkspace)
+	}
+	worker.state.mutex.Unlock()
+	if rewake {
+		worker.Wake(rewakeWorkspace)
 		return
 	}
-	worker.state.inFlight[runID] = true
-	worker.state.mutex.Unlock()
+	worker.signal()
+}
 
+// spawnPluginTask runs task in a goroutine bounded by worker.sem while marking taskKey
+// in-flight so no duplicate call is launched for the same task. When rewakeWorkspace is
+// non-empty and taskKey is already in flight, it records a pending wake so the workspace
+// is re-queued as soon as the in-flight task finishes.
+func (worker *Worker) spawnPluginTask(ctx context.Context, wg *sync.WaitGroup, taskKey, rewakeWorkspace string, task func()) {
+	if !worker.acquirePluginTask(taskKey, rewakeWorkspace) {
+		return
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer func() {
-			worker.state.mutex.Lock()
-			delete(worker.state.inFlight, runID)
-			worker.state.mutex.Unlock()
-			worker.signal()
-		}()
+		defer worker.releasePluginTask(taskKey, rewakeWorkspace)
 		select {
 		case worker.sem <- struct{}{}:
 			defer func() { <-worker.sem }()
@@ -299,7 +341,7 @@ func (worker *Worker) stepAsync(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		}
 		job := job
-		worker.spawnPluginTask(ctx, wg, job.Start.AssignmentID, func() {
+		worker.spawnPluginTask(ctx, wg, job.Start.AssignmentID, "", func() {
 			if err := worker.launch(ctx, job); err != nil {
 				worker.logger.Print("Fresh-run dispatch failed")
 			}
@@ -323,7 +365,7 @@ func (worker *Worker) addDueWorkspaces(workspaces map[string]bool) {
 	worker.state.mutex.Lock()
 	defer worker.state.mutex.Unlock()
 	for _, run := range worker.state.runs {
-		if worker.state.inFlight[run.ID] {
+		if worker.runInFlightLocked(run) {
 			continue
 		}
 		if due, found := worker.runDueLocked(run, now); found && !due.After(now) {
@@ -376,7 +418,11 @@ func (worker *Worker) serviceWorkspace(ctx context.Context, workspace string, re
 // slow plugins in one workspace cannot starve others, while preserving deterministic
 // deadline order for runs within the same workspace.
 func (worker *Worker) serviceWorkspaceAsync(ctx context.Context, wg *sync.WaitGroup, workspace string, restart bool) {
-	worker.spawnPluginTask(ctx, wg, "workspace:"+workspace, func() {
+	rewake := ""
+	if !restart {
+		rewake = workspace
+	}
+	worker.spawnPluginTask(ctx, wg, workspaceTaskKey(workspace), rewake, func() {
 		worker.serviceWorkspace(ctx, workspace, restart)
 	})
 }
@@ -423,7 +469,7 @@ func (worker *Worker) nextDue() (time.Time, bool) {
 	worker.state.mutex.Lock()
 	defer worker.state.mutex.Unlock()
 	for _, run := range worker.state.runs {
-		if worker.state.inFlight[run.ID] {
+		if worker.runInFlightLocked(run) {
 			continue
 		}
 		due, ok := worker.runDueLocked(run, now)
