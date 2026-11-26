@@ -130,6 +130,8 @@ Reproduce:
 make bench BENCH_FLAGS="-json $TMPDIR/bench-go.json"
 ```
 
+For the MCP Streamable HTTP transport (`--http`), see [bench/k6/README.md](../bench/k6/README.md) and run `make bench-http` (requires `k6`).
+
 ## Go conventions
 
 The global guides have no Go guide, so the core follows these rules on top of `code-quality.md`, `security.md`, and `backend.md`:
