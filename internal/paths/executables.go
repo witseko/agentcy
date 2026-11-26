@@ -14,7 +14,7 @@ const defaultSearchPath = "/bin:/usr/bin"
 // AbsoluteSearchPath keeps the configured search order of PATH while dropping relative
 // directories. pathValue and pathSet are the value of PATH and whether it is set.
 //
-// Port of absolute_search_path in src/agentcy/executables.py.
+// Port of absolute_search_path in the former Python core's executables.py.
 func AbsoluteSearchPath(pathValue string, pathSet bool) []string {
 	if !pathSet {
 		pathValue = defaultSearchPath
@@ -32,7 +32,7 @@ func AbsoluteSearchPath(pathValue string, pathSet bool) []string {
 // path, or "" when there is none. A name with a directory part is never looked up, so a
 // relative name cannot resolve against the working directory.
 //
-// Port of find_on_path in src/agentcy/executables.py, which uses shutil.which: the first
+// Port of find_on_path in the former Python core's executables.py, which uses shutil.which: the first
 // entry whose file exists, is executable by the user, and is not a directory wins.
 // exec.LookPath is not used because it also accepts relative PATH entries.
 func FindOnPath(name, pathValue string, pathSet bool) string {

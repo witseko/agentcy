@@ -9,7 +9,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Quiet-wait limits, from src/agentcy/mcp/server.py. Hosts stop a tool call after about
+// Quiet-wait limits, from the former Python core's mcp/server.py. Hosts stop a tool call after about
 // one minute, and the first call may also start the core.
 const (
 	idleWaits           = 3

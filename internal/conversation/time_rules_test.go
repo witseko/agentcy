@@ -8,7 +8,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Ported from tests/conversations/test_invites.py: a join code works until its expiry,
+// Ported from the former Python test_invites.py: a join code works until its expiry,
 // 3600 seconds after it was issued, and not at that second.
 func TestJoinCodeExpiresAfterOneHour(t *testing.T) {
 	cases := []struct {
@@ -32,7 +32,7 @@ func TestJoinCodeExpiresAfterOneHour(t *testing.T) {
 	}
 }
 
-// Ported from tests/conversations/test_repository.py: activity is saved at most once per
+// Ported from the former Python test_repository.py: activity is saved at most once per
 // 10 seconds.
 func TestActivityIsSavedAtMostEveryTenSeconds(t *testing.T) {
 	f := newFixture(t)
@@ -53,7 +53,7 @@ func TestActivityIsSavedAtMostEveryTenSeconds(t *testing.T) {
 	}
 }
 
-// Ported from tests/conversations/test_message_kinds.py: an identical post within 60
+// Ported from the former Python test_message_kinds.py: an identical post within 60
 // seconds is a retry even with a new submission ID; after that it is a new message.
 func TestIdenticalPostsDeduplicateForSixtySeconds(t *testing.T) {
 	cases := []struct {
@@ -78,7 +78,7 @@ func TestIdenticalPostsDeduplicateForSixtySeconds(t *testing.T) {
 	}
 }
 
-// Ported from tests/conversations/test_tasks.py: a task is overdue only after its due
+// Ported from the former Python test_tasks.py: a task is overdue only after its due
 // time, and a finished task is never overdue.
 func TestTasksBecomeOverdueAfterTheirDueTime(t *testing.T) {
 	f := newFixture(t)
@@ -115,7 +115,7 @@ func TestTasksBecomeOverdueAfterTheirDueTime(t *testing.T) {
 	}
 }
 
-// Ported from tests/conversations/test_sealed_rounds.py: a sealed round is released by
+// Ported from the former Python test_sealed_rounds.py: a sealed round is released by
 // the first read, post or status at or after its deadline, and not before.
 func TestSealedRoundReleasesAtItsDeadline(t *testing.T) {
 	f := newFixture(t)

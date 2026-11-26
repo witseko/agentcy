@@ -20,7 +20,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Port of tests/mcp/test_fresh_runs.py: the real conversation rules and store, the real
+// Port of the former Python test_fresh_runs.py: the real conversation rules and store, the real
 // plugin client, and the fixture plugin tests/fixtures/fake_run_plugin.py run by the
 // project's .venv Python. The worker is driven step by step with a fake clock.
 

@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// The schemas of the operator requests, from src/agentcy/conversations/operator_models.py.
+// The schemas of the operator requests, from the former Python core's conversations/operator_models.py.
 // Each lists its fields in the order of the Python model's dump.
 
-// The limits of the operator fields, from src/agentcy/conversations/operator_models.py
+// The limits of the operator fields, from the former Python core's conversations/operator_models.py
 // and models.Title.
 const (
 	MaxTitleLength       = 80

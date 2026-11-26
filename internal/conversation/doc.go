@@ -1,7 +1,7 @@
 // Package conversation applies the conversation rules of agentcy: create, join, post,
 // read, status, roles, invitations, tasks, sealed rounds, close and reopen, the history
 // of closed conversations, search, and the human's operator actions. It is a port of
-// src/agentcy/conversations (repository.py, tasks.py, rounds.py, operator.py,
+// the former Python core's conversations (repository.py, tasks.py, rounds.py, operator.py,
 // assignments.py, history.py, search.py and roles.py) and implements core.Handler.
 //
 // Every rule is a plain function that takes the *sql.Tx of one store transaction and the

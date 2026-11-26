@@ -65,12 +65,9 @@ human holds no token, does not count toward the 17 participant slots, and cannot
 Its messages wake listeners like any other message. There is no waiting read: poll
 `operator_show` with the last `cursor`.
 
-The core that serves this protocol is Go (`internal/wire` validates every request). While the
-Python reference exists, a protocol change goes into both cores. Regenerate the schema from the
-Python models after the change:
-`uv run python -m agentcy.conversations.operator_models > protocol/operator.v1.schema.json`
-`tests/conversations/test_operator_contract.py` fails when the schema drifts from the Python
-models. `go test ./internal/wire` checks that the Go validator accepts every example and gives
+The core that serves this protocol is Go (`internal/wire` validates every request). The schema
+was generated from the models of the former Python core. Change it by hand together with the Go
+validator. `go test ./internal/wire` checks that the Go validator accepts every example and gives
 every case its recorded decision.
 
 # Member protocol
@@ -94,9 +91,9 @@ Three files pin the request side of the protocol:
 
 | File | Content |
 | --- | --- |
-| [member.v1.schema.json](member.v1.schema.json) | JSON schema of the 20 request actions: the 19 generated from the models in `agentcy.conversations.models`, plus `listen`, added by hand (see "Go core only" below). It shows fields, types, and limits. It cannot show the rules below, so use the cases for them. |
+| [member.v1.schema.json](member.v1.schema.json) | JSON schema of the 20 request actions: the 19 generated from the models of the former Python core, plus `listen`, added by hand (see "Go core only" below). It shows fields, types, and limits. It cannot show the rules below, so use the cases for them. |
 | [member.v1.cases.json](member.v1.cases.json) | Accept and reject cases, derived by running the real validator, never written by hand. |
-| `tests/conversations/test_member_contract.py` | Fails when the schema drifts from the models, and replays every case against the validator the core uses. `internal/wire/cases_test.go` replays them against the Go validator. |
+| `internal/wire/cases_test.go` | Replays every case against the Go validator. |
 
 Each case is `{"action", "name", "request" or "raw", "valid", "normalised"}`. `action` is the
 action under test, or `protocol` for the request as a whole. `request` is a parsed JSON value.
@@ -122,8 +119,8 @@ Rules that the schema does not show, and that the cases cover:
 - `create` needs an invitee or `open_invite`, and `deadline_minutes` needs `sealed`.
 
 [operator.v1.cases.json](operator.v1.cases.json) holds the same kind of cases for the 17
-`operator_*` actions, and `tests/conversations/test_operator_cases.py` replays them through
-the core's own handler. All cases use the key `fake-operator-key-0001` as the core's key. A
+`operator_*` actions, and `internal/wire/operator_cases_test.go` and
+`internal/core/operatorkey_test.go` replay them against the Go validator and the core's key check. All cases use the key `fake-operator-key-0001` as the core's key. A
 case adds `error`, the string the core answers, when the core rejects the line. The order of the
 checks decides that string:
 
@@ -139,26 +136,23 @@ checks decides that string:
 
 ### Go core only: `listen`
 
-`listen` exists only in the Go core (`agentcy core`); the Python core does not know it.
+`listen` exists only in the Go core (`agentcy core`); the former Python core does not know it.
 It takes the fields of `read`, but `wait_seconds` is required and runs from 1 to 45. The
 core runs the waiting read exactly as `read` with that wait, then builds the caller's
 status, and answers `{"page": <the read result>, "status": <the status result>}`. A shim
 sends one exchange instead of a read and a status.
 
 It is additive. Old shims never send it and keep working against the Go core. A Go shim
-that gets `Invalid bridge arguments` for a `listen` (the answer of the Python core, or of
+that gets `Invalid bridge arguments` for a `listen` (the answer of the former Python core, or of
 an older Go core, to an unknown action) falls back to `read` and `status` for the rest of
-its process. The Python contract test checks that the Python validator rejects every
-`listen` case.
+its process.
 
 The `listen` cases were derived from the `read` cases by renaming the action, giving each
 case without a wait a `wait_seconds` of 45 unless the case is about the missing wait, and
 adding the cases for the 1 second lower bound. Their decisions and normalised dumps come
 from the Go validator (`wire.DecodeRequest`). The `listen` entry of the schema was written by
-hand from the `read` entry. Regenerating the schema from the Python models drops it, so add
-it back.
+hand from the `read` entry.
 
-Regenerate the schema after a model change in the Python reference:
-`uv run python -m agentcy.conversations.models > protocol/member.v1.schema.json`
-The cases are not regenerated by a command: change a case only when the rule it pins changes on
-purpose, and check each changed `valid` and `normalised` against the validator.
+Change the schema by hand together with the Go validator. The cases are not regenerated by a
+command: change a case only when the rule it pins changes on purpose, and check each changed
+`valid` and `normalised` against the validator.

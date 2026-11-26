@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// From src/agentcy/storage/database.py and test_status.py: in a git repository the
+// From the former Python core's storage/database.py and test_status.py: in a git repository the
 // workspace key is the SHA-256 of the resolved common git directory, so a subdirectory and
 // a linked worktree share the store, and member requests with that key reach it.
 func TestGitWorkspaceKey(t *testing.T) {

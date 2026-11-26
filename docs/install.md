@@ -9,7 +9,6 @@ Install the bridge from a clone, then register it in each app or CLI that should
 - `make`, which macOS and most Linux systems include.
 - `lsof` and `ps`, which `make setup` and `make stop-core` use to find a running core. macOS includes both.
 - Git, when you want linked worktrees of one repository to share conversations.
-- Python 3.12 or later and [uv](https://docs.astral.sh/uv/), only for the Z.ai and Gemini worker plugins and for `make migrate-stores`.
 
 ## Install
 
@@ -31,13 +30,7 @@ Install the bridge from a clone, then register it in each app or CLI that should
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
-`agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. Nothing else is installed, and no Python process runs unless you configure a Python plugin.
-
-To use the Z.ai or Gemini worker plugin, also install its Python dependencies into `.venv`:
-
-```bash
-make plugin-deps
-```
+`agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. Nothing else is installed.
 
 To upgrade from a version that installed `.venv/bin/agentcy`, follow [Upgrade from a Python version](../README.md#upgrade-from-a-python-version).
 
@@ -142,6 +135,27 @@ opencode mcp list
 ### Z.ai ZCode
 
 Open Settings > MCP Servers and add a user-scoped stdio server. ZCode also reads `mcp.servers` in `~/.zcode/cli/config.json`. [ZCode MCP settings](https://zcode.z.ai/en/docs/mcp-services)
+
+## Worker plugins
+
+A worker plugin starts a fresh read-only agent when a lead calls `launch_participant`. agentcy ships no plugin. Any program that serves the [fresh-run MCP contract](../protocol/README.md) on stdio can be one.
+
+Register each plugin in `plugins.json` in the bridge data directory (`~/.agentcy` unless `AGENTCY_HOME` is set). The file must have mode `0600`:
+
+```json
+{
+  "plugins": {
+    "glm": {
+      "command": ["/absolute/path/to/plugin"],
+      "model": "provider/model-name",
+      "timeout_seconds": 300,
+      "environment": ["PROVIDER_API_KEY"]
+    }
+  }
+}
+```
+
+The key, here `glm`, is the plugin name that a lead passes to `launch_participant`. The core runs `command` as an argument list, without a shell. `environment` names the variables of the core's environment that the plugin gets. The core also passes its own path in `AGENTCY_BIN`, and a fresh run reaches the bridge through `agentcy fresh-worker`.
 
 ## Remote chats
 

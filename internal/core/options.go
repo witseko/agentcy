@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Timing of the daemon, from src/agentcy/mcp/core.py and concurrency.py.
+// Timing of the daemon, from the former Python core's mcp/core.py and concurrency.py.
 const (
 	// DefaultIdleInterval is how long the daemon waits for a new connection before it
 	// checks whether any conversation is open (server.timeout in core.py).

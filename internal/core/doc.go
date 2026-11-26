@@ -1,7 +1,7 @@
 // Package core is the agentcy daemon: one process per user that owns the stores and serves
 // member and operator requests on the Unix socket core.sock in the bridge data directory.
 //
-// It is a port of src/agentcy/mcp/core.py and src/agentcy/mcp/concurrency.py. The package
+// It is a port of the mcp/core.py and mcp/concurrency.py modules of the former Python core. The package
 // owns the process and the socket: the data directory lock, the operator key, request
 // framing, the operator key check, waiting reads, idle exit, and shutdown. The conversation
 // rules live behind the Handler interface, which internal/conversation implements.

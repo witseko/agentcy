@@ -1,6 +1,6 @@
 // Command agentcy is the per-chat MCP shim of the agentcy bridge, the core daemon, the
 // fresh worker, and the launcher of the terminal UI. It accepts the flags of the Python command
-// (src/agentcy/tools/cli.py) so existing host registrations keep working.
+// (the former Python core's tools/cli.py) so existing host registrations keep working.
 package main
 
 import (

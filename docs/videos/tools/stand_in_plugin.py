@@ -1,31 +1,53 @@
 """A fresh-run plugin for video takes: joins the launched slot as a stand-in chat.
 
-It answers the same MCP contract as the Z.ai and Gemini plugins, so the
-bridge's launch states are real, but in place of starting OpenCode or
-Gemini it runs ``stand_in.py join`` with the slot's join code. The steps
-can then post that worker's cues. record.zsh registers it in the take's
-private plugins.json and passes AGENTCY_VIDEO_SCENE and AGENTCY_VIDEO_STATE.
+It answers the fresh-run plugin contract (protocol/fresh-runs.v1.schema.json),
+so the bridge's launch states are real, but in place of starting a provider
+it runs ``stand_in.py join`` with the slot's join code. The steps can then
+post that worker's cues. record.zsh registers it in the take's private
+plugins.json and passes AGENTCY_VIDEO_SCENE and AGENTCY_VIDEO_STATE.
 """
 
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Annotated, Literal
 
 from mcp.server.mcpserver import MCPServer
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from agentcy.mcp.plugin_contract import (
-    AssignmentId,
-    Capabilities,
-    CostCap,
-    RunResult,
-    Timeout,
-    TokenCap,
-)
-from agentcy.storage.database import data_dir
+# Version one of the fresh-run plugin contract (protocol/fresh-runs.v1.schema.json).
+AssignmentId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{32}$")]
+RunState = Literal["starting", "running", "finished", "failed", "cancelled", "timed_out", "unknown"]
+Timeout = Annotated[int, Field(ge=1, le=3600)]
+TokenCap = Annotated[int, Field(gt=0, le=100_000_000)]
+CostCap = Annotated[int, Field(gt=0, le=100_000_000)]
 
 MCP = MCPServer("stand-in-fresh-runs")
 STAND_IN = Path(__file__).resolve().with_name("stand_in.py")
+
+
+class Capabilities(BaseModel):
+    """Declare the contract version the plugin answers."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    version: Literal[1]
+
+
+class RunResult(BaseModel):
+    """Report a run state without native identifiers or content."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    state: RunState
+
+
+def data_dir() -> Path:
+    """Return the private bridge data directory that the core passes in AGENTCY_HOME."""
+    path = Path(os.getenv("AGENTCY_HOME", Path.home() / ".agentcy"))
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.is_symlink() or path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o077:
+        raise ValueError("Bridge data directory must belong to you and have mode 0700")
+    return path.resolve()
 
 
 def marker(assignment_id: str) -> Path:

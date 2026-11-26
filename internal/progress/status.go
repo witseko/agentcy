@@ -1,5 +1,5 @@
 // Package progress identifies the participants whose work is outstanding, from a
-// conversation status. It is a port of src/agentcy/conversations/progress.py and holds
+// conversation status. It is a port of the former Python core's conversations/progress.py and holds
 // pure functions only.
 package progress
 
@@ -16,7 +16,7 @@ const (
 )
 
 // PendingStates are the launch states of a fresh run that is still active
-// (PENDING_STATES in src/agentcy/conversations/assignment_tables.py).
+// (PENDING_STATES in the former Python core's conversations/assignment_tables.py).
 var PendingStates = []string{"queued", "starting", "running"}
 
 // IsPendingState reports a launch state in which a fresh run is still active.

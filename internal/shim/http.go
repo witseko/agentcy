@@ -18,7 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// HTTP bridge settings, from src/agentcy/mcp/http_transport.py.
+// HTTP bridge settings, from the former Python core's mcp/http_transport.py.
 const (
 	AccessTokenVariable  = "AGENTCY_HTTP_TOKEN"
 	minAccessTokenLength = 32

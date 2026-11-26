@@ -81,7 +81,7 @@ func masterRows(t *testing.T, database *sql.DB) [][]any {
 	return result
 }
 
-// fixtureRows reads a sqlite_master dump written by testdata/dump_python_schema.py.
+// fixtureRows reads a sqlite_master dump that the Python core wrote at commit 17eb9ce.
 func fixtureRows(t *testing.T, name string) [][]any {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))
@@ -123,8 +123,7 @@ func compareRows(t *testing.T, got, want [][]any) {
 }
 
 // TestNewStoreMatchesPythonSchema compares a Go-created store with the sqlite_master
-// dump of a Python-created one. Regenerate the fixture with the command in
-// testdata/dump_python_schema.py.
+// dump of a Python-created one, recorded at commit 17eb9ce.
 func TestNewStoreMatchesPythonSchema(t *testing.T) {
 	directory := newDataDir(t)
 	store, err := newRegistry(t, directory).Open(context.Background(), testKey)

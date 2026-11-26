@@ -1,28 +1,10 @@
 package shim
 
 import (
-	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
-
-func TestEmbeddedSkillsEqualThePythonOriginals(t *testing.T) {
-	for _, name := range packagedSkills {
-		original, err := os.ReadFile("../../src/agentcy/mcp/skills/" + name + "/SKILL.md")
-		if err != nil {
-			t.Fatal(err)
-		}
-		embedded, err := skillFiles.ReadFile("skills/" + name + "/SKILL.md")
-		if err != nil || string(embedded) != string(original) {
-			t.Errorf("skill %s differs from src/agentcy/mcp/skills (err %v)", name, err)
-		}
-	}
-	icon, err := os.ReadFile("../../src/agentcy/mcp/icon.png")
-	if err != nil || string(icon) != string(serverIcon) {
-		t.Errorf("icon differs from src/agentcy/mcp/icon.png (err %v)", err)
-	}
-}
 
 func TestSkillsStayWithinHostLimits(t *testing.T) {
 	skills, err := loadPackagedSkills()

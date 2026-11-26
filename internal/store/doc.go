@@ -1,6 +1,6 @@
 // Package store opens the SQLite databases of agentcy: one store per workspace and the
-// user-level token ledger. It is a port of src/agentcy/storage/database.py and the ledger
-// setup in src/agentcy/tokens/ledger.py, and holds no conversation logic.
+// user-level token ledger. It is a port of the former Python core's storage/database.py and the ledger
+// setup in its tokens/ledger.py, and holds no conversation logic.
 //
 // A Registry opens the stores of one data directory: Registry.Open returns the store of
 // a workspace key and creates it at schema version 15 when the file is missing, and

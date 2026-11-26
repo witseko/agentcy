@@ -11,7 +11,7 @@ import (
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Ported from tests/mcp/test_core_wait.py and the idle check of core.py: the daemon has
+// Ported from the former Python test_core_wait.py and the idle check of core.py: the daemon has
 // active work while a store has an open conversation or a pending assignment, and a
 // data directory without stores has none.
 func TestHasActiveWorkCountsOpenConversationsAndPendingAssignments(t *testing.T) {

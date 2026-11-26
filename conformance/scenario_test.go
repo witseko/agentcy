@@ -1,14 +1,14 @@
 //go:build conformance
 
 // Package conformance drives an agentcy core daemon over its Unix socket and compares the
-// normalised response of every request with a golden file recorded from the Python core.
+// normalised response of every request with a golden file. The first goldens were recorded
+// from the former Python core.
 //
 // Run it against any daemon:
 //
 //	AGENTCY_CORE_CMD="$PWD/bin/agentcy core" go test -tags conformance ./conformance/...
 //
-// Add -update to record the goldens again, from the Python reference
-// (AGENTCY_CORE_CMD="uv run python -I -m agentcy.mcp.core"). Each test starts its own daemon with a fresh
+// Add -update to record the goldens again from that daemon. Each test starts its own daemon with a fresh
 // AGENTCY_HOME and a temp workspace, so tests never share state or touch ~/.agentcy.
 //
 // To add a scenario, copy a test function: start with newScenario (or newGitScenario),

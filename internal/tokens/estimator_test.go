@@ -2,7 +2,7 @@ package tokens
 
 import "testing"
 
-// Ported from tests/tokens/test_estimator.py.
+// Ported from the former Python test_estimator.py.
 func TestEstimateText(t *testing.T) {
 	cases := []struct {
 		text string

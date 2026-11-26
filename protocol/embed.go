@@ -9,7 +9,7 @@ import _ "embed"
 // protocol eras, so each era has its own file: the 2026-07-28 era in *.golden.json and the
 // 2025-11-25 handshake era in *.legacy.golden.json. The shim's files are copies of
 // mcp-transcripts/tools-list.<era>.json; the fresh worker's were captured from
-// agentcy.mcp.fresh_server the same way.
+// the former Python fresh worker the same way.
 var (
 	//go:embed mcp-tools.golden.json
 	MCPTools []byte

@@ -1,18 +1,16 @@
+# Python is used only for tests: the end-to-end tests in tests/e2e drive the Go binary
+# through the MCP SDK, and docs/videos/tools holds the tutorial video tools.
 [project]
 name = "agentcy"
-version = "0.3.0"
-description = "Local MCP conversation bridge for agent chats in desktop apps and CLIs"
+# Not the release version: the VERSION file holds that.
+version = "0.0.0"
+description = "End-to-end tests and tutorial video tools for agentcy"
 license = "MIT"
-license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.15"
-dependencies = ["mcp>=2.3,<3", "sqlalchemy>=2.0,<2.1", "alembic>=1.16,<2", "pydantic>=2.11,<3", "uvicorn>=0.31,<1"]
+dependencies = ["mcp>=2.3,<3", "pydantic>=2.11,<3"]
 
-[project.scripts]
-agentcy = "agentcy.tools.cli:main"
-
-[build-system]
-requires = ["hatchling>=1.27"]
-build-backend = "hatchling.build"
+[tool.uv]
+package = false
 
 [dependency-groups]
 dev = [
@@ -27,7 +25,9 @@ line-length = 100
 extend-exclude = ["docs/videos/sample", "protocol/mcp-transcripts"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "docs/videos/tools"]
+# The end-to-end tests need AGENTCY_BIN and AGENTCY_CORE_CMD, so run them explicitly:
+# pytest tests/e2e (see docs/development.md).
+testpaths = ["docs/videos/tools"]
 
 [tool.ruff.lint]
 extend-select = ["S"]

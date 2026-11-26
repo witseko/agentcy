@@ -30,6 +30,8 @@ Steps per session file:
 
 ## How they were captured
 
+The capture needs the Python core, so it runs only at commit 17eb9ce, the last commit with the Python core.
+
 ```sh
 uv sync --locked
 uv run --locked python protocol/mcp-transcripts/capture.py

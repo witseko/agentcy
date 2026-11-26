@@ -17,7 +17,7 @@ var ErrDataDirUnsafe = errors.New("Bridge data directory must belong to you and 
 // with mode 0700 when it is missing. home and homeSet are the value of AGENTCY_HOME and
 // whether it is set; as in Python, a set but empty value means the working directory.
 //
-// Port of data_dir in src/agentcy/storage/database.py: the directory must not be a
+// Port of data_dir in the former Python core's storage/database.py: the directory must not be a
 // symbolic link, must belong to the current user and must have no group or other
 // permission bits. The returned path has every symbolic link resolved.
 func DataDir(home string, homeSet bool) (string, error) {

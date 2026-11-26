@@ -1,6 +1,6 @@
 package wire
 
-// The schemas of the member requests, from src/agentcy/conversations/models.py. Each lists
+// The schemas of the member requests, from the former Python core's conversations/models.py. Each lists
 // its fields in the order of the Python model's dump.
 
 // memberFields returns the leading fields of every request that carries a token.

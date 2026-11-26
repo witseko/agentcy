@@ -1,16 +1,12 @@
 package tokens
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/witseko/agentcy/internal/paths"
 )
 
 // newDataDir returns a fresh private data directory.
@@ -268,54 +264,6 @@ func TestParseSettingsCases(t *testing.T) {
 		}
 		if err != nil && !errors.Is(err, ErrSettingsInvalid) {
 			t.Errorf("ParseSettings(%s) err = %v, want ErrSettingsInvalid", test.text, err)
-		}
-	}
-}
-
-// pythonValidate prints, for each JSON document in a JSON list, whether TokenSettings
-// accepts it.
-const pythonValidate = `
-import json, sys
-from pydantic import ValidationError
-from agentcy.tokens.settings import TokenSettings
-out = []
-for text in json.load(sys.stdin):
-    try:
-        TokenSettings.model_validate_json(text)
-        out.append(True)
-    except ValidationError:
-        out.append(False)
-print(json.dumps(out))
-`
-
-// TestSettingsCasesMatchPython checks the outcomes in settingsCases against pydantic
-// through uv, and skips when uv is unavailable.
-func TestSettingsCasesMatchPython(t *testing.T) {
-	pathValue, pathSet := os.LookupEnv("PATH")
-	uv := paths.FindOnPath("uv", pathValue, pathSet)
-	if uv == "" {
-		t.Skip("uv is unavailable")
-	}
-	texts := make([]string, 0, len(settingsCases))
-	for _, test := range settingsCases {
-		texts = append(texts, test.text)
-	}
-	input, _ := json.Marshal(texts)
-	repository, _ := filepath.Abs("../..")
-	command := exec.Command(uv, "run", "--locked", "--project", repository, "python", "-I", "-c", pythonValidate)
-	command.Env = os.Environ()
-	command.Stdin = strings.NewReader(string(input))
-	output, err := command.Output()
-	if err != nil {
-		t.Skipf("Python unavailable: %v", err)
-	}
-	var outcomes []bool
-	if err := json.Unmarshal(output, &outcomes); err != nil {
-		t.Fatal(err)
-	}
-	for index, test := range settingsCases {
-		if outcomes[index] != test.valid {
-			t.Errorf("%s: Python valid %v, table says %v", test.text, outcomes[index], test.valid)
 		}
 	}
 }

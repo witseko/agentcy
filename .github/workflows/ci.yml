@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check out Semgrep Python, SQLAlchemy, and MCP security rules
+      - name: Check out Semgrep Python and MCP security rules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: semgrep/semgrep-rules
@@ -28,11 +28,11 @@ jobs:
           path: .semgrep-rules
           sparse-checkout: |
             python/lang/security
-            python/sqlalchemy/security
             ai/ai-best-practices/mcp-command-injection
             ai/ai-best-practices/mcp-ssrf
           persist-credentials: false
-      - name: Scan application and plugin source
+      - name: Scan the Python test sources
+        # Semgrep skips tests/ directories by default, so the files are named one by one.
         run: |
           # Semgrep Community Edition 1.186.0
           docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
@@ -40,11 +40,10 @@ jobs:
             --entrypoint semgrep \
             semgrep/semgrep@sha256:6e1b04340e60e910fbb4ddbf3c857ab0918f064417ad5ac530014ccb3cf8c8f1 \
             scan --config .semgrep-rules/python/lang/security \
-            --config .semgrep-rules/python/sqlalchemy/security \
             --config .semgrep-rules/ai/ai-best-practices/mcp-command-injection/mcp-command-injection.yaml \
             --config .semgrep-rules/ai/ai-best-practices/mcp-ssrf/mcp-ssrf.yaml \
             --error --strict --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore \
-            src/ plugins/ scripts/
+            tests/e2e/*.py tests/fixtures/*.py
 
   security:
     name: Dependency audit (pip-audit) and Ruff
@@ -82,7 +81,7 @@ jobs:
           version: '0.13.1'
           enable-cache: false
       - name: Run tests
-        run: uv run --locked pytest --ignore=tests/e2e tests
+        run: uv run --locked pytest
 
   go:
     name: Go (gofmt, vet, tests, race detector, govulncheck)
@@ -117,7 +116,7 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   conformance:
-    name: Core conformance and differential walk
+    name: Core conformance
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -132,19 +131,12 @@ jobs:
         with:
           go-version: '1.27.4'
           cache: false
-      - name: Install the Python reference core
+      - name: Install the Python environment of the fixture plugin
         run: uv sync --locked
       - name: Build bin/agentcy
         run: make build
       - name: Compare the Go core with the conformance goldens
         run: make conformance
-      - name: Compare the Go core with the Python reference (differential walk)
-        # A short walk keeps CI fast. The full gate is 20 seeds of 2,000 steps (docs/development.md).
-        run: |
-          AGENTCY_REFERENCE_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core" \
-            AGENTCY_CORE_CMD="$PWD/bin/agentcy core" \
-            go test -tags conformance ./conformance/... \
-            -run 'TestDifferentialWalk|TestExistingStoreCarriesOver' -seeds 4 -steps 500
 
   e2e:
     name: End-to-end tests (${{ matrix.os }})
@@ -172,7 +164,5 @@ jobs:
         run: |
           AGENTCY_BIN="$PWD/bin/agentcy" AGENTCY_CORE_CMD="$PWD/bin/agentcy core" \
             uv run --locked pytest tests/e2e
-      - name: Run end-to-end tests on the Python reference shim and core
-        run: uv run --locked pytest tests/e2e
       - name: Run terminal UI end-to-end tests against the Go core
         run: AGENTCY_CORE_CMD="$PWD/bin/agentcy core" uv run --locked go test -tags e2e ./tui/...
