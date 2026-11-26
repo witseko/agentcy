@@ -216,7 +216,7 @@ func (shim *shimServer) callTaskCore(ctx context.Context, request wire.Request) 
 	case errors.As(err, &rejection) && rejection.Message == unknownMcpTask:
 		return wire.Value{}, unknown
 	default:
-		return wire.Value{}, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
+		return wire.Value{}, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: clientErrorText(err)}
 	}
 }
 

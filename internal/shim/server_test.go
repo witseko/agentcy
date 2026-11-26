@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -232,6 +234,24 @@ func TestToolErrorsCarryThePythonPrefix(t *testing.T) {
 	text, isError := toolText(t, result)
 	if !isError || !strings.HasPrefix(text, "Error executing tool read_messages: 1 validation error for read_messagesArguments\ntoken\n  Field required [type=missing]") {
 		t.Errorf("validation text %q", text)
+	}
+}
+
+func TestDialFailureHidesTheSocketPath(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "core.sock")
+	_, dialError := net.Dial("unix", socketPath)
+	if dialError == nil || !strings.Contains(dialError.Error(), socketPath) {
+		t.Fatalf("dial error %v does not name the socket", dialError)
+	}
+	core := &fakeCore{failures: map[string]error{"post": dialError}}
+	client := connectRaw(t, newTestServer(t, core), false, `{}`)
+	result, _ := client.call("tools/call", `{"name":"post_message","arguments":{"token":"t","submission_id":"s","body":"hi"}}`)
+	text, isError := toolText(t, result)
+	if text != "Error executing tool post_message: "+coreUnreachable || !isError {
+		t.Errorf("result %s", result)
+	}
+	if strings.Contains(text, socketPath) {
+		t.Errorf("text %q names the socket path", text)
 	}
 }
 

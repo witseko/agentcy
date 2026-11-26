@@ -11,6 +11,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log"
+	"net"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -221,7 +226,7 @@ func (shim *shimServer) toolHandler(name string, function toolFunction) mcp.Tool
 			return ask.result, nil
 		}
 		if err != nil {
-			return textResult("Error executing tool "+name+": "+err.Error(), true), nil
+			return textResult("Error executing tool "+name+": "+clientErrorText(err), true), nil
 		}
 		if viaCallTool {
 			exchange.value = result
@@ -248,6 +253,28 @@ func (shim *shimServer) handlerRequestState(params *mcp.CallToolParamsRaw, excha
 		return ""
 	}
 	return state
+}
+
+// coreUnreachable replaces the text of a socket or file failure, which names paths in the
+// bridge data directory.
+const coreUnreachable = "Bridge unavailable. The agentcy core is not reachable. Retry the call: " +
+	"it starts the core when none is running. If this repeats, stop the process running " +
+	"'agentcy core' and retry."
+
+// clientErrorText returns the text of err for the MCP client. A socket, file or system
+// call failure becomes coreUnreachable, and its full text goes to standard error; every
+// other error, such as a core rejection, keeps its own text.
+func clientErrorText(err error) string {
+	var operationError *net.OpError
+	var pathError *fs.PathError
+	var syscallError *os.SyscallError
+	var errno syscall.Errno
+	if errors.As(err, &operationError) || errors.As(err, &pathError) ||
+		errors.As(err, &syscallError) || errors.As(err, &errno) {
+		log.Printf("agentcy: core exchange failed: %v", err)
+		return coreUnreachable
+	}
+	return err.Error()
 }
 
 // textResult builds a tool result with one text block.
