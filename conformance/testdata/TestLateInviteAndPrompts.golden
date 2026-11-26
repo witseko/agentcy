@@ -1,0 +1,198 @@
+== 1. lead creates with a two-line brief
+-> {"action": "create", "brief": "Review\nSecond line stays out of the title.", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead posts a finding
+-> {"action": "post", "body": "First finding", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 3. lead invites a late worker
+-> {"action": "invite", "name": "Analyst", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Analyst",
+    "role": "worker",
+    "code": "<code-2>",
+    "join_prompt": "Review - worker (Analyst): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Analyst)\"."
+  }
+}
+
+== 4. the late worker joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Analyst",
+    "role": "worker",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review\nSecond line stays out of the title.",
+    "token": "<token-2>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "First finding"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Invited Analyst as worker.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 2,
+    "more": false
+  }
+}
+
+== 5. the late worker reads the full history
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "First finding"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Invited Analyst as worker.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "brief": "Review\nSecond line stays out of the title.",
+    "role": "worker",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 6. lead invites a co-lead
+-> {"action": "invite", "name": "Partner", "role": "co-lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Partner",
+    "role": "co-lead",
+    "code": "<code-3>",
+    "join_prompt": "Review - co-lead (Partner): Use agentcy to join with CODE. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review - co-lead (Partner)\"."
+  }
+}
+
+== 7. reissue without a role keeps co-lead
+-> {"action": "invite", "name": "PARTNER", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Partner",
+    "role": "co-lead",
+    "code": "<code-4>",
+    "join_prompt": "Review - co-lead (Partner): Use agentcy to join with CODE. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review - co-lead (Partner)\"."
+  }
+}
+
+== 8. the original co-lead code is replaced
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 9. invite rejects a blank name
+-> {"action": "invite", "name": " ", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 10. invite rejects the lead role
+-> {"action": "invite", "name": "Valid", "role": "lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 11. lead reads status
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "co-lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Analyst": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Partner": {
+        "role": "co-lead",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 12. a long first line is shortened in prompts
+-> {"action": "create", "brief": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\nSecond line", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-3>",
+    "invitations": {
+      "Worker": "<code-5>"
+    },
+    "join_prompt": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé...: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé...\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 13. the invite prompt uses the shortened heading
+-> {"action": "invite", "name": "Analyst", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Analyst",
+    "role": "worker",
+    "code": "<code-6>",
+    "join_prompt": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé... - worker (Analyst): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé... - worker (Analyst)\"."
+  }
+}
+

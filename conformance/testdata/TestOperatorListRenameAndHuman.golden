@@ -1,0 +1,354 @@
+== 1. a chat creates a conversation
+-> {"action": "create", "brief": "Chat brief", "initiator": "Lead", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "W": "<code-1>"
+    },
+    "join_prompt": "Chat brief: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Chat brief\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "W": "worker"
+    }
+  }
+}
+
+== 2. show does not add the human
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Chat brief",
+    "brief": "Chat brief",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "joined"
+        },
+        "W": {
+          "role": "worker",
+          "state": "invited"
+        }
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 0,
+    "total_messages": 0
+  }
+}
+
+== 3. the first human post adds the human
+-> {"action": "operator_post", "body": "Please also check timeouts.", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "h", "version": 1}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 4. the chat's lead sees the human in the roster
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Please also check timeouts.",
+        "role": "human"
+      }
+    ],
+    "more": false,
+    "cursor": 1,
+    "wake": true,
+    "brief": "Chat brief",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    }
+  }
+}
+
+== 5. human creates a long-titled conversation
+-> {"action": "operator_create", "brief": "<200 characters starting \"xxxxxxxxxxxx\">", "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-2>",
+        "join_prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... - lead (Lead): Use agentcy to join with <code-2>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... - lead (Lead)\"."
+      },
+      {
+        "participant": "W",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... - worker (W): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... - worker (W)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "W": "worker"
+    }
+  }
+}
+
+== 6. human creates the newest conversation
+-> {"action": "operator_create", "brief": "Review retries", "directory": "<checkout>", "invitees": ["W", "V"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-3>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-4>",
+        "join_prompt": "Review retries - lead (Lead): Use agentcy to join with <code-4>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review retries - lead (Lead)\"."
+      },
+      {
+        "participant": "W",
+        "role": "worker",
+        "code": "<code-5>",
+        "join_prompt": "Review retries - worker (W): Use agentcy to join with <code-5>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries - worker (W)\"."
+      },
+      {
+        "participant": "V",
+        "role": "worker",
+        "code": "<code-6>",
+        "join_prompt": "Review retries - worker (V): Use agentcy to join with <code-6>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries - worker (V)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "V": "worker",
+      "W": "worker"
+    }
+  }
+}
+
+== 7. one slot joins
+-> {"action": "join", "code": "<code-5>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-3>",
+    "participant": "W",
+    "role": "worker",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "V": "worker",
+      "W": "worker"
+    },
+    "brief": "Review retries",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 8. list is newest first with member counts
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-3>",
+        "title": "Review retries",
+        "open": true,
+        "created": "<now>",
+        "members": 3,
+        "joined": 1
+      },
+      {
+        "conversation": "<room-2>",
+        "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 0
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Chat brief",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 9. rename sets a custom title
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "  Custom title  ", "version": 1}
+<- {
+  "result": {
+    "title": "Custom title"
+  }
+}
+
+== 10. list shows the custom title
+-> {"action": "operator_list", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-3>",
+        "title": "Review retries",
+        "open": true,
+        "created": "<now>",
+        "members": 3,
+        "joined": 1
+      },
+      {
+        "conversation": "<room-2>",
+        "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 0
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Custom title",
+        "open": true,
+        "created": "<now>",
+        "members": 2,
+        "joined": 1
+      }
+    ]
+  }
+}
+
+== 11. show uses the custom title
+-> {"action": "operator_show", "after": 1, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Custom title",
+    "brief": "Chat brief",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "lead",
+          "state": "joined",
+          "idle_seconds": "<idle-seconds>"
+        },
+        "W": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        }
+      }
+    },
+    "messages": [],
+    "more": false,
+    "cursor": 1,
+    "total_messages": 1
+  }
+}
+
+== 12. rename with 80 characters
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü", "version": 1}
+<- {
+  "result": {
+    "title": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü"
+  }
+}
+
+== 13. rename with 81 characters
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 14. rename with a newline
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "Two\nlines", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 15. rename with a tab
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "Tab\there", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 16. rename with only spaces
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "   ", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 17. rename without a title field
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. rename to null uses the brief again
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": null, "version": 1}
+<- {
+  "result": {
+    "title": "Chat brief"
+  }
+}
+
+== 19. rename an unknown conversation
+-> {"action": "operator_rename", "conversation": "<room-4>", "directory": "<checkout>", "key": "<operator-key>", "title": "X", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+
+== 20. the chat's lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 21. rename a closed conversation
+-> {"action": "operator_rename", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "title": "Closed title", "version": 1}
+<- {
+  "result": {
+    "title": "Closed title"
+  }
+}
+
+== 22. list_closed shows the renamed title
+-> {"action": "list_closed", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": [
+      {
+        "conversation": "<room-1>",
+        "title": "Closed title",
+        "created": "<now>",
+        "archived": false,
+        "messages": 1
+      }
+    ]
+  }
+}
+

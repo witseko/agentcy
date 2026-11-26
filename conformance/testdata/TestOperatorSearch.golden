@@ -1,0 +1,300 @@
+== 1. search without a store
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "retry", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 2. human creates the first conversation
+-> {"action": "operator_create", "brief": "Investigate retry backoff ceilings", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Investigate retry backoff ceilings - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Investigate retry backoff ceilings - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Investigate retry backoff ceilings - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Investigate retry backoff ceilings - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 3. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Investigate retry backoff ceilings",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead posts about backoff
+-> {"action": "post", "body": "The backoff ceiling is 30 seconds in retry.py", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. the human posts about backoff
+-> {"action": "operator_post", "body": "Check the backoff ceiling.", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "h", "version": 1}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 6. human creates a second conversation
+-> {"action": "operator_create", "brief": "Unrelated timeout work", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-3>",
+        "join_prompt": "Unrelated timeout work - lead (Lead): Use agentcy to join with <code-3>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Unrelated timeout work - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-4>",
+        "join_prompt": "Unrelated timeout work - worker (Worker): Use agentcy to join with <code-4>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Unrelated timeout work - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 7. search for backoff
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "backoff", "version": 1}
+<- {
+  "result": {
+    "hits": [
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": null,
+        "author": null,
+        "created": "<now>",
+        "snippet": "Investigate retry backoff ceilings"
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 2,
+        "author": "Human",
+        "created": "<now>",
+        "snippet": "Check the backoff ceiling."
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 1,
+        "author": "Lead",
+        "created": "<now>",
+        "snippet": "The backoff ceiling is 30 seconds in retry.py"
+      }
+    ]
+  }
+}
+
+== 8. search by prefix
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "back ceil", "version": 1}
+<- {
+  "result": {
+    "hits": [
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": null,
+        "author": null,
+        "created": "<now>",
+        "snippet": "Investigate retry backoff ceilings"
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 2,
+        "author": "Human",
+        "created": "<now>",
+        "snippet": "Check the backoff ceiling."
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 1,
+        "author": "Lead",
+        "created": "<now>",
+        "snippet": "The backoff ceiling is 30 seconds in retry.py"
+      }
+    ]
+  }
+}
+
+== 9. search ignores punctuation
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "\"backoff\" (ceiling)!", "version": 1}
+<- {
+  "result": {
+    "hits": [
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": null,
+        "author": null,
+        "created": "<now>",
+        "snippet": "Investigate retry backoff ceilings"
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 2,
+        "author": "Human",
+        "created": "<now>",
+        "snippet": "Check the backoff ceiling."
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": false,
+        "message_id": 1,
+        "author": "Lead",
+        "created": "<now>",
+        "snippet": "The backoff ceiling is 30 seconds in retry.py"
+      }
+    ]
+  }
+}
+
+== 10. search treats operators as words
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "backoff OR timeout", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 11. search with unicode words
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "über", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 12. search needs a word
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "!!! ???", "version": 1}
+<- {
+  "error": "Search needs at least one letter or digit"
+}
+
+== 13. an empty query fails validation
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 14. a 201-character query fails validation
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "<201 characters starting \"qqqqqqqqqqqq\">", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 15. only the first eight words count
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "backoff ceiling one two three four five six seven", "version": 1}
+<- {
+  "result": {
+    "hits": []
+  }
+}
+
+== 16. the human closes the first
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 17. the human archives the first
+-> {"action": "operator_archive", "archived": true, "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "archived": true
+  }
+}
+
+== 18. hits of an archived conversation say so
+-> {"action": "operator_search", "directory": "<checkout>", "key": "<operator-key>", "query": "ceiling", "version": 1}
+<- {
+  "result": {
+    "hits": [
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": true,
+        "message_id": null,
+        "author": null,
+        "created": "<now>",
+        "snippet": "Investigate retry backoff ceilings"
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": true,
+        "message_id": 2,
+        "author": "Human",
+        "created": "<now>",
+        "snippet": "Check the backoff ceiling."
+      },
+      {
+        "conversation": "<room-1>",
+        "title": "Investigate retry backoff ceilings",
+        "archived": true,
+        "message_id": 1,
+        "author": "Lead",
+        "created": "<now>",
+        "snippet": "The backoff ceiling is 30 seconds in retry.py"
+      }
+    ]
+  }
+}
+

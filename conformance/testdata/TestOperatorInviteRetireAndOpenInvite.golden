@@ -1,0 +1,429 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Team work", "directory": "<checkout>", "invitees": ["Worker", "Spare"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Team work - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Team work - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Team work - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker (Worker)\"."
+      },
+      {
+        "participant": "Spare",
+        "role": "worker",
+        "code": "<code-3>",
+        "join_prompt": "Team work - worker (Spare): Use agentcy to join with <code-3>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker (Spare)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Team work",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. worker joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Team work",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. the human adds a slot
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Analyst", "version": 1}
+<- {
+  "result": {
+    "participant": "Analyst",
+    "role": "worker",
+    "code": "<code-4>",
+    "join_prompt": "Team work - worker (Analyst): Use agentcy to join with <code-4>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker (Analyst)\"."
+  }
+}
+
+== 5. the human adds a co-lead slot
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Partner", "role": "co-lead", "version": 1}
+<- {
+  "result": {
+    "participant": "Partner",
+    "role": "co-lead",
+    "code": "<code-5>",
+    "join_prompt": "Team work - co-lead (Partner): Use agentcy to join with <code-5>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Team work - co-lead (Partner)\"."
+  }
+}
+
+== 6. the human reissues an unused code
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "spare", "version": 1}
+<- {
+  "result": {
+    "participant": "Spare",
+    "role": "worker",
+    "code": "<code-6>",
+    "join_prompt": "Team work - worker (Spare): Use agentcy to join with <code-6>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker (Spare)\"."
+  }
+}
+
+== 7. the human cannot reissue a joined slot
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "version": 1}
+<- {
+  "error": "Invitation slot already taken: Worker. Pass reinvite to replace its chat"
+}
+
+== 8. the human reinvites a joined worker
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Worker", "reinvite": true, "version": 1}
+<- {
+  "result": {
+    "participant": "Worker",
+    "role": "worker",
+    "code": "<code-7>",
+    "join_prompt": "Team work - worker (Worker): Use agentcy to join with <code-7>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker (Worker)\"."
+  }
+}
+
+== 9. the old worker chat lost access
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 10. the human cannot reinvite itself
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Human", "reinvite": true, "version": 1}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 11. the human retires the unjoined spare slot
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Spare", "version": 1}
+<- {
+  "result": {
+    "participant": "Spare",
+    "retired": true
+  }
+}
+
+== 12. a plain invite refuses the retired slot
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Spare", "version": 1}
+<- {
+  "error": "Participant is retired: Spare. Pass reinvite to bring them back"
+}
+
+== 13. the human cannot retire itself
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Human", "version": 1}
+<- {
+  "error": "Cannot retire Human"
+}
+
+== 14. the human cannot retire the lead
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Lead", "version": 1}
+<- {
+  "result": {
+    "participant": "Lead",
+    "retired": true
+  }
+}
+
+== 15. retire an unknown name
+-> {"action": "operator_retire", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Ghost", "version": 1}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 16. the human enables the open invite
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "open_invite": true,
+    "code": "<code-8>",
+    "join_prompt": "Team work - worker: Use agentcy to join with <code-8> (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker\"."
+  }
+}
+
+== 17. the human rotates the open invite
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "enabled": true, "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "open_invite": true,
+    "code": "<code-9>",
+    "join_prompt": "Team work - worker: Use agentcy to join with <code-9> (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Team work - worker\"."
+  }
+}
+
+== 18. the first open code no longer works
+-> {"action": "join", "code": "<code-8>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 19. the human disables the open invite
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "enabled": false, "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "open_invite": false
+  }
+}
+
+== 20. show reflects the changes
+-> {"action": "operator_show", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "title": "Team work",
+    "brief": "Team work",
+    "created": "<now>",
+    "archived": false,
+    "status": {
+      "open": true,
+      "members": {
+        "Lead": {
+          "role": "co-lead",
+          "state": "retired"
+        },
+        "Worker": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Spare": {
+          "role": "worker",
+          "state": "retired"
+        },
+        "Human": {
+          "role": "human",
+          "state": "human"
+        },
+        "Analyst": {
+          "role": "worker",
+          "state": "invited"
+        },
+        "Partner": {
+          "role": "lead",
+          "state": "invited"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Invited Analyst as worker.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Invited Partner as co-lead.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Human",
+        "body": "Reissued the invitation for Spare as worker.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Human",
+        "body": "Reinvited Worker as worker.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "Human",
+        "body": "Retired Spare.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Human",
+        "body": "Retired Lead.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Human",
+        "body": "Enabled open invite.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Human",
+        "body": "Rotated the open invite code.",
+        "created": "<now>",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Human",
+        "body": "Disabled open invite.",
+        "created": "<now>",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 9,
+    "total_messages": 9
+  }
+}
+
+== 21. lead reads the human's lifecycle events
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Human",
+        "body": "Invited Analyst as worker.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 2,
+        "label": "Human",
+        "body": "Invited Partner as co-lead.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 3,
+        "label": "Human",
+        "body": "Reissued the invitation for Spare as worker.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 4,
+        "label": "Human",
+        "body": "Reinvited Worker as worker.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 5,
+        "label": "Human",
+        "body": "Retired Spare.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 6,
+        "label": "Human",
+        "body": "Retired Lead.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 7,
+        "label": "Human",
+        "body": "Enabled open invite.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 8,
+        "label": "Human",
+        "body": "Rotated the open invite code.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 9,
+        "label": "Human",
+        "body": "Disabled open invite.",
+        "kind": "event",
+        "role": "human"
+      }
+    ],
+    "more": false,
+    "cursor": 9,
+    "wake": true,
+    "brief": "Team work",
+    "role": "co-lead",
+    "roster": {
+      "Analyst": "worker",
+      "Human": "human",
+      "Lead": "co-lead",
+      "Partner": "lead",
+      "Spare": "worker",
+      "Worker": "worker"
+    },
+    "retired": true
+  }
+}
+
+== 22. the human closes
+-> {"action": "operator_close", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 23. invite on a closed conversation
+-> {"action": "operator_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Late", "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 24. open invite on a closed conversation
+-> {"action": "operator_open_invite", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 25. invite in an unknown conversation
+-> {"action": "operator_invite", "conversation": "<room-2>", "directory": "<checkout>", "key": "<operator-key>", "name": "X", "version": 1}
+<- {
+  "error": "Unknown conversation in this workspace"
+}
+

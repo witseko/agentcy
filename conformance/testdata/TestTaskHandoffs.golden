@@ -1,0 +1,457 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review retries", "initiator": "Lead", "invitees": ["Alpha", "Bravo"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alpha": "<code-1>",
+      "Bravo": "<code-2>"
+    },
+    "join_prompt": "Review retries: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review retries\".",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 2. Alpha joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bravo joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Review retries",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead assigns a task to Alpha
+-> {"action": "post", "body": "Review retry limits", "due_minutes": 30, "kind": "task", "submission_id": "submission-1", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. Alpha blocks
+-> {"action": "post", "body": "I need a fixture", "kind": "blocker", "reply_to": 1, "submission_id": "submission-2", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 6. the lead cannot hand off an active owner's task
+-> {"action": "post", "body": "Try a handoff", "kind": "handoff", "reply_to": 1, "submission_id": "submission-3", "to": "Bravo", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only the task owner can offer a handoff"
+}
+
+== 7. a handoff to yourself
+-> {"action": "post", "body": "To me", "kind": "handoff", "reply_to": 1, "submission_id": "submission-4", "to": "Alpha", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A handoff requires another member as addressee"
+}
+
+== 8. a handoff without an addressee
+-> {"action": "post", "body": "To anyone", "kind": "handoff", "reply_to": 1, "submission_id": "submission-5", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A handoff requires another member as addressee"
+}
+
+== 9. a handoff without a task
+-> {"action": "post", "body": "No task", "kind": "handoff", "submission_id": "submission-6", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A handoff must reply to an open task"
+}
+
+== 10. a handoff to the human
+-> {"action": "post", "body": "To the user", "kind": "handoff", "reply_to": 1, "submission_id": "submission-7", "to": "Human", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown recipient 'Human' in this conversation. Active members: Alpha, Bravo, Lead"
+}
+
+== 11. Alpha offers a handoff to Bravo
+-> {"action": "post", "body": "Please finish", "kind": "handoff", "reply_to": 1, "submission_id": "offer", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 12. a second pending handoff is refused
+-> {"action": "post", "body": "Another offer", "kind": "handoff", "reply_to": 1, "submission_id": "submission-9", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This task already has a pending handoff"
+}
+
+== 13. the lead cannot accept an offer addressed to Bravo
+-> {"action": "post", "body": "I accept", "kind": "accept", "reply_to": 3, "submission_id": "submission-10", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "A handoff response must reply to a handoff addressed to you"
+}
+
+== 14. Alpha resumes while the offer is pending
+-> {"action": "post", "body": "I found the fixture", "kind": "resume", "reply_to": 1, "submission_id": "submission-11", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 15. status during the pending handoff
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3,
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ]
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "joined"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 16. Bravo accepts
+-> {"action": "post", "body": "I can finish", "kind": "accept", "reply_to": 3, "submission_id": "accept", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 17. the accept retry returns the same ID
+-> {"action": "post", "body": "I can finish", "kind": "accept", "reply_to": 3, "submission_id": "accept", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 18. the handoff retry returns the same ID
+-> {"action": "post", "body": "Please finish", "kind": "handoff", "reply_to": 1, "submission_id": "offer", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 19. Alpha's late done does not close Bravo's task
+-> {"action": "post", "body": "I finished anyway", "kind": "done", "reply_to": 1, "submission_id": "submission-15", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 20. status: Bravo owns the task
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "done",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 4
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "open_tasks": [
+          {
+            "id": 1,
+            "due": "<now+30m>"
+          }
+        ]
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 21. lead assigns a second task to Alpha
+-> {"action": "post", "body": "Review retry timing", "due_minutes": 30, "kind": "task", "submission_id": "submission-16", "to": "Alpha", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 22. Alpha offers the second task
+-> {"action": "post", "body": "Please review", "kind": "handoff", "reply_to": 7, "submission_id": "submission-17", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 23. Bravo declines
+-> {"action": "post", "body": "I cannot take it", "kind": "decline", "reply_to": 8, "submission_id": "submission-18", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 24. an accept after the decline is stale
+-> {"action": "post", "body": "An old acceptance", "kind": "accept", "reply_to": 8, "submission_id": "submission-19", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This handoff is no longer pending"
+}
+
+== 25. Alpha offers again
+-> {"action": "post", "body": "Can you take over?", "kind": "handoff", "reply_to": 7, "submission_id": "submission-20", "to": "Bravo", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 26. Alpha finishes, which drops the offer
+-> {"action": "post", "body": "Timing checked", "kind": "done", "reply_to": 7, "submission_id": "submission-21", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 11
+  }
+}
+
+== 27. a late accept is stale
+-> {"action": "post", "body": "A late acceptance", "kind": "accept", "reply_to": 10, "submission_id": "submission-22", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "This handoff is no longer pending"
+}
+
+== 28. Bravo finishes the first task
+-> {"action": "post", "body": "Retry limits checked", "kind": "done", "reply_to": 1, "submission_id": "submission-23", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 12
+  }
+}
+
+== 29. status: no open tasks
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "done",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 7
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "done",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 3
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 30. operator task list with timelines
+-> {"action": "operator_tasks", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "tasks": [
+      {
+        "id": 7,
+        "title": "Review retry timing",
+        "body": "Review retry timing",
+        "author": "Lead",
+        "owner": "Alpha",
+        "state": "done",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 7,
+            "author": "Lead",
+            "body": "Review retry timing",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 8,
+            "author": "Alpha",
+            "body": "Please review",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 7
+          },
+          {
+            "id": 9,
+            "author": "Bravo",
+            "body": "I cannot take it",
+            "created": "<now>",
+            "kind": "decline",
+            "reply_to": 8
+          },
+          {
+            "id": 10,
+            "author": "Alpha",
+            "body": "Can you take over?",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 7
+          },
+          {
+            "id": 11,
+            "author": "Alpha",
+            "body": "Timing checked",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 7
+          }
+        ],
+        "due": "<now+30m>"
+      },
+      {
+        "id": 1,
+        "title": "Review retry limits",
+        "body": "Review retry limits",
+        "author": "Lead",
+        "owner": "Bravo",
+        "state": "done",
+        "created": "<now>",
+        "updated": "<now>",
+        "events": [
+          {
+            "id": 1,
+            "author": "Lead",
+            "body": "Review retry limits",
+            "created": "<now>",
+            "kind": "task",
+            "to": "Alpha"
+          },
+          {
+            "id": 2,
+            "author": "Alpha",
+            "body": "I need a fixture",
+            "created": "<now>",
+            "kind": "blocker",
+            "reply_to": 1
+          },
+          {
+            "id": 3,
+            "author": "Alpha",
+            "body": "Please finish",
+            "created": "<now>",
+            "kind": "handoff",
+            "to": "Bravo",
+            "reply_to": 1
+          },
+          {
+            "id": 4,
+            "author": "Alpha",
+            "body": "I found the fixture",
+            "created": "<now>",
+            "kind": "resume",
+            "reply_to": 1
+          },
+          {
+            "id": 5,
+            "author": "Bravo",
+            "body": "I can finish",
+            "created": "<now>",
+            "kind": "accept",
+            "reply_to": 3
+          },
+          {
+            "id": 6,
+            "author": "Alpha",
+            "body": "I finished anyway",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 1
+          },
+          {
+            "id": 12,
+            "author": "Bravo",
+            "body": "Retry limits checked",
+            "created": "<now>",
+            "kind": "done",
+            "reply_to": 1
+          }
+        ],
+        "due": "<now+30m>"
+      }
+    ]
+  }
+}
+

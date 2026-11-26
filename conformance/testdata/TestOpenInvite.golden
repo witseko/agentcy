@@ -1,0 +1,630 @@
+== 1. lead creates an open room
+-> {"action": "create", "brief": "Investigate flaky build", "initiator": "Lead", "invitees": [], "open_invite": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {},
+    "join_prompt": "Investigate flaky build: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Investigate flaky build\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead"
+    },
+    "open_invite": {
+      "code": "<code-1>",
+      "join_prompt": "Investigate flaky build - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Investigate flaky build - worker\"."
+    }
+  }
+}
+
+== 2. Alice joins
+-> {"action": "join", "code": "<code-1>", "name": "Alice", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alice",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-2>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 1,
+    "more": false
+  }
+}
+
+== 3. a second Alice gets a suffix
+-> {"action": "join", "code": "<code-1>", "name": "Alice", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alice 2",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-3>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 2,
+    "more": false
+  }
+}
+
+== 4. lowercase alice gets the next suffix
+-> {"action": "join", "code": "<code-1>", "name": "alice", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "alice 3",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "alice 3": "worker"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-4>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 3,
+    "more": false
+  }
+}
+
+== 5. a long name is cut to fit the suffix
+-> {"action": "join", "code": "<code-1>", "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-5>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 4,
+    "more": false
+  }
+}
+
+== 6. the same long name again
+-> {"action": "join", "code": "<code-1>", "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-6>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 5,
+    "more": false
+  }
+}
+
+== 7. no name gets Worker 1
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker 1",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-7>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 6,
+    "more": false
+  }
+}
+
+== 8. no name again gets Worker 2
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker 2",
+    "role": "worker",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    },
+    "brief": "Investigate flaky build",
+    "token": "<token-8>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 7,
+    "more": false
+  }
+}
+
+== 9. the reserved name is refused
+-> {"action": "join", "code": "<code-1>", "name": "Human", "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 10. another workspace is refused
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-2>"}
+<- {
+  "error": "Join code does not match this workspace. Set both clients to the same --workspace and reconnect."
+}
+
+== 11. lead reads the join events
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 7,
+    "wake": true,
+    "brief": "Investigate flaky build",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    }
+  }
+}
+
+== 12. lead status shows open_invite
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Alice": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Alice 2": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "alice 3": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 1": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Worker 2": {
+        "role": "worker",
+        "state": "joined"
+      }
+    },
+    "participant": "Lead",
+    "open_invite": true
+  }
+}
+
+== 13. a worker cannot rotate
+-> {"action": "open_invite", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead, co-lead or the human can manage open invites"
+}
+
+== 14. lead rotates the code
+-> {"action": "open_invite", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open_invite": true,
+    "code": "<code-2>",
+    "join_prompt": "Investigate flaky build - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Investigate flaky build - worker\"."
+  }
+}
+
+== 15. the old code stops working
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 16. lead disables the open invite
+-> {"action": "open_invite", "enabled": false, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open_invite": false
+  }
+}
+
+== 17. disabling again records nothing
+-> {"action": "open_invite", "enabled": false, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open_invite": false
+  }
+}
+
+== 18. the rotated code stops working
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 19. lead enables a new code
+-> {"action": "open_invite", "enabled": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open_invite": true,
+    "code": "<code-3>",
+    "join_prompt": "Investigate flaky build - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Investigate flaky build - worker\"."
+  }
+}
+
+== 20. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 21. closing revokes the open code
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 22. open invite on a closed room
+-> {"action": "open_invite", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 23. lead reads the lifecycle events
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Alice",
+        "body": "Alice joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Alice 2",
+        "body": "Alice 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "alice 3",
+        "body": "alice 3 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 5,
+        "label": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2",
+        "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Worker 1",
+        "body": "Worker 1 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 7,
+        "label": "Worker 2",
+        "body": "Worker 2 joined via the open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 8,
+        "label": "Lead",
+        "body": "Rotated the open invite code.",
+        "kind": "event"
+      },
+      {
+        "id": 9,
+        "label": "Lead",
+        "body": "Disabled open invite.",
+        "kind": "event"
+      },
+      {
+        "id": 10,
+        "label": "Lead",
+        "body": "Enabled open invite.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 10,
+    "wake": true,
+    "brief": "Investigate flaky build",
+    "role": "lead",
+    "roster": {
+      "Alice": "worker",
+      "Alice 2": "worker",
+      "Lead": "lead",
+      "Worker 1": "worker",
+      "Worker 2": "worker",
+      "alice 3": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn 2": "worker",
+      "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn": "worker"
+    },
+    "closed": true
+  }
+}
+

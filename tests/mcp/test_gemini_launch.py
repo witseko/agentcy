@@ -30,10 +30,24 @@ def gemini_plugin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModuleType
     return plugin
 
 
+def worker_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, go_binary: bool) -> str | None:
+    """Name a Go agentcy executable in AGENTCY_BIN, or leave it unset for the Python worker."""
+    if not go_binary:
+        monkeypatch.delenv("AGENTCY_BIN", raising=False)
+        return None
+    binary = tmp_path.resolve() / "agentcy-bin" / "agentcy"
+    binary.parent.mkdir()
+    binary.touch(mode=0o700)
+    monkeypatch.setenv("AGENTCY_BIN", str(binary))
+    return str(binary)
+
+
+@pytest.mark.parametrize("go_binary", [False, True], ids=["python-worker", "go-worker"])
 def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
-    gemini_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    gemini_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, go_binary: bool
 ) -> None:
     """Pass the absolute PATH launch name, read-only settings, and safe-path MCP command."""
+    binary = worker_binary(monkeypatch, tmp_path, go_binary)
     bin_directory = tmp_path.resolve() / "bin"
     bin_directory.mkdir()
     target = bin_directory / "installed-agy"
@@ -49,6 +63,8 @@ def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
         assert cwd == checkout
         assert arguments[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert arguments[3] == str(bin_directory / "agy")
+        exception = f"(require-not (literal {json.dumps(binary)}))"
+        assert (exception in arguments[2]) is go_binary
         assert arguments[4:8] == ["--disable-slash-commands", "--model", MODEL, "--print"]
         assert "report brief progress updates to the lead periodically" in arguments[8]
         assert not options.get("shell")
@@ -56,16 +72,19 @@ def test_launch_preserves_installed_agy_symlink_and_configures_read_only_worker(
         home = Path(env["HOME"])
         mcp_config = home / ".gemini" / "config" / "mcp_config.json"
         server = json.loads(mcp_config.read_text(encoding="utf-8"))["mcpServers"]["agentcy"]
-        assert server == {
-            "command": sys.executable,
-            "args": [
-                "-E",
-                "-P",
-                "-m",
-                "agentcy.mcp.fresh_server",
-                str(checkout),
-            ],
-        }
+        if binary is not None:
+            assert server == {"command": binary, "args": ["fresh-worker", str(checkout)]}
+        else:
+            assert server == {
+                "command": sys.executable,
+                "args": [
+                    "-E",
+                    "-P",
+                    "-m",
+                    "agentcy.mcp.fresh_server",
+                    str(checkout),
+                ],
+            }
         settings_path = home / ".gemini" / "antigravity-cli" / "settings.json"
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
         assert settings["modelProvider"] == "gemini"
@@ -149,4 +168,12 @@ def test_start_rejects_invalid_model_caps_and_workspace_boundaries(
     ) == RunResult(state="failed")
     assert gemini_plugin.start(
         ASSIGNMENT_ID, str(checkout), str(tmp_path), "code", MODEL, 30
+    ) == RunResult(state="failed")
+    monkeypatch.setenv("AGENTCY_BIN", "bin/agentcy")
+    assert gemini_plugin.start(
+        ASSIGNMENT_ID, str(checkout), str(bridge), "code", MODEL, 30
+    ) == RunResult(state="failed")
+    monkeypatch.setenv("AGENTCY_BIN", str(checkout))
+    assert gemini_plugin.start(
+        ASSIGNMENT_ID, str(checkout), str(bridge), "code", MODEL, 30
     ) == RunResult(state="failed")

@@ -23,6 +23,12 @@ from agentcy.mcp.plugin_contract import (
     Timeout,
     TokenCap,
 )
+from agentcy.mcp.plugin_runtime import (
+    platform_sandbox,
+    sandbox_profile,
+    valid_binary,
+    worker_command,
+)
 from agentcy.storage.database import data_dir
 
 MCP = MCPServer("agentcy-gemini")
@@ -73,44 +79,16 @@ def cancel(assignment_id: AssignmentId) -> RunResult:
     return result
 
 
-def sandbox_profile(runtime: Path) -> str:
-    """Restrict child writes to private scratch and shield the bridge store."""
-    writable = json.dumps(str(runtime))
-    root = data_dir()
-    private_bridge = json.dumps(str(root))
-    socket_path = json.dumps(str(root / "core.sock"))
-    return (
-        f"(version 1) (allow default) "
-        f"(deny file-write* (require-all (require-not (subpath {writable})) "
-        '(require-not (literal "/dev/null")))) '
-        f"(deny file-read-data (require-all (subpath {private_bridge}) "
-        f"(require-not (subpath {writable})) (require-not (literal {socket_path}))))"
-    )
-
-
-def platform_sandbox() -> bool:
-    """Refuse to start without verified read-only and bridge-store isolation."""
-    return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
-
-
 def prepare_environment(workspace: Path, runtime: Path) -> dict[str, str]:
     """Keep the Antigravity CLI isolated from the user's global settings and MCP servers."""
+    command = worker_command(workspace)
     mcp_config = runtime / ".gemini" / "config" / "mcp_config.json"
     mcp_config.parent.mkdir(mode=0o700, parents=True)
     mcp_config.write_text(
         json.dumps(
             {
                 "mcpServers": {
-                    "agentcy": {
-                        "command": sys.executable,
-                        "args": [
-                            "-E",
-                            "-P",
-                            "-m",
-                            "agentcy.mcp.fresh_server",
-                            str(workspace),
-                        ],
-                    },
+                    "agentcy": {"command": command[0], "args": command[1:]},
                 },
             }
         ),
@@ -248,7 +226,7 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
                     start_new_session=True,
                 )
                 result = monitor(process, path, timeout, output_file)
-    except OSError:
+    except (OSError, ValueError):
         result = RunResult(state="failed")
     finally:
         save(path, result)
@@ -275,6 +253,7 @@ def valid_environment(request: Start) -> bool:
         and platform_sandbox()
         and bool(os.getenv("GEMINI_API_KEY"))
         and find_on_path("agy") is not None
+        and valid_binary()
     )
 
 

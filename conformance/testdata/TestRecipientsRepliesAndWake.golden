@@ -1,0 +1,276 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Worker", "Peer", "Gone"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Peer": "<code-2>",
+      "Gone": "<code-3>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Peer": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Peer": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. peer joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Peer",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Peer": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead retires Gone
+-> {"action": "retire", "name": "Gone", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Gone",
+    "retired": true
+  }
+}
+
+== 5. lead creates a second conversation
+-> {"action": "create", "brief": "Other", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-4>",
+    "invitations": {
+      "Worker": "<code-4>"
+    },
+    "join_prompt": "Other: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Other\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 6. a message in the second conversation
+-> {"action": "post", "body": "Elsewhere", "submission_id": "submission-1", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 7. lead addresses the worker in lower case
+-> {"action": "post", "body": "Check timeout path", "submission_id": "submission-2", "to": "worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 8. an unknown recipient lists active members
+-> {"action": "post", "body": "Wrong target", "submission_id": "submission-3", "to": "Ghost", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown recipient 'Ghost' in this conversation. Active members: Lead, Peer, Worker"
+}
+
+== 9. an unknown reply target
+-> {"action": "post", "body": "Reply", "reply_to": 999, "submission_id": "submission-4", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown reply target in this conversation"
+}
+
+== 10. a reply target from another conversation
+-> {"action": "post", "body": "Reply", "reply_to": 2, "submission_id": "submission-5", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown reply target in this conversation"
+}
+
+== 11. a reply_to of zero fails validation
+-> {"action": "post", "body": "Reply", "reply_to": 0, "submission_id": "submission-6", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 12. a string reply_to fails validation
+-> {"action": "post", "body": "Reply", "reply_to": "1", "submission_id": "submission-7", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 13. peer posts an unaddressed blocker
+-> {"action": "post", "body": "Blocked on access", "kind": "blocker", "submission_id": "submission-8", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 14. worker catches up
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Retired Gone.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Check timeout path",
+        "to": "Worker"
+      },
+      {
+        "id": 4,
+        "label": "Peer",
+        "body": "Blocked on access",
+        "kind": "blocker"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "brief": "Review",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Peer": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 15. peer posts a note to lead
+-> {"action": "post", "body": "For the lead only", "submission_id": "submission-9", "to": "Lead", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 16. worker reads: an addressed message elsewhere does not wake
+-> {"action": "read", "after": 4, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 5,
+        "label": "Peer",
+        "body": "For the lead only",
+        "to": "Lead"
+      }
+    ],
+    "more": false,
+    "cursor": 5,
+    "wake": false
+  }
+}
+
+== 17. peer posts an unaddressed finding
+-> {"action": "post", "body": "Found the cause", "kind": "finding", "submission_id": "submission-10", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 18. worker reads: an unaddressed finding wakes
+-> {"action": "read", "after": 4, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 5,
+        "label": "Peer",
+        "body": "For the lead only",
+        "to": "Lead"
+      },
+      {
+        "id": 6,
+        "label": "Peer",
+        "body": "Found the cause",
+        "kind": "finding"
+      }
+    ],
+    "more": false,
+    "cursor": 6,
+    "wake": true
+  }
+}
+
+== 19. lead reads after the same cursor: leads always wake
+-> {"action": "read", "after": 4, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 5,
+        "label": "Peer",
+        "body": "For the lead only",
+        "to": "Lead"
+      },
+      {
+        "id": 6,
+        "label": "Peer",
+        "body": "Found the cause",
+        "kind": "finding"
+      }
+    ],
+    "more": false,
+    "cursor": 6,
+    "wake": true
+  }
+}
+
+== 20. peer reads after its own messages: own posts are skipped
+-> {"action": "read", "after": 4, "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [],
+    "more": false,
+    "cursor": 4,
+    "wake": false
+  }
+}
+

@@ -1,0 +1,417 @@
+== 1. lead opens a sealed round
+-> {"action": "create", "brief": "Propose a test independently", "deadline_minutes": 1, "initiator": "Lead", "invitees": ["First", "Second", "Late"], "sealed": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "First": "<code-1>",
+      "Second": "<code-2>",
+      "Late": "<code-3>"
+    },
+    "join_prompt": "Propose a test independently: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Propose a test independently\".",
+    "role": "lead",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "round": "sealed",
+    "round_deadline": "<now+1m>"
+  }
+}
+
+== 2. First joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "First",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "brief": "Propose a test independently",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+1m>"
+  }
+}
+
+== 3. Second joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Second",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "brief": "Propose a test independently",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false,
+    "round": "sealed",
+    "round_deadline": "<now+1m>"
+  }
+}
+
+== 4. lead posts a note during the round
+-> {"action": "post", "body": "Work alone", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. First submits a proposal
+-> {"action": "post", "body": "Test the timeout", "kind": "proposal", "submission_id": "p1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 6. First retries the same proposal
+-> {"action": "post", "body": "Test the timeout", "kind": "proposal", "submission_id": "p1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 7. First submits the same body with a new ID
+-> {"action": "post", "body": "Test the timeout", "kind": "proposal", "submission_id": "p1b", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "proposal_id": "<proposal-1>"
+  }
+}
+
+== 8. First cannot submit a second proposal
+-> {"action": "post", "body": "Another idea", "kind": "proposal", "submission_id": "p2", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You already submitted a proposal for this round"
+}
+
+== 9. a held proposal's ID cannot post a note
+-> {"action": "post", "body": "A note", "kind": "note", "submission_id": "p1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Submission ID already used for a different message"
+}
+
+== 10. Second's status shows it has not submitted
+-> {"action": "status", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "First": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Second": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Late": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Second",
+    "round": "sealed",
+    "round_deadline": "<now+1m>",
+    "proposal_submitted": false
+  }
+}
+
+== 11. First's status shows it submitted
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "First": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Second": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Late": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "First",
+    "round": "sealed",
+    "round_deadline": "<now+1m>",
+    "proposal_submitted": true
+  }
+}
+
+== 12. lead's status has no submission flag
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "First": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Second": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Late": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead",
+    "round": "sealed",
+    "round_deadline": "<now+1m>"
+  }
+}
+
+== 13. Second reads: proposals stay hidden
+-> {"action": "read", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Work alone"
+      }
+    ],
+    "more": false,
+    "cursor": 1,
+    "wake": true,
+    "round": "sealed",
+    "round_deadline": "<now+1m>",
+    "brief": "Propose a test independently",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    }
+  }
+}
+
+== 14. Second submits, which releases the round
+-> {"action": "post", "body": "Test the retry", "kind": "proposal", "submission_id": "s1", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 15. First's retry after release returns the message ID
+-> {"action": "post", "body": "Test the timeout", "kind": "proposal", "submission_id": "p1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 16. First's new ID with the released body returns the message ID
+-> {"action": "post", "body": "Test the timeout", "kind": "proposal", "submission_id": "p3", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 17. a new proposal after release is not accepted
+-> {"action": "post", "body": "Late idea", "kind": "proposal", "submission_id": "p4", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "round": "critique",
+    "accepted": false
+  }
+}
+
+== 18. Late joins after release
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Late",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    },
+    "brief": "Propose a test independently",
+    "token": "<token-4>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Work alone"
+      },
+      {
+        "id": 2,
+        "label": "First",
+        "body": "Test the timeout",
+        "kind": "proposal"
+      },
+      {
+        "id": 3,
+        "label": "Second",
+        "body": "Test the retry",
+        "kind": "proposal"
+      },
+      {
+        "id": 4,
+        "label": "Second",
+        "body": "Proposals released for critique. Missing proposals from: Late.",
+        "kind": "event"
+      }
+    ],
+    "cursor": 4,
+    "more": false,
+    "round": "critique"
+  }
+}
+
+== 19. Late's proposal in the critique round
+-> {"action": "post", "body": "Too late", "kind": "proposal", "submission_id": "submission-11", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "round": "critique",
+    "accepted": false
+  }
+}
+
+== 20. Late reads the released proposals
+-> {"action": "read", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Work alone"
+      },
+      {
+        "id": 2,
+        "label": "First",
+        "body": "Test the timeout",
+        "kind": "proposal"
+      },
+      {
+        "id": 3,
+        "label": "Second",
+        "body": "Test the retry",
+        "kind": "proposal"
+      },
+      {
+        "id": 4,
+        "label": "Second",
+        "body": "Proposals released for critique. Missing proposals from: Late.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "round": "critique",
+    "brief": "Propose a test independently",
+    "role": "worker",
+    "roster": {
+      "First": "worker",
+      "Late": "worker",
+      "Lead": "lead",
+      "Second": "worker"
+    }
+  }
+}
+
+== 21. lead releases again: critique round
+-> {"action": "release", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "round": "critique"
+  }
+}
+
+== 22. lead status in the critique round
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "First": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Second": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Late": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      }
+    },
+    "participant": "Lead",
+    "round": "critique"
+  }
+}
+

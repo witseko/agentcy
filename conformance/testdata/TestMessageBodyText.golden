@@ -1,0 +1,171 @@
+== 1. human creates
+-> {"action": "operator_create", "brief": "Review", "directory": "<checkout>", "invitees": ["Worker"], "key": "<operator-key>", "lead": "Lead", "version": 1}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "invitations": [
+      {
+        "participant": "Lead",
+        "role": "lead",
+        "code": "<code-1>",
+        "join_prompt": "Review - lead (Lead): Use agentcy to join with <code-1>. You lead this conversation. Read the shared brief and catch up from cursor zero. Assign tasks with kind='task', the worker's name in 'to', and due_minutes (the minutes you expect the task to take): you own the task timeline. You can add teammates with invite_participant, launch_participant (see list_plugins), or open_invite, and retire inactive or unneeded teammates with retire_participant. Track the team status in read_messages, assign follow-up work when workers finish, and post brief team updates so waiting teammates stay active. Mind teammate token budgets in team/token_balance and prefer assigning new tasks or handoffs to models with more remaining budget. All members share one computer: give each member a limit of parallel processes for heavy commands (test suites, builds) so the team total fits the computer, and keep message traffic low. Messages from Human come from your user. Follow the bridge's guidance during this turn. If your app lets you rename this session, set its title to \"Review - lead (Lead)\"."
+      },
+      {
+        "participant": "Worker",
+        "role": "worker",
+        "code": "<code-2>",
+        "join_prompt": "Review - worker (Worker): Use agentcy to join with <code-2>. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Worker)\"."
+      }
+    ],
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Lead",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-1>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. a bell character is refused
+-> {"action": "post", "body": "Ring\u0007", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 4. an escape character is refused
+-> {"action": "post", "body": "Color \u001b[31m", "submission_id": "submission-2", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 5. a body of only spaces is refused
+-> {"action": "post", "body": "   \n\t ", "submission_id": "submission-3", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 6. 8193 characters is too long
+-> {"action": "post", "body": "<8193 characters starting \"xxxxxxxxxxxx\">", "submission_id": "submission-4", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 7. tabs, newlines and carriage returns are kept, outer space stripped
+-> {"action": "post", "body": "  line one\r\n\tline two  \n", "submission_id": "submission-5", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 8. format characters are allowed in a body
+-> {"action": "post", "body": "zero​width and  nbsp", "submission_id": "submission-6", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 9. unicode and HTML characters
+-> {"action": "post", "body": "<b>Grüße</b> & 日本語 \"quoted\" 'single'", "submission_id": "submission-7", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 10. the human posts a note
+-> {"action": "operator_post", "body": "From the user", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "submission_id": "h1", "version": 1}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 11. the human cannot post a task kind
+-> {"action": "operator_post", "body": "Do it", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "kind": "task", "submission_id": "h2", "version": 1}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 12. the human cannot set due_minutes
+-> {"action": "operator_post", "body": "Soon", "conversation": "<room-1>", "directory": "<checkout>", "due_minutes": 5, "key": "<operator-key>", "submission_id": "h3", "version": 1}
+<- {
+  "error": "Only a kind='task' message accepts due_minutes"
+}
+
+== 13. the human asks a question
+-> {"action": "operator_post", "body": "Why?", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "kind": "question", "submission_id": "h4", "to": "lead", "version": 1}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 14. lead reads every message with roles
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "line one\r\n\tline two"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "zero​width and  nbsp"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "<b>Grüße</b> & 日本語 \"quoted\" 'single'"
+      },
+      {
+        "id": 4,
+        "label": "Human",
+        "body": "From the user",
+        "role": "human"
+      },
+      {
+        "id": 5,
+        "label": "Human",
+        "body": "Why?",
+        "kind": "question",
+        "to": "Lead",
+        "role": "human"
+      }
+    ],
+    "more": false,
+    "cursor": 5,
+    "wake": true,
+    "brief": "Review",
+    "role": "lead",
+    "roster": {
+      "Human": "human",
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+

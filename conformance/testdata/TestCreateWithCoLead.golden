@@ -1,0 +1,87 @@
+== 1. lead creates with a co-lead slot
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "initiator_model": "lead/model", "initiator_token_budget": 1000, "invitees": ["Reviewer", {"model": "test/model", "name": "Partner", "role": "co-lead", "token_budget": 900}], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Reviewer": "<code-1>",
+      "Partner": "<code-2>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "co-lead",
+    "roster": {
+      "Lead": "co-lead",
+      "Partner": "co-lead",
+      "Reviewer": "worker"
+    }
+  }
+}
+
+== 2. partner joins as co-lead
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Partner",
+    "role": "co-lead",
+    "roster": {
+      "Lead": "co-lead",
+      "Partner": "co-lead",
+      "Reviewer": "worker"
+    },
+    "brief": "Review",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. co-lead invites a worker
+-> {"action": "invite", "name": "Analyst", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Analyst",
+    "role": "worker",
+    "code": "<code-3>",
+    "join_prompt": "Review - worker (Analyst): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Analyst)\"."
+  }
+}
+
+== 4. duplicate names differ only in case
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["lead"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Use a different name for each participant"
+}
+
+== 5. duplicate invitees
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Ann", "ANN"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Use a different name for each participant"
+}
+
+== 6. create without invitees or open invite
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": [], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 7. create trims whitespace from brief and names
+-> {"action": "create", "brief": "  Padded brief\n\n", "initiator": " Lead ", "invitees": [" Worker "], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-3>",
+    "invitations": {
+      "Worker": "<code-4>"
+    },
+    "join_prompt": "Padded brief: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Padded brief\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+

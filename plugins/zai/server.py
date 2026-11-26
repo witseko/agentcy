@@ -23,6 +23,12 @@ from agentcy.mcp.plugin_contract import (
     Timeout,
     TokenCap,
 )
+from agentcy.mcp.plugin_runtime import (
+    platform_sandbox,
+    sandbox_profile,
+    valid_binary,
+    worker_command,
+)
 from agentcy.storage.database import data_dir
 
 MCP = MCPServer("agentcy-zai")
@@ -73,26 +79,6 @@ def cancel(assignment_id: AssignmentId) -> RunResult:
     return result
 
 
-def sandbox_profile(runtime: Path) -> str:
-    """Restrict child writes to private scratch and shield the bridge store."""
-    writable = json.dumps(str(runtime))
-    root = data_dir()
-    private_bridge = json.dumps(str(root))
-    socket_path = json.dumps(str(root / "core.sock"))
-    return (
-        f"(version 1) (allow default) "
-        f"(deny file-write* (require-all (require-not (subpath {writable})) "
-        '(require-not (literal "/dev/null")))) '
-        f"(deny file-read-data (require-all (subpath {private_bridge}) "
-        f"(require-not (subpath {writable})) (require-not (literal {socket_path}))))"
-    )
-
-
-def platform_sandbox() -> bool:
-    """Refuse to start without verified read-only and bridge-store isolation."""
-    return sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file()
-
-
 def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str, str]:
     """Keep OpenCode isolated from the user's project settings and shared server."""
     allowed_tools = ["read", "glob", "grep", "agentcy_*"]
@@ -109,14 +95,7 @@ def prepare_environment(workspace: Path, runtime: Path, model: str) -> dict[str,
             "servers": {
                 "agentcy": {
                     "type": "local",
-                    "command": [
-                        sys.executable,
-                        "-E",
-                        "-P",
-                        "-m",
-                        "agentcy.mcp.fresh_server",
-                        str(workspace),
-                    ],
+                    "command": worker_command(workspace),
                     "codemode": False,
                     "timeout": {"startup": 10_000, "catalog": 10_000, "execution": 60_000},
                 },
@@ -247,7 +226,7 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
                     start_new_session=True,
                 )
                 result = monitor(process, path, timeout, output_file)
-    except OSError:
+    except (OSError, ValueError):
         result = RunResult(state="failed")
     finally:
         save(path, result)
@@ -289,6 +268,7 @@ def start(
         or not platform_sandbox()
         or not os.getenv("ZAI_API_KEY")
         or not find_on_path("opencode")
+        or not valid_binary()
     ):
         return RunResult(state="failed")
     return detach(request, checkout)

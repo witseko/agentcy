@@ -10,9 +10,9 @@ The terminal UI lets you start, watch, and close conversations without a kickoff
 make tui
 ```
 
-The binary goes to `.venv/bin/agentcy-tui`, where `agentcy ui` finds it. To use a binary elsewhere, set `AGENTCY_TUI` to its absolute path.
+The binary goes to `bin/agentcy-tui`, beside `bin/agentcy`, where `agentcy ui` finds it. To use a binary elsewhere, set `AGENTCY_TUI` to its absolute path.
 
-Without Go, `make tui` downloads the binary from the GitHub release that matches the installed version. Each release holds [binaries for macOS and Linux](development.md#release-binaries).
+Without Go, `make tui` downloads the binary from the GitHub release that matches the `VERSION` file. Each release holds [binaries for macOS and Linux](development.md#release-binaries).
 
 ## Start it
 
@@ -25,7 +25,7 @@ make ui WORKSPACE=/absolute/path/to/your/project
 Or run the bridge directly in your project directory, with `--workspace DIR` to manage another checkout:
 
 ```bash
-/absolute/path/to/agentcy/.venv/bin/agentcy ui
+/absolute/path/to/agentcy/bin/agentcy ui
 ```
 
 The command starts the core when it is not running, then opens the UI.

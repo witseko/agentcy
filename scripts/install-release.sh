@@ -1,10 +1,10 @@
 #!/bin/sh
-# Download the terminal UI binary for one platform from a GitHub release, check its SHA-256
-# against the release's SHA256SUMS file, and install it. `make tui` runs this when Go is missing.
+# Download one binary from a GitHub release, check its SHA-256 against the release's
+# SHA256SUMS file, and install it. `make agentcy` and `make tui` run this when Go is missing.
 #
-# Usage: install-tui-release.sh RELEASE_URL PLATFORM DESTINATION
+# Usage: install-release.sh RELEASE_URL ASSET DESTINATION
 #   RELEASE_URL  https://github.com/<owner>/<repo>/releases/download/v<version>
-#   PLATFORM     <os>-<arch>, for example darwin-arm64
+#   ASSET        the release file name, for example agentcy-darwin-arm64 or agentcy-tui-linux-amd64
 #   DESTINATION  the path of the installed binary
 #
 # The checksum comes from the same release as the binary. It detects a corrupted or truncated
@@ -12,9 +12,8 @@
 set -eu
 
 release_url="$1"
-platform="$2"
+asset="$2"
 destination="$3"
-asset="agentcy-tui-$platform"
 
 fail() {
     echo "$1" >&2
@@ -24,6 +23,11 @@ fail() {
 case "$release_url" in
     https://*) ;;
     *) fail "The release URL must start with https://: $release_url" ;;
+esac
+
+# The asset name becomes part of a URL and a file name, so it may hold only these characters.
+case "$asset" in
+    "" | *[!A-Za-z0-9._-]* | .*) fail "Invalid release asset name: $asset" ;;
 esac
 
 command -v curl >/dev/null 2>&1 || fail "curl is missing. Install curl, or install Go: https://go.dev/dl/"
@@ -48,7 +52,7 @@ download SHA256SUMS ||
     fail "Could not download $release_url/SHA256SUMS. This version may have no release yet. Install Go: https://go.dev/dl/"
 
 expected="$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$download_dir/SHA256SUMS")"
-test -n "$expected" || fail "The release has no terminal UI for $platform. Install Go: https://go.dev/dl/"
+test -n "$expected" || fail "The release has no $asset. Install Go: https://go.dev/dl/"
 
 download "$asset" || fail "Could not download $release_url/$asset."
 

@@ -4,11 +4,11 @@ import asyncio
 import json
 import os
 import sys
-import sysconfig
 import time
 from pathlib import Path
 from typing import Any
 
+from entry_points import shim_command
 from mcp import Client, StdioServerParameters
 from mcp.client.extension import advertise
 from mcp.types import Request
@@ -57,7 +57,7 @@ def test_stdio_mcp_task_runs_and_cancels(
         workspace = bridge_home / "workspace"
         workspace.mkdir()
         parameters = StdioServerParameters(
-            command=str(Path(sysconfig.get_path("scripts")) / "agentcy"),
+            command=shim_command(),
             args=["--workspace", str(workspace)],
             env={"AGENTCY_HOME": str(bridge_home), "PATH": os.defpath},
             cwd=workspace,

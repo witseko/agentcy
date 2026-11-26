@@ -65,5 +65,100 @@ human holds no token, does not count toward the 17 participant slots, and cannot
 Its messages wake listeners like any other message. There is no waiting read: poll
 `operator_show` with the last `cursor`.
 
-Regenerate the schema after a model change:
+The core that serves this protocol is Go (`internal/wire` validates every request). While the
+Python reference exists, a protocol change goes into both cores. Regenerate the schema from the
+Python models after the change:
 `uv run python -m agentcy.conversations.operator_models > protocol/operator.v1.schema.json`
+`tests/conversations/test_operator_contract.py` fails when the schema drifts from the Python
+models. `go test ./internal/wire` checks that the Go validator accepts every example and gives
+every case its recorded decision.
+
+# Member protocol
+
+The stdio shim of each chat (`agentcy --workspace DIR`) sends member requests to the core
+(`agentcy core`) over the same Unix socket, `core.sock` in the bridge data directory. Each
+request uses a new connection. The shim writes one JSON line and reads one JSON line:
+`{"result": ...}` or `{"error": "..."}`. The core reads at most 128 KiB for a request line
+(`MAX_REQUEST`) and the shim reads at most 2 MiB for a response line (`MAX_RESPONSE`). A
+request line over the cap, or without a final newline, gets the error `Request exceeds size
+limit`.
+
+The core answers `Invalid bridge arguments` for any request that fails validation: bad JSON,
+a missing, unknown, or mistyped field, or a value outside its limits. The message never
+repeats the input. The core answers `Operator key rejected` when an `operator_*` request has a
+missing or wrong `key`. Both strings are part of the contract, and the terminal UI matches them.
+A failed store or file operation gets `Core operation failed`. Other errors carry a message
+from the core, such as `Request exceeds size limit`.
+
+Three files pin the request side of the protocol:
+
+| File | Content |
+| --- | --- |
+| [member.v1.schema.json](member.v1.schema.json) | JSON schema of the 20 request actions: the 19 generated from the models in `agentcy.conversations.models`, plus `listen`, added by hand (see "Go core only" below). It shows fields, types, and limits. It cannot show the rules below, so use the cases for them. |
+| [member.v1.cases.json](member.v1.cases.json) | Accept and reject cases, derived by running the real validator, never written by hand. |
+| `tests/conversations/test_member_contract.py` | Fails when the schema drifts from the models, and replays every case against the validator the core uses. `internal/wire/cases_test.go` replays them against the Go validator. |
+
+Each case is `{"action", "name", "request" or "raw", "valid", "normalised"}`. `action` is the
+action under test, or `protocol` for the request as a whole. `request` is a parsed JSON value.
+`raw` is JSON text for inputs that a parsed value cannot show, such as duplicate keys or `NaN`.
+`valid` is the decision. For a valid case, `normalised` is the request after validation, dumped
+back to JSON: stripped text and filled defaults. When it is absent, it equals `request`.
+
+Rules that the schema does not show, and that the cases cover:
+
+- Lengths count code points, not bytes or UTF-16 units.
+- Names (`Label`) and message texts (`Body`) are stripped of Unicode White_Space first, then
+  checked for length. Pydantic does not strip `\x1c` to `\x1f`: they stay and the check rejects them.
+- A name must be in NFKC form and must not hold control, format, surrogate, private-use,
+  unassigned, line separator, or paragraph separator characters. The core does not reject
+  `Human` or `You` here: the conversation store does.
+- A body rejects control characters except newline, tab, and carriage return.
+- Keys (`token`, `code`, `submission_id`) and `directory` are not stripped or character-checked.
+- Patterns are anchored to the whole text: a trailing newline does not match.
+- `after` accepts numeric strings, integral floats, and booleans. `wait_seconds`, token counts,
+  budgets, `reply_to`, and the minute fields accept integers only. Booleans accept the strings
+  `true`, `yes`, `on`, `1`, `t`, `y` and their negatives in any case, and the integers 0 and 1.
+- Unknown fields are rejected. A repeated key keeps its last value.
+- `create` needs an invitee or `open_invite`, and `deadline_minutes` needs `sealed`.
+
+[operator.v1.cases.json](operator.v1.cases.json) holds the same kind of cases for the 17
+`operator_*` actions, and `tests/conversations/test_operator_cases.py` replays them through
+the core's own handler. All cases use the key `fake-operator-key-0001` as the core's key. A
+case adds `error`, the string the core answers, when the core rejects the line. The order of the
+checks decides that string:
+
+1. A line that is not one JSON object with a known action gets `Invalid bridge arguments`.
+2. A `key` that is missing, not a string, empty, or longer than 128 code points gets
+   `Operator key rejected`, even when other fields are also bad.
+3. Any other bad field, or a broken rule, gets `Invalid bridge arguments`, even with a wrong key.
+4. A well-formed key that differs from the core's key gets `Operator key rejected`. Such a case
+   has `valid: true`, because the validator accepts it.
+
+`version` accepts the integer 1 and every JSON value that Python treats as equal to 1: `1.0`,
+`1e0`, and `true`. It rejects `"1"`. `directory` must start with `/` and must not hold NUL.
+
+### Go core only: `listen`
+
+`listen` exists only in the Go core (`agentcy core`); the Python core does not know it.
+It takes the fields of `read`, but `wait_seconds` is required and runs from 1 to 45. The
+core runs the waiting read exactly as `read` with that wait, then builds the caller's
+status, and answers `{"page": <the read result>, "status": <the status result>}`. A shim
+sends one exchange instead of a read and a status.
+
+It is additive. Old shims never send it and keep working against the Go core. A Go shim
+that gets `Invalid bridge arguments` for a `listen` (the answer of the Python core, or of
+an older Go core, to an unknown action) falls back to `read` and `status` for the rest of
+its process. The Python contract test checks that the Python validator rejects every
+`listen` case.
+
+The `listen` cases were derived from the `read` cases by renaming the action, giving each
+case without a wait a `wait_seconds` of 45 unless the case is about the missing wait, and
+adding the cases for the 1 second lower bound. Their decisions and normalised dumps come
+from the Go validator (`wire.DecodeRequest`). The `listen` entry of the schema was written by
+hand from the `read` entry. Regenerating the schema from the Python models drops it, so add
+it back.
+
+Regenerate the schema after a model change in the Python reference:
+`uv run python -m agentcy.conversations.models > protocol/member.v1.schema.json`
+The cases are not regenerated by a command: change a case only when the rule it pins changes on
+purpose, and check each changed `valid` and `normalised` against the validator.

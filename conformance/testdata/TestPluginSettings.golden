@@ -1,0 +1,70 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Plugins", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Plugins: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Plugins\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead lists the configured plugins
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "plugins": [
+      {
+        "name": "alpha",
+        "model": "alpha/model"
+      },
+      {
+        "name": "zeta",
+        "model": "zeta/model"
+      }
+    ]
+  }
+}
+
+== 3. operator lists the configured plugins
+-> {"action": "operator_plugins", "key": "<operator-key>", "version": 1}
+<- {
+  "result": {
+    "plugins": [
+      {
+        "name": "alpha",
+        "model": "alpha/model"
+      },
+      {
+        "name": "zeta",
+        "model": "zeta/model"
+      }
+    ]
+  }
+}
+
+== 4. a group-readable plugins.json is refused
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Plugin configuration must be a private file"
+}
+
+== 5. a relative plugin command is refused
+-> {"action": "operator_plugins", "key": "<operator-key>", "version": 1}
+<- {
+  "error": "Invalid fresh-run plugin configuration"
+}
+
+== 6. invalid JSON is refused
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid fresh-run plugin configuration"
+}
+

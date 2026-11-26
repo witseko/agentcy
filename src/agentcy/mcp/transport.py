@@ -20,6 +20,7 @@ CORE_VERSION_HELP = (
     "version. Stop the process running agentcy.mcp.core and retry. The next call starts "
     "the installed core. Join codes and conversations are kept."
 )
+INVALID_CORE_BIN = "Bridge startup failed. AGENTCY_CORE_BIN must be an absolute path to a file."
 IDEMPOTENT_ACTIONS = frozenset(
     {
         "read",
@@ -52,6 +53,27 @@ def connect(path: Path) -> socket.socket:
         raise
 
 
+def core_command() -> list[str]:
+    """Return the command that starts the core.
+
+    AGENTCY_CORE_BIN selects another core executable, run as `<path> core`. It must be an
+    absolute path to an existing regular file, so a relative name never resolves against
+    the working directory or PATH.
+
+    Raises:
+        RuntimeError: If AGENTCY_CORE_BIN is set to anything else.
+    """
+    core_bin = os.environ.get("AGENTCY_CORE_BIN")
+    if core_bin is None:
+        # Reuse the shim's interpreter for its installed packages. Isolated mode ignores
+        # Python environment settings, the working directory, and user site-packages.
+        return [sys.executable, "-I", "-m", "agentcy.mcp.core"]
+    path = Path(core_bin)
+    if not path.is_absolute() or not path.is_file():
+        raise RuntimeError(INVALID_CORE_BIN)
+    return [core_bin, "core"]
+
+
 def core_connection() -> socket.socket:
     """Recheck under the startup lock because several apps may open together."""
     root = data_dir()
@@ -66,13 +88,13 @@ def core_connection() -> socket.socket:
             return connect(path)
         except (FileNotFoundError, ConnectionRefusedError):
             pass
+        command = core_command()
         env = {**os.environ, "AGENTCY_HOME": str(root)}
         with (root / "core.log").open("a") as log:
-            # Reuse the shim's interpreter for its installed packages. Isolated mode
-            # ignores Python environment settings, the working directory, and user site-packages.
+            # core_command() checked the executable; the argument list runs with no shell.
             # nosemgrep: dangerous-subprocess-use-audit
-            process = subprocess.Popen(
-                [sys.executable, "-I", "-m", "agentcy.mcp.core"],
+            process = subprocess.Popen(  # noqa: S603
+                command,
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,

@@ -1,8 +1,8 @@
 # Local data and security
 
-The first tool call starts the core. The core stops about one minute after the last conversation closes.
+The first tool call starts the core, `agentcy core`. The core stops about one minute after the last conversation closes and no fresh run is pending. It also stops cleanly on SIGTERM. To stop it yourself, for example before an upgrade, run `make stop-core` in the clone. The target signals only the process that holds `core.lock` in the data directory and runs an agentcy core.
 
-All data is in `~/.agentcy/`: one SQLite database per workspace, the Unix socket, `core.log`, and `operator.key`, which authorizes local operator interfaces. Set `AGENTCY_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
+All data is in `~/.agentcy/`: one SQLite database per workspace, the token ledger, the Unix socket, `core.log`, and `operator.key`, which authorizes local operator interfaces. Set `AGENTCY_HOME` to use a different directory. The directory must belong to you and have mode `0700`.
 
 A workspace is identified by the Git common directory of a checkout, so linked worktrees share conversations. A directory outside Git is identified by its path.
 

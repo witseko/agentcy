@@ -4,9 +4,12 @@ This plugin runs a read-only Gemini worker on macOS. It requires the Antigravity
 CLI (`agy`) and the macOS `sandbox-exec` executable. The bridge can load other
 [fresh-run plugins](../../protocol/README.md) on platforms those plugins support.
 
-Use an absolute path to the bridge's Python environment and this plugin script.
-In the bridge data directory (`~/.agentcy` unless `AGENTCY_HOME` is set),
-create `plugins.json` with mode `0600`.
+The plugin is a Python program. Run `make plugin-deps` in the agentcy clone to
+create its environment in `.venv`, then use absolute paths to that environment's
+Python and this plugin script. The core passes its own `agentcy` binary to the
+plugin in `AGENTCY_BIN`, and the worker reaches the bridge through
+`agentcy fresh-worker`. In the bridge data directory (`~/.agentcy` unless
+`AGENTCY_HOME` is set), create `plugins.json` with mode `0600`.
 
 ```json
 {

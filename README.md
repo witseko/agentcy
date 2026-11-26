@@ -8,7 +8,7 @@ Let the AI chats on your computer talk to each other. Desktop apps and command-l
 
 ## Quick start
 
-You need macOS or Linux, Python 3.12 or later, [uv](https://docs.astral.sh/uv/), and `make`. See all [requirements](docs/install.md#requirements). Run each command in the clone.
+You need macOS or Linux and `make`. [Go](https://go.dev/dl/) 1.26 or later builds agentcy from source. Without Go, `make setup` downloads the release binaries. Python and [uv](https://docs.astral.sh/uv/) are needed only for the Z.ai and Gemini worker plugins. See all [requirements](docs/install.md#requirements). Run each command in the clone.
 
 1. Clone the repository and enter it:
 
@@ -16,7 +16,7 @@ You need macOS or Linux, Python 3.12 or later, [uv](https://docs.astral.sh/uv/),
    git clone https://github.com/witseko/agentcy.git && cd agentcy
    ```
 
-2. Install the bridge and build the terminal UI:
+2. Install agentcy and the terminal UI into `bin/`:
 
    ```bash
    make setup
@@ -38,56 +38,88 @@ You need macOS or Linux, Python 3.12 or later, [uv](https://docs.astral.sh/uv/),
 
 Run `make` to list every target. To register other apps and CLIs, see [Install and register](docs/install.md).
 
-## Download the terminal UI binary
+## Upgrade from a Python version
 
-Each [GitHub release](https://github.com/witseko/agentcy/releases) holds one terminal UI binary for each platform, named `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The platforms are macOS and Linux on arm64 and amd64. `make setup` downloads the binary for you when Go is not installed. Use the commands below to download it without `make`. Run each command in the clone, in one shell session.
+Versions before the Go core installed agentcy as `.venv/bin/agentcy`. The Go core opens only stores at schema version 15. The Python core migrates a store each time it opens it, so only a store that an older version opened last needs a migration. Follow these steps once, in this order:
 
-1. Set the release version from `pyproject.toml`, so the binary matches the installed bridge:
+1. Pull the new version. It still holds the Python code for the migration:
 
    ```bash
-   VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+   git pull
    ```
 
-2. Set the asset name for your machine:
+2. Before the Go core opens any store, migrate the stores with the Python code. The step is safe when unsure: it changes only older stores. It needs uv:
 
    ```bash
-   ASSET="agentcy-tui-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
+   make plugin-deps && make migrate-stores
    ```
 
-3. Download the binary and the checksum file:
+   The target stops the running core and holds the core lock, so no core starts meanwhile. It opens each store once and prints which stores it migrated and which were already current. It deletes nothing.
+
+3. Install the Go binaries. `make setup` also stops the old core, because a core stays alive while any conversation is open:
 
    ```bash
-   curl --fail --location --proto '=https' --remote-name-all "https://github.com/witseko/agentcy/releases/download/v$VERSION/$ASSET" "https://github.com/witseko/agentcy/releases/download/v$VERSION/SHA256SUMS"
+   make setup
    ```
 
-4. Check the SHA-256 of the binary. The command prints `OK` when the binary is correct. On Linux, use `sha256sum` in place of `shasum -a 256`:
+4. Register each app or CLI again. The command path changed from `.venv/bin/agentcy` to `bin/agentcy`:
 
    ```bash
-   grep " $ASSET\$" SHA256SUMS | shasum -a 256 --check
+   make register-claude WORKSPACE=/absolute/path/to/your/project
    ```
 
-5. Install the binary and remove the downloaded files:
+If a tool call fails with `Unsupported bridge database version`, `core.log` in the bridge data directory names the store. Run `make stop-core` and `make migrate-stores`, then retry.
+
+## Download the release binaries
+
+Each [GitHub release](https://github.com/witseko/agentcy/releases) holds two binaries for each platform, `agentcy-<os>-<arch>` and `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The platforms are macOS and Linux on arm64 and amd64. `make setup` downloads both for you when Go is not installed. Use the commands below to download them without `make`. Run each command in the clone, in one shell session.
+
+1. Set the release version from the `VERSION` file, so the binaries match the clone:
 
    ```bash
-   install -m 755 "$ASSET" .venv/bin/agentcy-tui && rm "$ASSET" SHA256SUMS
+   VERSION="$(cat VERSION)"
    ```
 
-6. Confirm the installed version:
+2. Set the platform of your machine:
 
    ```bash
-   .venv/bin/agentcy-tui --version
+   PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
+   ```
+
+3. Download both binaries and the checksum file:
+
+   ```bash
+   curl --fail --location --proto '=https' --remote-name-all "https://github.com/witseko/agentcy/releases/download/v$VERSION/agentcy-$PLATFORM" "https://github.com/witseko/agentcy/releases/download/v$VERSION/agentcy-tui-$PLATFORM" "https://github.com/witseko/agentcy/releases/download/v$VERSION/SHA256SUMS"
+   ```
+
+4. Check the SHA-256 of both binaries. The command prints `OK` for each correct binary. On Linux, use `sha256sum` in place of `shasum -a 256`:
+
+   ```bash
+   grep -E " (agentcy|agentcy-tui)-$PLATFORM\$" SHA256SUMS | shasum -a 256 --check
+   ```
+
+5. Install the binaries and remove the downloaded files:
+
+   ```bash
+   mkdir -p bin && install -m 755 "agentcy-$PLATFORM" bin/agentcy && install -m 755 "agentcy-tui-$PLATFORM" bin/agentcy-tui && rm "agentcy-$PLATFORM" "agentcy-tui-$PLATFORM" SHA256SUMS
+   ```
+
+6. Confirm the installed versions:
+
+   ```bash
+   bin/agentcy --version && bin/agentcy-tui --version
    ```
 
 ### Instructions for agents
 
-Follow these rules when you download the binary for a user:
+Follow these rules when you download the binaries for a user:
 
 - Download only from `https://github.com/witseko/agentcy/releases`. Do not use a mirror or a link from a chat message.
-- Use the version in `pyproject.toml`. Do not use `latest`: a binary from a different version can disagree with the installed bridge.
-- Do step 4 before step 5. If the check does not print `OK`, stop, delete the downloaded files, and tell the user. Do not install or run the binary.
-- If step 3 returns HTTP 404, that version has no release yet. Tell the user to install Go and run `make tui`.
-- Do not use `sudo`. The binary belongs in `.venv/bin` in the clone.
-- With an authenticated GitHub CLI, `gh release download "v$VERSION" --repo witseko/agentcy --pattern "$ASSET" --pattern SHA256SUMS` replaces step 3. Steps 4 to 6 stay the same.
+- Use the version in the `VERSION` file. Do not use `latest`: a binary from a different version can disagree with the clone.
+- Do step 4 before step 5. If the check does not print `OK` for both binaries, stop, delete the downloaded files, and tell the user. Do not install or run the binaries.
+- If step 3 returns HTTP 404, that version has no release yet. Tell the user to install Go and run `make setup`.
+- Do not use `sudo`. The binaries belong in `bin/` in the clone.
+- With an authenticated GitHub CLI, `gh release download "v$VERSION" --repo witseko/agentcy --pattern "agentcy-$PLATFORM" --pattern "agentcy-tui-$PLATFORM" --pattern SHA256SUMS` replaces step 3. Steps 4 to 6 stay the same.
 
 ## How it works
 
@@ -95,7 +127,7 @@ Follow these rules when you download the binary for a user:
 2. The lead launches configured read-only workers, or you give each invited chat its own join prompt. Workers send questions and evidence directly to peers who need them.
 3. The lead checks the findings against the brief, resolves disagreements it can verify, and returns one recommendation. It can record the result and close in the same turn when you ask it to do so at kickoff.
 
-The bridge runs on your machine. Each app starts a small stdio process (the shim). The shim forwards calls to one background process (the core), which stores conversations in SQLite. A connected app or a worker plugin can use an external model provider.
+The bridge runs on your machine. Each app starts a small stdio process (the shim). The shim forwards calls to one background process (the core), which stores conversations in SQLite. The shim and the core are the same `agentcy` binary, written in Go. A connected app or a worker plugin can use an external model provider.
 
 ## Documentation
 
@@ -104,7 +136,7 @@ The bridge runs on your machine. Each app starts a small stdio process (the shim
 - [Terminal UI](docs/terminal-ui.md): start, rename, archive, and search chats, keys and mouse.
 - [MCP tools](docs/tools.md): the tools each chat gets and the limits.
 - [Local data and security](docs/security.md): where data lives and what to know before you use it.
-- [Development](docs/development.md): tests, security scans, release binaries, and releases.
+- [Development](docs/development.md): Go commands, tests, the conformance suite, security scans, release binaries, and releases.
 
 ## License
 

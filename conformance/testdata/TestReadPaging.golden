@@ -1,0 +1,480 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Paging", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Paging: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Paging\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Paging",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. worker posts a note to the lead
+-> {"action": "post", "body": "Hello lead", "submission_id": "submission-1", "to": "Lead", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 4. lead posts addressed note 1
+-> {"action": "post", "body": "Note 1 for nobody", "submission_id": "submission-2", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 5. lead posts addressed note 2
+-> {"action": "post", "body": "Note 2 for nobody", "submission_id": "submission-3", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 6. lead posts addressed note 3
+-> {"action": "post", "body": "Note 3 for nobody", "submission_id": "submission-4", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 7. lead posts addressed note 4
+-> {"action": "post", "body": "Note 4 for nobody", "submission_id": "submission-5", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 5
+  }
+}
+
+== 8. lead posts addressed note 5
+-> {"action": "post", "body": "Note 5 for nobody", "submission_id": "submission-6", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 6
+  }
+}
+
+== 9. lead posts addressed note 6
+-> {"action": "post", "body": "Note 6 for nobody", "submission_id": "submission-7", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 7
+  }
+}
+
+== 10. lead posts addressed note 7
+-> {"action": "post", "body": "Note 7 for nobody", "submission_id": "submission-8", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 8
+  }
+}
+
+== 11. lead posts addressed note 8
+-> {"action": "post", "body": "Note 8 for nobody", "submission_id": "submission-9", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 9
+  }
+}
+
+== 12. lead posts addressed note 9
+-> {"action": "post", "body": "Note 9 for nobody", "submission_id": "submission-10", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 10
+  }
+}
+
+== 13. lead posts addressed note 10
+-> {"action": "post", "body": "Note 10 for nobody", "submission_id": "submission-11", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 11
+  }
+}
+
+== 14. lead posts addressed note 11
+-> {"action": "post", "body": "Note 11 for nobody", "submission_id": "submission-12", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 12
+  }
+}
+
+== 15. lead posts addressed note 12
+-> {"action": "post", "body": "Note 12 for nobody", "submission_id": "submission-13", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 13
+  }
+}
+
+== 16. lead posts addressed note 13
+-> {"action": "post", "body": "Note 13 for nobody", "submission_id": "submission-14", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 14
+  }
+}
+
+== 17. lead posts addressed note 14
+-> {"action": "post", "body": "Note 14 for nobody", "submission_id": "submission-15", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 15
+  }
+}
+
+== 18. lead posts addressed note 15
+-> {"action": "post", "body": "Note 15 for nobody", "submission_id": "submission-16", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 16
+  }
+}
+
+== 19. lead posts addressed note 16
+-> {"action": "post", "body": "Note 16 for nobody", "submission_id": "submission-17", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 17
+  }
+}
+
+== 20. lead posts addressed note 17
+-> {"action": "post", "body": "Note 17 for nobody", "submission_id": "submission-18", "to": "Lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 18
+  }
+}
+
+== 21. lead posts an unaddressed note last
+-> {"action": "post", "body": "For everyone", "submission_id": "submission-19", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 19
+  }
+}
+
+== 22. worker reads the first page
+-> {"action": "read", "after": 1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Note 1 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Note 2 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Note 3 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 5,
+        "label": "Lead",
+        "body": "Note 4 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 6,
+        "label": "Lead",
+        "body": "Note 5 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 7,
+        "label": "Lead",
+        "body": "Note 6 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 8,
+        "label": "Lead",
+        "body": "Note 7 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 9,
+        "label": "Lead",
+        "body": "Note 8 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 10,
+        "label": "Lead",
+        "body": "Note 9 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 11,
+        "label": "Lead",
+        "body": "Note 10 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 12,
+        "label": "Lead",
+        "body": "Note 11 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 13,
+        "label": "Lead",
+        "body": "Note 12 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 14,
+        "label": "Lead",
+        "body": "Note 13 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 15,
+        "label": "Lead",
+        "body": "Note 14 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 16,
+        "label": "Lead",
+        "body": "Note 15 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 17,
+        "label": "Lead",
+        "body": "Note 16 for nobody",
+        "to": "Lead"
+      }
+    ],
+    "more": true,
+    "cursor": 17,
+    "wake": true
+  }
+}
+
+== 23. worker reads the next page
+-> {"action": "read", "after": 17, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 18,
+        "label": "Lead",
+        "body": "Note 17 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 19,
+        "label": "Lead",
+        "body": "For everyone"
+      }
+    ],
+    "more": false,
+    "cursor": 19,
+    "wake": true
+  }
+}
+
+== 24. worker reads from zero: 16 messages and more
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Worker",
+        "body": "Hello lead",
+        "to": "Lead"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Note 1 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Note 2 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 4,
+        "label": "Lead",
+        "body": "Note 3 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 5,
+        "label": "Lead",
+        "body": "Note 4 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 6,
+        "label": "Lead",
+        "body": "Note 5 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 7,
+        "label": "Lead",
+        "body": "Note 6 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 8,
+        "label": "Lead",
+        "body": "Note 7 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 9,
+        "label": "Lead",
+        "body": "Note 8 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 10,
+        "label": "Lead",
+        "body": "Note 9 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 11,
+        "label": "Lead",
+        "body": "Note 10 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 12,
+        "label": "Lead",
+        "body": "Note 11 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 13,
+        "label": "Lead",
+        "body": "Note 12 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 14,
+        "label": "Lead",
+        "body": "Note 13 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 15,
+        "label": "Lead",
+        "body": "Note 14 for nobody",
+        "to": "Lead"
+      },
+      {
+        "id": 16,
+        "label": "Lead",
+        "body": "Note 15 for nobody",
+        "to": "Lead"
+      }
+    ],
+    "more": true,
+    "cursor": 16,
+    "wake": true,
+    "brief": "Paging",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 25. a cursor beyond the end
+-> {"action": "read", "after": 1000, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [],
+    "more": false,
+    "cursor": 1000,
+    "wake": false
+  }
+}
+
+== 26. a negative cursor fails validation
+-> {"action": "read", "after": -1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 27. a cursor above the 63-bit limit fails validation
+-> {"action": "read", "after": 9223372036854775808, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 28. a fractional cursor fails validation
+-> {"action": "read", "after": 1.5, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 29. a whole float cursor is accepted
+-> {"action": "read", "after": 18.0, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 19,
+        "label": "Lead",
+        "body": "For everyone"
+      }
+    ],
+    "more": false,
+    "cursor": 19,
+    "wake": true
+  }
+}
+

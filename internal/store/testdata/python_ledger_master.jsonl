@@ -1,0 +1,3 @@
+["table", "model_usage", "model_usage", "CREATE TABLE model_usage (\n\tworkspace VARCHAR NOT NULL, \n\troom VARCHAR NOT NULL, \n\tslot INTEGER NOT NULL, \n\tmodel VARCHAR NOT NULL, \n\tinput_tokens INTEGER NOT NULL, \n\toutput_tokens INTEGER NOT NULL, \n\ttotal_tokens INTEGER NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tupdated INTEGER NOT NULL, \n\tPRIMARY KEY (workspace, room, slot)\n)"]
+["index", "sqlite_autoindex_model_usage_1", "model_usage", null]
+["index", "model_usage_model_updated", "model_usage", "CREATE INDEX model_usage_model_updated ON model_usage (model, updated)"]

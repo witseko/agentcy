@@ -1,0 +1,491 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Budgets", "initiator": "Lead", "initiator_model": "model-a", "invitees": ["Alpha", "Bravo", "Plain"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Alpha": "<code-1>",
+      "Bravo": "<code-2>",
+      "Plain": "<code-3>"
+    },
+    "join_prompt": "Budgets: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Budgets\".",
+    "role": "lead",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead",
+      "Plain": "worker"
+    }
+  }
+}
+
+== 2. Alpha joins on model-a
+-> {"action": "join", "code": "<code-1>", "model": "model-a", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Alpha",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead",
+      "Plain": "worker"
+    },
+    "brief": "Budgets",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Bravo joins on model-b (case-insensitive match)
+-> {"action": "join", "code": "<code-2>", "model": "model-b", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Bravo",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead",
+      "Plain": "worker"
+    },
+    "brief": "Budgets",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. Plain joins without a model
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Plain",
+    "role": "worker",
+    "roster": {
+      "Alpha": "worker",
+      "Bravo": "worker",
+      "Lead": "lead",
+      "Plain": "worker"
+    },
+    "brief": "Budgets",
+    "token": "<token-4>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 5. Alpha reports heavy usage
+-> {"action": "report_usage", "input_tokens": 6000, "output_tokens": 1500, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alpha",
+    "usage": {
+      "conversation_tokens": 7500,
+      "input_tokens": 6000,
+      "output_tokens": 1500,
+      "model_tokens_used": 7500,
+      "estimated_tokens": 2,
+      "source": "reported",
+      "actual_tokens": 7500,
+      "model": "model-a",
+      "initial_tokens": 10000,
+      "remaining_tokens": 2500,
+      "used_percent": 75.0,
+      "remaining_percent": 25.0,
+      "status": "warning"
+    },
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 75.0,
+      "overloaded": [
+        "Alpha",
+        "Lead"
+      ],
+      "preferred": [
+        "Plain",
+        "Bravo"
+      ],
+      "recommendation": "Token balance: Alpha is at 75.0% of budget (25.0% left) while Plain is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Plain."
+    }
+  }
+}
+
+== 6. Bravo reports light usage
+-> {"action": "report_usage", "input_tokens": 9000, "model": "model-b", "output_tokens": 2000, "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Bravo",
+    "usage": {
+      "conversation_tokens": 11000,
+      "input_tokens": 9000,
+      "output_tokens": 2000,
+      "model_tokens_used": 11000,
+      "estimated_tokens": 2,
+      "source": "reported",
+      "actual_tokens": 11000,
+      "model": "model-b",
+      "initial_tokens": 20000,
+      "remaining_tokens": 9000,
+      "used_percent": 55.0,
+      "remaining_percent": 45.0,
+      "status": "warning"
+    },
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 75.0,
+      "overloaded": [
+        "Alpha",
+        "Lead",
+        "Bravo"
+      ],
+      "preferred": [
+        "Plain",
+        "Bravo"
+      ],
+      "recommendation": "Token balance: Alpha is at 75.0% of budget (25.0% left) while Plain is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Plain."
+    }
+  }
+}
+
+== 7. Plain posts, adding an estimate
+-> {"action": "post", "body": "Estimated usage only for this member.", "submission_id": "submission-1", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 8. lead status with usage and token balance
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "model_tokens_used": 7500,
+          "estimated_tokens": 0,
+          "source": "estimated",
+          "model": "model-a",
+          "initial_tokens": 10000,
+          "remaining_tokens": 2500,
+          "used_percent": 75.0,
+          "remaining_percent": 25.0,
+          "status": "warning"
+        }
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 7500,
+          "input_tokens": 6000,
+          "output_tokens": 1500,
+          "model_tokens_used": 7500,
+          "estimated_tokens": 2,
+          "source": "reported",
+          "actual_tokens": 7500,
+          "model": "model-a",
+          "initial_tokens": 10000,
+          "remaining_tokens": 2500,
+          "used_percent": 75.0,
+          "remaining_percent": 25.0,
+          "status": "warning"
+        }
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 11000,
+          "input_tokens": 9000,
+          "output_tokens": 2000,
+          "model_tokens_used": 11000,
+          "estimated_tokens": 2,
+          "source": "reported",
+          "actual_tokens": 11000,
+          "model": "model-b",
+          "initial_tokens": 20000,
+          "remaining_tokens": 9000,
+          "used_percent": 55.0,
+          "remaining_percent": 45.0,
+          "status": "warning"
+        }
+      },
+      "Plain": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1,
+        "usage": {
+          "conversation_tokens": 52,
+          "input_tokens": 2,
+          "output_tokens": 50,
+          "model_tokens_used": 52,
+          "estimated_tokens": 52,
+          "source": "estimated",
+          "initial_tokens": 5000,
+          "remaining_tokens": 4948,
+          "used_percent": 1.0,
+          "remaining_percent": 99.0,
+          "status": "ok"
+        }
+      }
+    },
+    "participant": "Lead",
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 74.0,
+      "overloaded": [
+        "Alpha",
+        "Lead",
+        "Bravo"
+      ],
+      "preferred": [
+        "Plain",
+        "Bravo"
+      ],
+      "recommendation": "Token balance: Alpha is at 75.0% of budget (25.0% left) while Plain is at 1.0% (99.0% left). Prefer assigning new tasks or handoffs to Plain."
+    },
+    "token_usage": {
+      "total_tokens": 18552,
+      "actual_tokens": 18500,
+      "estimated_tokens": 52,
+      "actual_members": 2,
+      "estimated_members": 1
+    }
+  }
+}
+
+== 9. lead creates a second conversation
+-> {"action": "create", "brief": "Budgets two", "initiator": "Lead", "invitees": ["Gamma"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-5>",
+    "invitations": {
+      "Gamma": "<code-4>"
+    },
+    "join_prompt": "Budgets two: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Budgets two\".",
+    "role": "lead",
+    "roster": {
+      "Gamma": "worker",
+      "Lead": "lead"
+    }
+  }
+}
+
+== 10. Gamma joins on model-a
+-> {"action": "join", "code": "<code-4>", "model": "model-a", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "participant": "Gamma",
+    "role": "worker",
+    "roster": {
+      "Gamma": "worker",
+      "Lead": "lead"
+    },
+    "brief": "Budgets two",
+    "token": "<token-6>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 11. Gamma reports usage
+-> {"action": "report_usage", "input_tokens": 100, "output_tokens": 50, "token": "<token-6>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Gamma",
+    "usage": {
+      "conversation_tokens": 150,
+      "input_tokens": 100,
+      "output_tokens": 50,
+      "model_tokens_used": 7650,
+      "estimated_tokens": 3,
+      "source": "reported",
+      "actual_tokens": 150,
+      "model": "model-a",
+      "initial_tokens": 10000,
+      "remaining_tokens": 2350,
+      "used_percent": 76.5,
+      "remaining_percent": 23.5,
+      "status": "warning"
+    },
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 76.5,
+      "overloaded": [
+        "Gamma"
+      ],
+      "preferred": [
+        "Lead"
+      ],
+      "recommendation": "Token balance: Gamma is at 76.5% of budget (23.5% left) while Lead is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Lead."
+    }
+  }
+}
+
+== 12. the second lead's status shares the model-a ledger
+-> {"action": "status", "token": "<token-5>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "model_tokens_used": 0,
+          "estimated_tokens": 0,
+          "source": "estimated",
+          "initial_tokens": 5000,
+          "remaining_tokens": 5000,
+          "used_percent": 0.0,
+          "remaining_percent": 100.0,
+          "status": "ok"
+        }
+      },
+      "Gamma": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 150,
+          "input_tokens": 100,
+          "output_tokens": 50,
+          "model_tokens_used": 7650,
+          "estimated_tokens": 3,
+          "source": "reported",
+          "actual_tokens": 150,
+          "model": "model-a",
+          "initial_tokens": 10000,
+          "remaining_tokens": 2350,
+          "used_percent": 76.5,
+          "remaining_percent": 23.5,
+          "status": "warning"
+        }
+      }
+    },
+    "participant": "Lead",
+    "token_balance": {
+      "balanced": false,
+      "imbalance_gap_percent": 76.5,
+      "overloaded": [
+        "Gamma"
+      ],
+      "preferred": [
+        "Lead"
+      ],
+      "recommendation": "Token balance: Gamma is at 76.5% of budget (23.5% left) while Lead is at 0.0% (100.0% left). Prefer assigning new tasks or handoffs to Lead."
+    },
+    "token_usage": {
+      "total_tokens": 150,
+      "actual_tokens": 150,
+      "estimated_tokens": 0,
+      "actual_members": 1,
+      "estimated_members": 0
+    }
+  }
+}
+
+== 13. an unsafe tokens.json is ignored in status
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Alpha": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 7500,
+          "input_tokens": 6000,
+          "output_tokens": 1500,
+          "model_tokens_used": 7650,
+          "estimated_tokens": 2,
+          "source": "reported",
+          "actual_tokens": 7500,
+          "model": "model-a"
+        }
+      },
+      "Bravo": {
+        "role": "worker",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>",
+        "usage": {
+          "conversation_tokens": 11000,
+          "input_tokens": 9000,
+          "output_tokens": 2000,
+          "model_tokens_used": 11000,
+          "estimated_tokens": 2,
+          "source": "reported",
+          "actual_tokens": 11000,
+          "model": "model-b"
+        }
+      },
+      "Plain": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      }
+    },
+    "participant": "Lead",
+    "token_usage": {
+      "total_tokens": 18552,
+      "actual_tokens": 18500,
+      "estimated_tokens": 52,
+      "actual_members": 2,
+      "estimated_members": 1
+    }
+  }
+}
+
+== 14. an invalid tokens.json is ignored in report_usage
+-> {"action": "report_usage", "input_tokens": 7000, "output_tokens": 1500, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Alpha",
+    "usage": {
+      "conversation_tokens": 8500,
+      "input_tokens": 7000,
+      "output_tokens": 1500,
+      "model_tokens_used": 8650,
+      "estimated_tokens": 2,
+      "source": "reported",
+      "actual_tokens": 8500,
+      "model": "model-a"
+    }
+  }
+}
+

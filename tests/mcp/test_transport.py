@@ -22,6 +22,7 @@ def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.chdir(workspace)
     monkeypatch.setenv("AGENTCY_HOME", str(home))
     monkeypatch.setenv("PYTHONPATH", ".")
+    monkeypatch.delenv("AGENTCY_CORE_BIN", raising=False)
     connect = Mock(side_effect=[FileNotFoundError, FileNotFoundError, sentinel.connection])
     start = Mock(return_value=Mock(poll=Mock(return_value=None)))
     with monkeypatch.context() as launcher:
@@ -43,6 +44,47 @@ def test_cold_start_uses_isolated_python(monkeypatch: pytest.MonkeyPatch, tmp_pa
     no_user_site, *search_paths = probe.stdout.splitlines()
     assert no_user_site == "1"
     assert str(workspace) not in search_paths
+
+
+def cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Mock:
+    """Run one cold start against a missing socket and return the mocked process launcher."""
+    home = tmp_path / "bridge"
+    home.mkdir(mode=0o700)
+    monkeypatch.setenv("AGENTCY_HOME", str(home))
+    connect = Mock(side_effect=[FileNotFoundError, FileNotFoundError, sentinel.connection])
+    start = Mock(return_value=Mock(poll=Mock(return_value=None)))
+    monkeypatch.setattr(transport, "connect", connect)
+    monkeypatch.setattr(transport.subprocess, "Popen", start)
+    assert transport.core_connection() is sentinel.connection
+    return start
+
+
+def test_core_bin_selects_another_core(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An absolute path to a file starts that executable's core subcommand."""
+    core_bin = tmp_path / "agentcy"
+    core_bin.write_text("")
+    monkeypatch.setenv("AGENTCY_CORE_BIN", str(core_bin))
+    start = cold_start(monkeypatch, tmp_path)
+    start.assert_called_once()
+    assert start.call_args.args[0] == [str(core_bin), "core"]
+    assert "shell" not in start.call_args.kwargs
+
+
+@pytest.mark.parametrize("configured", ["agentcy", "./agentcy", "", "missing", "directory"])
+def test_core_bin_refuses_anything_but_an_absolute_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, configured: str
+) -> None:
+    """A relative, empty, missing, or directory path fails closed without starting a process."""
+    (tmp_path / "agentcy").write_text("")
+    (tmp_path / "directory").mkdir()
+    monkeypatch.chdir(tmp_path)
+    if configured in {"missing", "directory"}:
+        configured = str(tmp_path / configured)
+    monkeypatch.setenv("AGENTCY_CORE_BIN", configured)
+    with pytest.raises(RuntimeError) as error:
+        cold_start(monkeypatch, tmp_path)
+    assert str(error.value) == transport.INVALID_CORE_BIN
+    assert transport.subprocess.Popen.call_count == 0
 
 
 def test_exchange_retries_once_on_transient_disconnect_for_idempotent_calls(

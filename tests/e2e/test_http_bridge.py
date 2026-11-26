@@ -4,7 +4,6 @@ import asyncio
 import os
 import socket
 import subprocess
-import sysconfig
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
@@ -12,6 +11,7 @@ from pathlib import Path
 
 import httpx2
 import pytest
+from entry_points import shim_command
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -51,13 +51,12 @@ def http_bridge(bridge_home: Path) -> Iterator[str]:  # noqa: F811 - pytest fixt
     workspace = bridge_home / "workspace"
     workspace.mkdir()
     port = free_port()
-    command = Path(sysconfig.get_path("scripts")) / "agentcy"
     log_path = bridge_home / "http.log"
     with log_path.open("w") as log:
         # The test starts the project's own CLI with a fixed argument list and no shell.
         bridge = subprocess.Popen(  # noqa: S603
             [
-                str(command),
+                shim_command(),
                 "--workspace",
                 str(workspace),
                 "--http",

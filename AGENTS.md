@@ -13,6 +13,6 @@ Read [the design](DESIGN.md) before changing project behavior. It describes the 
 | Implementation milestones, security checks, compatibility, performance checks | [Delivery and acceptance](DESIGN.md#delivery-and-acceptance) |
 | Meaning of a term used in the design | [Glossary](DESIGN.md#glossary) |
 
-Read the applicable global guides in `~/.agents/guides/`. Use `code-quality.md` before writing or reviewing code and `security.md` before changing features. Finish with their checklists. For the Python core, also read `python.md`. For worker or database changes, read `backend.md`.
+Read the applicable global guides in `~/.agents/guides/`. Use `code-quality.md` before writing or reviewing code and `security.md` before changing features. Finish with their checklists. The core is Go (`cmd/`, `internal/`): also read `backend.md` and the [Go conventions](docs/development.md#go-conventions). `python.md` applies only to `plugins/`, `scripts/`, and the Python reference in `src/agentcy`, which the conformance and end-to-end tests compare against. Add no features to the Python reference.
 
 Keep provider-specific behavior in its plugin. Exercise shared behavior through the conversation or memory interface. When recording project knowledge, follow the existing folder indexes to the most specific relevant note and preserve its evidence trail.

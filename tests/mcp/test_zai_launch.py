@@ -30,10 +30,24 @@ def zai_plugin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModuleType:
     return plugin
 
 
+def worker_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, go_binary: bool) -> str | None:
+    """Name a Go agentcy executable in AGENTCY_BIN, or leave it unset for the Python worker."""
+    if not go_binary:
+        monkeypatch.delenv("AGENTCY_BIN", raising=False)
+        return None
+    binary = tmp_path.resolve() / "agentcy-bin" / "agentcy"
+    binary.parent.mkdir()
+    binary.touch(mode=0o700)
+    monkeypatch.setenv("AGENTCY_BIN", str(binary))
+    return str(binary)
+
+
+@pytest.mark.parametrize("go_binary", [False, True], ids=["python-worker", "go-worker"])
 def test_launch_preserves_installed_opencode_symlink_in_workspace(
-    zai_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    zai_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, go_binary: bool
 ) -> None:
     """Pass the absolute PATH launch name and safe-path MCP command to the sandbox."""
+    binary = worker_binary(monkeypatch, tmp_path, go_binary)
     bin_directory = tmp_path.resolve() / "bin"
     bin_directory.mkdir()
     target = bin_directory / "installed-opencode"
@@ -49,11 +63,16 @@ def test_launch_preserves_installed_opencode_symlink_in_workspace(
         assert cwd == checkout
         assert arguments[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert arguments[3] == str(bin_directory / "opencode")
+        exception = f"(require-not (literal {json.dumps(binary)}))"
+        assert (exception in arguments[2]) is go_binary
         assert "report brief progress updates to the lead periodically" in arguments[-1]
         assert not options.get("shell")
         assert env["PATH"] == str(bin_directory)
         config = Path(env["XDG_CONFIG_HOME"]) / "opencode" / "opencode.json"
         server = json.loads(config.read_text(encoding="utf-8"))["mcp"]["servers"]["agentcy"]
+        if binary is not None:
+            assert server["command"] == [binary, "fresh-worker", str(checkout)]
+            return
         assert server["command"] == [
             sys.executable,
             "-E",
@@ -103,3 +122,31 @@ def test_start_detaches_monitor_in_python_isolated_mode(
             "30",
         ]
     ]
+
+
+@pytest.mark.parametrize("kind", ["relative", "missing", "directory", "symlink"])
+def test_start_rejects_an_agentcy_bin_that_is_not_an_absolute_regular_file(
+    zai_plugin: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
+) -> None:
+    """Fail closed instead of configuring a worker command that cannot be trusted."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    target = tmp_path / "agentcy"
+    target.touch(mode=0o700)
+    link = tmp_path / "agentcy-link"
+    link.symlink_to(target)
+    values = {
+        "relative": "bin/agentcy",
+        "missing": str(tmp_path / "missing"),
+        "directory": str(checkout),
+        "symlink": str(link),
+    }
+    monkeypatch.setenv("AGENTCY_BIN", values[kind])
+    monkeypatch.setenv("ZAI_API_KEY", "unused-test-credential")
+    monkeypatch.setattr(zai_plugin, "find_on_path", lambda _: "/installed/bin/opencode")
+    monkeypatch.setattr(zai_plugin.subprocess, "Popen", lambda *_, **__: pytest.fail("started"))
+    bridge = (tmp_path / "bridge").resolve()
+
+    result = zai_plugin.start(ASSIGNMENT_ID, str(checkout), str(bridge), "code", MODEL, 30)
+
+    assert result == RunResult(state="failed")

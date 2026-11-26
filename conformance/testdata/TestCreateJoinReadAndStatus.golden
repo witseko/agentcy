@@ -1,0 +1,276 @@
+== 1. lead creates a conversation
+-> {"action": "create", "brief": "Review the retry behavior", "initiator": "Lead", "invitees": ["Reviewer", "Analyst"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Reviewer": "<code-1>",
+      "Analyst": "<code-2>"
+    },
+    "join_prompt": "Review the retry behavior: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review the retry behavior\".",
+    "role": "lead",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Reviewer": "worker"
+    }
+  }
+}
+
+== 2. reviewer joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Reviewer",
+    "role": "worker",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Reviewer": "worker"
+    },
+    "brief": "Review the retry behavior",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. the same code again names the taken slot
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invitation slot already taken: Reviewer"
+}
+
+== 4. lead posts
+-> {"action": "post", "body": "Please check", "submission_id": "submission-1", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 1
+  }
+}
+
+== 5. reviewer posts
+-> {"action": "post", "body": "I checked", "submission_id": "submission-2", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 2
+  }
+}
+
+== 6. lead posts again
+-> {"action": "post", "body": "Thanks", "submission_id": "submission-3", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 3
+  }
+}
+
+== 7. reviewer reads from zero
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Please check"
+      },
+      {
+        "id": 2,
+        "label": "Reviewer",
+        "body": "I checked"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Thanks"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "wake": true,
+    "brief": "Review the retry behavior",
+    "role": "worker",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Reviewer": "worker"
+    }
+  }
+}
+
+== 8. reviewer reads after the first message
+-> {"action": "read", "after": 1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Thanks"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "wake": true
+  }
+}
+
+== 9. reviewer reads with a numeric-string cursor
+-> {"action": "read", "after": "2", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Thanks"
+      }
+    ],
+    "more": false,
+    "cursor": 3,
+    "wake": true
+  }
+}
+
+== 10. lead reads status
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Reviewer": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Analyst": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 11. reviewer reads status
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Reviewer": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Analyst": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Reviewer"
+  }
+}
+
+== 12. analyst joins late and gets the initial page
+-> {"action": "join", "code": "<code-2>", "model": "test/model", "token_budget": 5000, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Analyst",
+    "role": "worker",
+    "roster": {
+      "Analyst": "worker",
+      "Lead": "lead",
+      "Reviewer": "worker"
+    },
+    "brief": "Review the retry behavior",
+    "token": "<token-3>",
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Please check"
+      },
+      {
+        "id": 2,
+        "label": "Reviewer",
+        "body": "I checked"
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "Thanks"
+      }
+    ],
+    "cursor": 3,
+    "more": false
+  }
+}
+
+== 13. lead reads status after every slot joined
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 2
+      },
+      "Reviewer": {
+        "role": "worker",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Analyst": {
+        "role": "worker",
+        "state": "joined",
+        "usage": {
+          "conversation_tokens": 15,
+          "input_tokens": 15,
+          "output_tokens": 0,
+          "model_tokens_used": 15,
+          "estimated_tokens": 15,
+          "source": "estimated",
+          "model": "test/model",
+          "initial_tokens": 5000,
+          "remaining_tokens": 4985,
+          "used_percent": 0.3,
+          "remaining_percent": 99.7,
+          "status": "ok"
+        }
+      }
+    },
+    "participant": "Lead",
+    "token_usage": {
+      "total_tokens": 169,
+      "actual_tokens": 0,
+      "estimated_tokens": 169,
+      "actual_members": 0,
+      "estimated_members": 3
+    }
+  }
+}
+

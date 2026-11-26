@@ -1,0 +1,267 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Validation", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Validation: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Validation\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. no action
+-> {"token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 3. an unknown action
+-> {"action": "explode", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 4. a numeric action
+-> {"action": 7, "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 5. an unknown field
+-> {"action": "status", "extra": 1, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 6. no workspace
+-> {"action": "status", "token": "<token-1>", "workspace": null}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 7. a short workspace
+-> {"action": "status", "token": "<token-1>", "workspace": "abc"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 8. an uppercase workspace
+-> {"action": "status", "token": "<token-1>", "workspace": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 9. an empty token
+-> {"action": "status", "token": "", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 10. a 129-character token
+-> {"action": "status", "token": "<129 characters starting \"tttttttttttt\">", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 11. a numeric token
+-> {"action": "status", "token": 5, "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 12. an unknown token
+-> {"action": "status", "token": "unknown", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 13. a 128-character token is valid but unknown
+-> {"action": "status", "token": "<128 characters starting \"tttttttttttt\">", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 14. join without a code
+-> {"action": "join", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 15. join with a 129-character code
+-> {"action": "join", "code": "<129 characters starting \"cccccccccccc\">", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 16. post without a submission ID
+-> {"action": "post", "body": "Hi", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 17. post with an empty submission ID
+-> {"action": "post", "body": "Hi", "submission_id": "", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. post without a body
+-> {"action": "post", "submission_id": "x", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 19. post with a numeric body
+-> {"action": "post", "body": 5, "submission_id": "x", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 20. post with a null kind
+-> {"action": "post", "body": "Hi", "kind": null, "submission_id": "x", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 21. post with a reassign kind
+-> {"action": "post", "body": "Hi", "kind": "reassign", "submission_id": "x", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 22. post with an event kind
+-> {"action": "post", "body": "Hi", "kind": "event", "submission_id": "x", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 23. create with a boolean as the brief
+-> {"action": "create", "brief": true, "initiator": "Lead", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 24. create with an invitee object missing its name
+-> {"action": "create", "brief": "B", "initiator": "Lead", "invitees": [{"role": "worker"}], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 25. create with an invitee object and an unknown field
+-> {"action": "create", "brief": "B", "initiator": "Lead", "invitees": [{"extra": 1, "name": "W"}], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 26. create with a lead invitee role
+-> {"action": "create", "brief": "B", "initiator": "Lead", "invitees": [{"name": "W", "role": "lead"}], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 27. create with a string open_invite
+-> {"action": "create", "brief": "B", "initiator": "Lead", "invitees": ["W"], "open_invite": "yes", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-2>",
+    "token": "<token-2>",
+    "invitations": {
+      "W": "<code-2>"
+    },
+    "join_prompt": "B: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"B\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "W": "worker"
+    },
+    "open_invite": {
+      "code": "<code-3>",
+      "join_prompt": "B - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"B - worker\"."
+    }
+  }
+}
+
+== 28. create with an integer open_invite
+-> {"action": "create", "brief": "B", "initiator": "Lead", "invitees": ["W"], "open_invite": 1, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-3>",
+    "token": "<token-3>",
+    "invitations": {
+      "W": "<code-4>"
+    },
+    "join_prompt": "B: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"B\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "W": "worker"
+    },
+    "open_invite": {
+      "code": "<code-5>",
+      "join_prompt": "B - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"B - worker\"."
+    }
+  }
+}
+
+== 29. create with a float token budget
+-> {"action": "create", "brief": "B", "initiator": "Lead", "initiator_token_budget": 10.5, "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 30. create with a string token budget
+-> {"action": "create", "brief": "B", "initiator": "Lead", "initiator_token_budget": "10", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 31. read with a boolean cursor
+-> {"action": "read", "after": true, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [],
+    "more": false,
+    "cursor": 1,
+    "wake": false
+  }
+}
+
+== 32. invite with a string reinvite
+-> {"action": "invite", "name": "X", "reinvite": "true", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown participant in this conversation"
+}
+
+== 33. open_invite with a null enabled
+-> {"action": "open_invite", "enabled": null, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 34. set_role with a null role
+-> {"action": "set_role", "name": "Worker", "role": null, "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 35. list_closed with a string archived
+-> {"action": "list_closed", "archived": "yes", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversations": []
+  }
+}
+
+== 36. read_closed with a numeric cursor string
+-> {"action": "read_closed", "after": "5", "conversation": "<room-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Unknown closed conversation in this workspace"
+}
+

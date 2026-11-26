@@ -1,0 +1,281 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Close me", "initiator": "Lead", "invitees": ["Worker", "Gone", "Unused"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>",
+      "Gone": "<code-2>",
+      "Unused": "<code-3>"
+    },
+    "join_prompt": "Close me: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Close me\".",
+    "role": "lead",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Unused": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Unused": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Close me",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. Gone joins
+-> {"action": "join", "code": "<code-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Gone",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Unused": "worker",
+      "Worker": "worker"
+    },
+    "brief": "Close me",
+    "token": "<token-3>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 4. lead retires Gone
+-> {"action": "retire", "name": "Gone", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Gone",
+    "retired": true
+  }
+}
+
+== 5. a worker cannot close
+-> {"action": "close", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can close the conversation"
+}
+
+== 6. a retired member cannot close
+-> {"action": "close", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You have been retired from this conversation"
+}
+
+== 7. lead closes with a summary
+-> {"action": "close", "summary": "  All checks passed.  ", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 8. closing again records nothing
+-> {"action": "close", "summary": "Second summary", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 9. a worker cannot post after close
+-> {"action": "post", "body": "Late", "submission_id": "submission-1", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 10. report_usage after close
+-> {"action": "report_usage", "input_tokens": 1, "output_tokens": 1, "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 11. set_role after close
+-> {"action": "set_role", "name": "Worker", "role": "co-lead", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 12. retire after close
+-> {"action": "retire", "name": "Worker", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 13. release after close
+-> {"action": "release", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Conversation is closed"
+}
+
+== 14. the worker reads the closed conversation
+-> {"action": "read", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Retired Gone.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "All checks passed."
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "brief": "Close me",
+    "role": "worker",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Unused": "worker",
+      "Worker": "worker"
+    },
+    "closed": true
+  }
+}
+
+== 15. status of a closed conversation
+-> {"action": "status", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": false,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "replied",
+        "idle_seconds": "<idle-seconds>",
+        "messages": 1
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Gone": {
+        "role": "worker",
+        "state": "retired"
+      },
+      "Unused": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Worker"
+  }
+}
+
+== 16. an invalid token is still refused after close
+-> {"action": "read", "token": "<token-4>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid participant token"
+}
+
+== 17. a worker cannot reopen
+-> {"action": "reopen", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Only a lead or co-lead can reopen the conversation"
+}
+
+== 18. a retired member cannot reopen
+-> {"action": "reopen", "token": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "You have been retired from this conversation"
+}
+
+== 19. lead reopens with a note
+-> {"action": "reopen", "note": "One more check", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 20. reopening again records nothing
+-> {"action": "reopen", "note": "Ignored", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "reopened": true
+  }
+}
+
+== 21. the unused code stays expired
+-> {"action": "join", "code": "<code-3>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid or expired invitation"
+}
+
+== 22. the worker posts again
+-> {"action": "post", "body": "Back to work", "submission_id": "submission-2", "token": "<token-2>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "message_id": 4
+  }
+}
+
+== 23. lead reads the full transcript
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Retired Gone.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "All checks passed."
+      },
+      {
+        "id": 3,
+        "label": "Lead",
+        "body": "One more check"
+      },
+      {
+        "id": 4,
+        "label": "Worker",
+        "body": "Back to work"
+      }
+    ],
+    "more": false,
+    "cursor": 4,
+    "wake": true,
+    "brief": "Close me",
+    "role": "lead",
+    "roster": {
+      "Gone": "worker",
+      "Lead": "lead",
+      "Unused": "worker",
+      "Worker": "worker"
+    }
+  }
+}
+

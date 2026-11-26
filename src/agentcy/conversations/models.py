@@ -1,7 +1,9 @@
 """Validate local bridge requests before they reach the conversation store."""
 
+import json
+import sys
 import unicodedata
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import (
     AfterValidator,
@@ -12,6 +14,7 @@ from pydantic import (
     TypeAdapter,
     model_validator,
 )
+from pydantic.json_schema import models_json_schema
 
 from agentcy.tokens.settings import ModelName, TokenBudget, TokenCount
 
@@ -316,3 +319,26 @@ MemberRequest = (
     | McpTaskCancel
 )
 REQUEST = TypeAdapter(Annotated[MemberRequest, Field(discriminator="action")])
+
+
+def contract_schema() -> dict:
+    """Build the JSON schema of every member request for protocol/.
+
+    Pydantic treats `action` as optional because each model gives it a default, but the
+    discriminated union needs it, so the schema marks it as required and drops the default.
+    """
+    members = list(get_args(MemberRequest))
+    references, schema = models_json_schema(
+        [(model, "validation") for model in members],
+        title="agentcy member protocol v1",
+    )
+    for model in members:
+        definition = schema["$defs"][model.__name__]
+        definition["required"] = ["action", *definition.get("required", [])]
+        definition["properties"]["action"].pop("default")
+    requests = [references[(model, "validation")] for model in members]
+    return {"$schema": "https://json-schema.org/draft/2020-12/schema", **schema, "oneOf": requests}
+
+
+if __name__ == "__main__":
+    sys.stdout.write(json.dumps(contract_schema(), indent=2) + "\n")

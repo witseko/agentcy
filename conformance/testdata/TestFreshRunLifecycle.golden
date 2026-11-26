@@ -1,0 +1,310 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Fresh runs", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Fresh runs: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Fresh runs\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. worker joins
+-> {"action": "join", "code": "<code-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "participant": "Worker",
+    "role": "worker",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "brief": "Fresh runs",
+    "token": "<token-2>",
+    "messages": [],
+    "cursor": 0,
+    "more": false
+  }
+}
+
+== 3. lead lists plugins
+-> {"action": "plugins", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "plugins": [
+      {
+        "name": "fixture",
+        "model": "test/model"
+      }
+    ]
+  }
+}
+
+== 4. lead launches Fresh
+-> {"action": "launch", "directory": "<checkout>", "name": "Fresh", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-1>",
+    "state": "queued"
+  }
+}
+
+== 5. status shows the running launch
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Fresh": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "running"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 6. a repeated launch returns the same assignment
+-> {"action": "launch", "directory": "<checkout>", "name": "fresh", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-1>",
+    "state": "running"
+  }
+}
+
+== 7. a launch with another plugin is refused
+-> {"action": "launch", "directory": "<checkout>", "name": "Fresh", "plugin": "other", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Fresh-run plugin is not configured"
+}
+
+== 8. a manual invite cannot take the reserved slot
+-> {"action": "invite", "name": "Fresh", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invitation reserved for an active fresh run: Fresh"
+}
+
+== 9. a launch outside the workspace is refused
+-> {"action": "launch", "directory": "/", "name": "Other", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Fresh-run checkout is outside the requested workspace"
+}
+
+== 10. a launch cannot take the lead slot
+-> {"action": "launch", "directory": "<checkout>", "name": "Lead", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Fresh workers cannot replace a lead or co-lead slot"
+}
+
+== 11. lead launches Tasked as an MCP task
+-> {"action": "launch", "directory": "<checkout>", "mcp_task": true, "name": "Tasked", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-2>",
+    "state": "queued",
+    "mcp_task": {
+      "task_id": "<token-3>",
+      "launch_state": "queued",
+      "participant": "Tasked",
+      "created": "<now>",
+      "updated": "<now>"
+    }
+  }
+}
+
+== 12. the MCP task is running
+-> {"action": "mcp_task_status", "task_id": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "launch_state": "running",
+    "participant": "Tasked",
+    "created": "<now>",
+    "updated": "<now>"
+  }
+}
+
+== 13. the host cancels the MCP task
+-> {"action": "mcp_task_cancel", "task_id": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {}
+}
+
+== 14. the MCP task is cancelled
+-> {"action": "mcp_task_status", "task_id": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "launch_state": "cancelled",
+    "participant": "Tasked",
+    "created": "<now>",
+    "updated": "<now>"
+  }
+}
+
+== 15. cancelling a finished MCP task changes nothing
+-> {"action": "mcp_task_cancel", "task_id": "<token-3>", "workspace": "<workspace-1>"}
+<- {
+  "result": {}
+}
+
+== 16. operator launches Third
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Third", "plugin": "fixture", "version": 1}
+<- {
+  "result": {
+    "assignment_id": "<proposal-3>",
+    "state": "queued"
+  }
+}
+
+== 17. operator repeats the launch
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Third", "plugin": "fixture", "version": 1}
+<- {
+  "result": {
+    "assignment_id": "<proposal-3>",
+    "state": "running"
+  }
+}
+
+== 18. operator cannot relaunch an ended run
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Tasked", "plugin": "fixture", "version": 1}
+<- {
+  "error": "The fresh run for this slot has ended. Relaunch is not supported yet"
+}
+
+== 19. operator launch of an unconfigured plugin
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Fourth", "plugin": "missing", "version": 1}
+<- {
+  "error": "Fresh-run plugin is not configured"
+}
+
+== 20. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 21. status after the close
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": false,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "joined"
+      },
+      "Fresh": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "cancelled"
+      },
+      "Tasked": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "cancelled"
+      },
+      "Human": {
+        "role": "human",
+        "state": "human"
+      },
+      "Third": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "cancelled"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 22. the transcript shows the cancellations
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Invited Fresh as worker.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Lead",
+        "body": "Invited Tasked as worker.",
+        "kind": "event"
+      },
+      {
+        "id": 3,
+        "label": "Tasked",
+        "body": "Tasked had the fresh run cancelled.",
+        "kind": "event"
+      },
+      {
+        "id": 4,
+        "label": "Human",
+        "body": "Invited Third as worker.",
+        "kind": "event",
+        "role": "human"
+      },
+      {
+        "id": 5,
+        "label": "Fresh",
+        "body": "Fresh had the fresh run cancelled.",
+        "kind": "event"
+      },
+      {
+        "id": 6,
+        "label": "Third",
+        "body": "Third had the fresh run cancelled.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 6,
+    "wake": true,
+    "brief": "Fresh runs",
+    "role": "lead",
+    "roster": {
+      "Fresh": "worker",
+      "Human": "human",
+      "Lead": "lead",
+      "Tasked": "worker",
+      "Third": "worker",
+      "Worker": "worker"
+    },
+    "closed": true
+  }
+}
+
+== 23. operator launch after the close
+-> {"action": "operator_launch", "conversation": "<room-1>", "directory": "<checkout>", "key": "<operator-key>", "name": "Fifth", "plugin": "fixture", "version": 1}
+<- {
+  "error": "Conversation is closed"
+}
+

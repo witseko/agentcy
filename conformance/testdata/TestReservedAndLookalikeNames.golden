@@ -1,0 +1,304 @@
+== 1. initiator Human
+-> {"action": "create", "brief": "Review", "initiator": "Human", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 2. initiator You
+-> {"action": "create", "brief": "Review", "initiator": "You", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 3. initiator you
+-> {"action": "create", "brief": "Review", "initiator": "you", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 4. initiator Нuman
+-> {"action": "create", "brief": "Review", "initiator": "Нuman", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 5. initiator Humаn
+-> {"action": "create", "brief": "Review", "initiator": "Humаn", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 6. initiator hՍman
+-> {"action": "create", "brief": "Review", "initiator": "hՍman", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 7. initiator H u m a n
+-> {"action": "create", "brief": "Review", "initiator": "H u m a n", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 8. initiator Hum-an
+-> {"action": "create", "brief": "Review", "initiator": "Hum-an", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 9. initiator Yоu
+-> {"action": "create", "brief": "Review", "initiator": "Yоu", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 10. initiator հuman
+-> {"action": "create", "brief": "Review", "initiator": "հuman", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 11. initiator HUMAN!
+-> {"action": "create", "brief": "Review", "initiator": "HUMAN!", "invitees": ["W"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 12. lead creates an open room
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["W"], "open_invite": true, "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "W": "<code-1>"
+    },
+    "join_prompt": "Review: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "W": "worker"
+    },
+    "open_invite": {
+      "code": "<code-2>",
+      "join_prompt": "Review - worker: Use agentcy to join with CODE (pass your preferred name if you want one). It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker\"."
+    }
+  }
+}
+
+== 13. invitee Human
+-> {"action": "create", "brief": "Review", "initiator": "Lead", "invitees": ["Human"], "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 14. invite You
+-> {"action": "invite", "name": "You", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 15. open join as Humаn
+-> {"action": "join", "code": "<code-2>", "name": "Humаn", "workspace": "<workspace-1>"}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 16. operator lead named you
+-> {"action": "operator_create", "brief": "Review", "directory": "<checkout>", "invitees": ["W"], "key": "<operator-key>", "lead": "you", "version": 1}
+<- {
+  "error": "The name Human is reserved for the user. Use a different name"
+}
+
+== 17. hidden character in invite
+-> {"action": "invite", "name": "Human​", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 18. hidden character in invite
+-> {"action": "invite", "name": "HUMAN⁠", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 19. hidden character in invite
+-> {"action": "invite", "name": "Hu‎man", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 20. hidden character in invite
+-> {"action": "invite", "name": "Hu‮man", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 21. hidden character in invite
+-> {"action": "invite", "name": "Hu\u0000man", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 22. hidden character in invite
+-> {"action": "invite", "name": "Line\u2028Break", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 23. non-NFKC name in invite
+-> {"action": "invite", "name": "Ｈuman", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 24. non-NFKC name in invite
+-> {"action": "invite", "name": "ﬁle", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 25. non-NFKC name in invite
+-> {"action": "invite", "name": "Le ad", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 26. non-NFKC name in invite
+-> {"action": "invite", "name": "é", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 27. valid name Мария
+-> {"action": "invite", "name": "Мария", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Мария",
+    "role": "worker",
+    "code": "<code-3>",
+    "join_prompt": "Review - worker (Мария): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Мария)\"."
+  }
+}
+
+== 28. valid name José
+-> {"action": "invite", "name": "José", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "José",
+    "role": "worker",
+    "code": "<code-4>",
+    "join_prompt": "Review - worker (José): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (José)\"."
+  }
+}
+
+== 29. valid name Worker 2
+-> {"action": "invite", "name": "Worker 2", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Worker 2",
+    "role": "worker",
+    "code": "<code-5>",
+    "join_prompt": "Review - worker (Worker 2): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Worker 2)\"."
+  }
+}
+
+== 30. valid name Agent7
+-> {"action": "invite", "name": "Agent7", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Agent7",
+    "role": "worker",
+    "code": "<code-6>",
+    "join_prompt": "Review - worker (Agent7): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Agent7)\"."
+  }
+}
+
+== 31. valid name Humanoid
+-> {"action": "invite", "name": "Humanoid", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Humanoid",
+    "role": "worker",
+    "code": "<code-7>",
+    "join_prompt": "Review - worker (Humanoid): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Humanoid)\"."
+  }
+}
+
+== 32. valid name Youth
+-> {"action": "invite", "name": "Youth", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "Youth",
+    "role": "worker",
+    "code": "<code-8>",
+    "join_prompt": "Review - worker (Youth): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (Youth)\"."
+  }
+}
+
+== 33. valid name éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé
+-> {"action": "invite", "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "participant": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "role": "worker",
+    "code": "<code-9>",
+    "join_prompt": "Review - worker (éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé): Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Review - worker (éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé)\"."
+  }
+}
+
+== 34. 65 characters is too long
+-> {"action": "invite", "name": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "error": "Invalid bridge arguments"
+}
+
+== 35. the roster lists the valid names
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "W": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Мария": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "José": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Worker 2": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Agent7": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Humanoid": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Youth": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé": {
+        "role": "worker",
+        "state": "invited"
+      }
+    },
+    "participant": "Lead",
+    "open_invite": true
+  }
+}
+
