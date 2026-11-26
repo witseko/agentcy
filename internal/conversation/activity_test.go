@@ -18,7 +18,7 @@ import (
 func TestHasActiveWorkCountsOpenConversationsAndPendingAssignments(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	handler := NewHandler(dataDir, nil, log.New(io.Discard, "", 0))
+	handler := NewHandler(dataDir, nil, log.New(io.Discard, "", 0), nil)
 	active := func() bool {
 		t.Helper()
 		found, err := handler.HasActiveWork(ctx, time.Unix(startUnix, 0))

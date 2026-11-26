@@ -22,17 +22,30 @@ type Handler struct {
 	book          *usageBook
 	plugins       *fresh.SettingsFile
 	workspaceKeys *paths.WorkspaceKeyCache
+	freshRuns     FreshRuns
+}
+
+// FreshRuns is the fresh-run worker as the rules see it. *fresh.Worker implements it.
+type FreshRuns interface {
+	// Ready reports whether the worker has reconciled earlier runs and takes launches.
+	Ready() bool
+	// Dispatch hands a committed launch with its join code to the worker.
+	Dispatch(job fresh.Dispatch)
+	// Wake tells the worker that a write to the workspace may have stopped a run.
+	Wake(workspace string)
 }
 
 // NewHandler returns the handler for the checked data directory dataDir. environment is
 // the process environment in os.Environ form, used to find Git for workspace keys, and
-// logger receives the warnings that Python logs.
-func NewHandler(dataDir string, environment []string, logger *log.Logger) *Handler {
+// logger receives the warnings that Python logs. freshRuns is the fresh-run worker; with
+// nil every launch is refused as not ready.
+func NewHandler(dataDir string, environment []string, logger *log.Logger, freshRuns FreshRuns) *Handler {
 	return &Handler{
 		dataDir:       dataDir,
 		book:          &usageBook{dataDir: dataDir, settings: tokens.NewSettingsFile(dataDir), logger: logger},
 		plugins:       fresh.NewSettingsFile(dataDir),
 		workspaceKeys: paths.NewWorkspaceKeyCache(environment, nil),
+		freshRuns:     freshRuns,
 	}
 }
 

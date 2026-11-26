@@ -11,8 +11,20 @@ import (
 )
 
 // Operator applies one operator request whose key the daemon accepted (Core.operate in
-// core.py after its key check).
+// core.py after its key check). Like Member, a write that wakes a room also wakes the
+// fresh-run worker for that workspace.
 func (handler *Handler) Operator(ctx context.Context, request wire.OperatorRequest, now time.Time) (core.Outcome, error) {
+	outcome, err := handler.operator(ctx, request, now)
+	if err == nil {
+		for _, room := range outcome.Notify {
+			handler.wakeFreshRuns(room.Workspace)
+		}
+	}
+	return outcome, err
+}
+
+// operator dispatches one operator request.
+func (handler *Handler) operator(ctx context.Context, request wire.OperatorRequest, now time.Time) (core.Outcome, error) {
 	if _, isPlugins := request.(*wire.OperatorPlugins); isPlugins {
 		result, err := handler.pluginNames()
 		return core.Outcome{Result: result}, err
@@ -27,7 +39,7 @@ func (handler *Handler) Operator(ctx context.Context, request wire.OperatorReque
 		return withoutStore(request)
 	}
 	if launch, isLaunch := request.(*wire.OperatorLaunch); isLaunch {
-		return handler.operatorLaunch(launch)
+		return handler.operatorLaunch(ctx, workspace, launch, now.Unix())
 	}
 	unix := now.Unix()
 	var result wire.Value

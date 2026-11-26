@@ -1,0 +1,92 @@
+== 1. lead creates
+-> {"action": "create", "brief": "Restart", "initiator": "Lead", "invitees": ["Worker"], "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "conversation": "<room-1>",
+    "token": "<token-1>",
+    "invitations": {
+      "Worker": "<code-1>"
+    },
+    "join_prompt": "Restart: Use agentcy to join with CODE. It returns the brief, roster, and initial messages (only call read_messages with wait_seconds=0 if 'more' is true). Say which role you joined as and start your part. Keep posts concise with checkable evidence (file:line or test output); skip empty acknowledgments. Send findings and questions directly to the peer who can act on them, report brief progress updates to the lead periodically while working, reply to your task ID with kind='done' or 'blocker', and check peer blockers before going idle. Follow the bridge's 'next' guidance. If your app lets you rename this session, set its title to \"Restart\".",
+    "role": "lead",
+    "roster": {
+      "Lead": "lead",
+      "Worker": "worker"
+    }
+  }
+}
+
+== 2. lead launches Fresh
+-> {"action": "launch", "directory": "<checkout>", "name": "Fresh", "plugin": "fixture", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "assignment_id": "<proposal-1>",
+    "state": "queued"
+  }
+}
+
+== 3. the restarted daemon keeps the run
+-> {"action": "status", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "open": true,
+    "members": {
+      "Lead": {
+        "role": "lead",
+        "state": "joined",
+        "idle_seconds": "<idle-seconds>"
+      },
+      "Worker": {
+        "role": "worker",
+        "state": "invited"
+      },
+      "Fresh": {
+        "role": "worker",
+        "state": "invited",
+        "launch_state": "running"
+      }
+    },
+    "participant": "Lead"
+  }
+}
+
+== 4. lead closes
+-> {"action": "close", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "closed": true
+  }
+}
+
+== 5. the transcript shows the cancellation
+-> {"action": "read", "token": "<token-1>", "workspace": "<workspace-1>"}
+<- {
+  "result": {
+    "messages": [
+      {
+        "id": 1,
+        "label": "Lead",
+        "body": "Invited Fresh as worker.",
+        "kind": "event"
+      },
+      {
+        "id": 2,
+        "label": "Fresh",
+        "body": "Fresh had the fresh run cancelled.",
+        "kind": "event"
+      }
+    ],
+    "more": false,
+    "cursor": 2,
+    "wake": true,
+    "brief": "Restart",
+    "role": "lead",
+    "roster": {
+      "Fresh": "worker",
+      "Lead": "lead",
+      "Worker": "worker"
+    },
+    "closed": true
+  }
+}
+

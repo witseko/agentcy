@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ from agentcy.storage.database import data_dir
 
 MCP = MCPServer("agentcy-gemini")
 JOIN_VARIABLE = "AGENTCY_FRESH_JOIN_CODE"
+BIN_VARIABLE = "AGENTCY_BIN"
 PROMPT = FRESH_WORKER_PROMPT
 ACTIVE = {"starting", "running"}
 STATE_INTERVAL = 0.5
@@ -79,13 +81,53 @@ def sandbox_profile(runtime: Path) -> str:
     root = data_dir()
     private_bridge = json.dumps(str(root))
     socket_path = json.dumps(str(root / "core.sock"))
+    # The worker's bridge server runs from AGENTCY_BIN, so it stays readable even when it
+    # is installed inside the bridge directory.
+    executable = agentcy_binary()
+    binary = f" (require-not (literal {json.dumps(executable)}))" if executable else ""
     return (
         f"(version 1) (allow default) "
         f"(deny file-write* (require-all (require-not (subpath {writable})) "
         '(require-not (literal "/dev/null")))) '
         f"(deny file-read-data (require-all (subpath {private_bridge}) "
-        f"(require-not (subpath {writable})) (require-not (literal {socket_path}))))"
+        f"(require-not (subpath {writable})) (require-not (literal {socket_path})){binary}))"
     )
+
+
+def agentcy_binary() -> str | None:
+    """Return the agentcy executable that the core names in AGENTCY_BIN, or None if unset.
+
+    Raises:
+        ValueError: If AGENTCY_BIN is not an absolute path to a regular file.
+    """
+    value = os.environ.get(BIN_VARIABLE)
+    if value is None:
+        return None
+    path = Path(value)
+    try:
+        regular = path.is_absolute() and stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        regular = False
+    if not regular:
+        raise ValueError("AGENTCY_BIN must be an absolute path to a regular file")
+    return value
+
+
+def valid_binary() -> bool:
+    """Accept an unset AGENTCY_BIN or an absolute path to a regular file."""
+    try:
+        agentcy_binary()
+    except ValueError:
+        return False
+    return True
+
+
+def worker_command(workspace: Path) -> list[str]:
+    """Run the worker's bridge server from the Go binary, or from this Python install."""
+    binary = agentcy_binary()
+    if binary is not None:
+        return [binary, "fresh-worker", str(workspace)]
+    return [sys.executable, "-E", "-P", "-m", "agentcy.mcp.fresh_server", str(workspace)]
 
 
 def platform_sandbox() -> bool:
@@ -95,22 +137,14 @@ def platform_sandbox() -> bool:
 
 def prepare_environment(workspace: Path, runtime: Path) -> dict[str, str]:
     """Keep the Antigravity CLI isolated from the user's global settings and MCP servers."""
+    command = worker_command(workspace)
     mcp_config = runtime / ".gemini" / "config" / "mcp_config.json"
     mcp_config.parent.mkdir(mode=0o700, parents=True)
     mcp_config.write_text(
         json.dumps(
             {
                 "mcpServers": {
-                    "agentcy": {
-                        "command": sys.executable,
-                        "args": [
-                            "-E",
-                            "-P",
-                            "-m",
-                            "agentcy.mcp.fresh_server",
-                            str(workspace),
-                        ],
-                    },
+                    "agentcy": {"command": command[0], "args": command[1:]},
                 },
             }
         ),
@@ -248,7 +282,7 @@ def run(assignment_id: str, workspace: Path, model: str, timeout: int) -> None:
                     start_new_session=True,
                 )
                 result = monitor(process, path, timeout, output_file)
-    except OSError:
+    except (OSError, ValueError):
         result = RunResult(state="failed")
     finally:
         save(path, result)
@@ -275,6 +309,7 @@ def valid_environment(request: Start) -> bool:
         and platform_sandbox()
         and bool(os.getenv("GEMINI_API_KEY"))
         and find_on_path("agy") is not None
+        and valid_binary()
     )
 
 

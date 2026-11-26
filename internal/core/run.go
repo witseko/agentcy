@@ -86,7 +86,27 @@ func (server *server) run(ctx context.Context) error {
 	}
 	defer removeSocket(socketPath)
 	server.settings.logger.Printf("serving")
+	stopBackground := server.startBackground(ctx)
+	defer stopBackground()
 	return server.serve(ctx, listener)
+}
+
+// startBackground runs Options.Background, if any, and returns the function that ends
+// it and waits for it to return.
+func (server *server) startBackground(ctx context.Context) func() {
+	if server.settings.background == nil {
+		return func() {}
+	}
+	backgroundCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		server.settings.background(backgroundCtx, server.hub.notify)
+	}()
+	return func() {
+		cancel()
+		<-finished
+	}
 }
 
 // listenPrivate replaces a socket left by an earlier daemon and listens with mode 0600.

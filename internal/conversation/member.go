@@ -11,9 +11,21 @@ import (
 )
 
 // Member applies one validated member request (Core.apply in core.py). After a
-// committed write it wakes the authenticated member's room, or the joined room.
+// committed write it wakes the authenticated member's room, or the joined room. Any
+// write that wakes a room also wakes the fresh-run worker for that workspace, because a
+// close, retire or round release stops runs there.
 func (handler *Handler) Member(ctx context.Context, request wire.Request, now time.Time) (core.Outcome, error) {
-	unix := now.Unix()
+	outcome, err := handler.member(ctx, request, now.Unix())
+	if err == nil {
+		for _, room := range outcome.Notify {
+			handler.wakeFreshRuns(room.Workspace)
+		}
+	}
+	return outcome, err
+}
+
+// member dispatches one member request.
+func (handler *Handler) member(ctx context.Context, request wire.Request, unix int64) (core.Outcome, error) {
 	switch typed := request.(type) {
 	case *wire.Create:
 		result, err := handler.writeResult(ctx, typed.Workspace, func(tx *sql.Tx) (wire.Value, error) {
@@ -34,11 +46,15 @@ func (handler *Handler) Member(ctx context.Context, request wire.Request, now ti
 	case *wire.ReadClosed:
 		return handler.readClosed(ctx, typed)
 	case *wire.Launch:
-		return handler.launch(ctx, typed)
+		return handler.launch(ctx, typed, unix)
 	case *wire.McpTaskStatus:
 		return handler.mcpTask(ctx, typed.Workspace, typed.TaskID, mcpTaskStatus)
 	case *wire.McpTaskCancel:
-		return handler.mcpTask(ctx, typed.Workspace, typed.TaskID, cancelMcpTask)
+		outcome, err := handler.mcpTask(ctx, typed.Workspace, typed.TaskID, cancelMcpTask)
+		if err == nil {
+			handler.wakeFreshRuns(typed.Workspace)
+		}
+		return outcome, err
 	case *wire.Plugins:
 		return handler.memberPlugins(ctx, typed)
 	}

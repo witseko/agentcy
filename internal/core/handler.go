@@ -32,7 +32,7 @@ type Handler interface {
 	//
 	// Port of Core.apply in core.py: after a committed write, Notify names the room of the
 	// authenticated member, or of the joined conversation for "join". For "launch",
-	// validate the checkout with CheckLaunchCheckout. Fresh-run dispatch is milestone M4.
+	// validate the checkout with CheckLaunchCheckout before queueing.
 	Member(ctx context.Context, request wire.Request, now time.Time) (Outcome, error)
 
 	// Operator applies one validated operator request whose key the daemon has already

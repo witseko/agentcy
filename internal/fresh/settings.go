@@ -72,6 +72,22 @@ func (settings *Settings) Find(name string) *Plugin {
 	return nil
 }
 
+// ErrPluginNotConfigured is the error of a plugin name that plugins.json lacks.
+var ErrPluginNotConfigured = errors.New("Fresh-run plugin is not configured")
+
+// Plugin loads the settings and returns the plugin registered under name
+// (configured_plugin in plugin_settings.py).
+func (file *SettingsFile) Plugin(name string) (*Plugin, error) {
+	settings, err := file.Load()
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil || settings.Find(name) == nil {
+		return nil, ErrPluginNotConfigured
+	}
+	return settings.Find(name), nil
+}
+
 // SettingsFile loads plugins.json and keeps the parsed result while the file's
 // modification time, size and inode stay the same (port plan fix L5). The safety checks
 // run on every Load. It is safe for concurrent use.

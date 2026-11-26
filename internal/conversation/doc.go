@@ -15,7 +15,7 @@
 // the client verbatim. Any other error is internal and never holds a token, a code, or a
 // message body.
 //
-// Fresh runs (plugin dispatch, the assignment worker) are milestone M4. This package
-// keeps the assignment rows and their effect on status, close and retire, and stops at
-// the seams listed in launch.go.
+// Fresh runs: this package queues assignments (assignment_queue.go), hands them to the
+// worker in internal/fresh (launch.go), and gives that worker its store access
+// (assignment_store.go).
 package conversation

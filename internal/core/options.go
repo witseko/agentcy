@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
@@ -47,6 +48,11 @@ type Options struct {
 	// Log receives the daemon's log lines; standard error when nil. The daemon logs
 	// states and action names, never keys, tokens, codes, or message bodies.
 	Log io.Writer
+	// Background, when set, runs in its own goroutine once the daemon holds the lock and
+	// listens, until its context ends at shutdown; Run waits for it to return before it
+	// releases the lock. wake wakes the waiting reads of a room. The daemon runs the
+	// fresh-run worker here.
+	Background func(ctx context.Context, wake func(Room))
 }
 
 // settings is Options with every default filled in.
@@ -57,6 +63,7 @@ type settings struct {
 	shutdownGrace time.Duration
 	now           func() time.Time
 	logger        *log.Logger
+	background    func(ctx context.Context, wake func(Room))
 }
 
 // withDefaults fills in the zero values of options.
@@ -67,6 +74,7 @@ func withDefaults(options Options) settings {
 		settleWindow:  options.SettleWindow,
 		shutdownGrace: options.ShutdownGrace,
 		now:           options.Now,
+		background:    options.Background,
 	}
 	if result.idleInterval <= 0 {
 		result.idleInterval = DefaultIdleInterval

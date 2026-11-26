@@ -13,7 +13,7 @@ const launchOutsideWorkspace = "Fresh-run checkout is outside the requested work
 
 // CheckLaunchCheckout checks the directory of a member "launch" request and returns it
 // with every symbolic link resolved. The Handler calls it before it queues a fresh run;
-// queueing and dispatch are milestone M4.
+// the fresh-run worker dispatches it.
 //
 // Port of the checks in Core.launch in core.py: the directory must be absolute and its
 // workspace key, from keyOf (usually paths.WorkspaceKeyCache.Key), must equal the

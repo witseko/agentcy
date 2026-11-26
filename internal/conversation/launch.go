@@ -6,23 +6,13 @@ import (
 
 	"github.com/witseko/agentcy/internal/core"
 	"github.com/witseko/agentcy/internal/fresh"
+	"github.com/witseko/agentcy/internal/paths"
 	"github.com/witseko/agentcy/internal/store"
 	"github.com/witseko/agentcy/internal/wire"
 )
 
-// Seams for milestone M4. A launch that passes every check below would queue an
-// assignment and hand its join code to the fresh-run worker, which this milestone does
-// not have. Such a launch gets workerNotReady, the answer Python gives while its worker
-// cannot take runs, and nothing is written:
-//
-//   - member "launch": after launchAuthority, CheckLaunchCheckout and the plugin lookup
-//     succeed (Core.launch in core.py, before assignments.queue);
-//   - "operator_launch": after the checkout check and the plugin lookup succeed
-//     (Core.operator_launch, before operator.launch).
-//
-// The assignment rows themselves are read already: status shows launch_state,
-// HasActiveWork counts pending rows, invitations refuse a slot reserved for an active
-// run, and mcp_task_status and mcp_task_cancel find runs by their task digest.
+// workerNotReady is the answer to a launch while the fresh-run worker reconciles the
+// runs of an earlier daemon at start, as in Python.
 const workerNotReady = "Fresh-run worker is reconciling earlier runs. Retry shortly"
 
 // pluginNotConfigured is the answer to a launch of a plugin that plugins.json lacks.
@@ -81,30 +71,100 @@ func (handler *Handler) memberPlugins(ctx context.Context, request *wire.Plugins
 	return core.Outcome{Result: result}, err
 }
 
-// launch checks a member's launch request up to the M4 seam described above.
-func (handler *Handler) launch(ctx context.Context, request *wire.Launch) (core.Outcome, error) {
+// launch binds a requested worker to this checkout, queues the committed assignment and
+// hands its join code to the worker (Core.launch in core.py).
+func (handler *Handler) launch(ctx context.Context, request *wire.Launch, now int64) (core.Outcome, error) {
+	var queued queuedLaunch
+	var directory string
+	var plugin *fresh.Plugin
 	_, err := handler.writeResult(ctx, request.Workspace, func(tx *sql.Tx) (wire.Value, error) {
-		if _, err := launchAuthority(ctx, tx, request.Token); err != nil {
+		member, err := launchAuthority(ctx, tx, request.Token)
+		if err != nil {
 			return wire.Value{}, err
 		}
-		if _, err := core.CheckLaunchCheckout(request.Directory, request.Workspace, handler.workspaceKeys.Key); err != nil {
+		if !handler.freshRunsReady() {
+			return wire.Value{}, reject(workerNotReady)
+		}
+		if directory, err = core.CheckLaunchCheckout(request.Directory, request.Workspace, handler.workspaceKeys.Key); err != nil {
 			return wire.Value{}, err
 		}
-		if _, err := handler.configuredPlugin(request.Plugin); err != nil {
+		if plugin, err = handler.configuredPlugin(request.Plugin); err != nil {
 			return wire.Value{}, err
 		}
-		return wire.Value{}, reject(workerNotReady)
+		queued, err = queueAssignment(ctx, tx, member, queueRequest{
+			workspace: request.Workspace, name: request.Name, plugin: request.Plugin,
+			timeout: plugin.TimeoutSeconds, model: plugin.Model, mcpTask: request.McpTask,
+		}, now)
+		return wire.Value{}, err
 	})
-	return core.Outcome{}, err
-}
-
-// operatorLaunch checks the human's launch request up to the M4 seam described above.
-// The caller has resolved the checkout's workspace and checked that its store exists.
-func (handler *Handler) operatorLaunch(request *wire.OperatorLaunch) (core.Outcome, error) {
-	if _, err := handler.configuredPlugin(request.Plugin); err != nil {
+	if err != nil {
 		return core.Outcome{}, err
 	}
-	return core.Outcome{}, reject(workerNotReady)
+	return handler.dispatch(request.Workspace, directory, plugin, queued), nil
+}
+
+// operatorLaunch queues a fresh run for the human through the same dispatch path as a
+// lead's launch (Core.operator_launch). The caller has resolved the checkout's workspace
+// and checked that its store exists.
+func (handler *Handler) operatorLaunch(ctx context.Context, workspace string, request *wire.OperatorLaunch, now int64) (core.Outcome, error) {
+	if !handler.freshRunsReady() {
+		return core.Outcome{}, reject(workerNotReady)
+	}
+	directory, err := paths.RealPath(request.Directory, true)
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	plugin, err := handler.configuredPlugin(request.Plugin)
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	var queued queuedLaunch
+	_, err = handler.writeResult(ctx, workspace, func(tx *sql.Tx) (wire.Value, error) {
+		var queueErr error
+		queued, queueErr = operatorQueue(ctx, tx, request, queueRequest{
+			workspace: workspace, name: request.Name, plugin: request.Plugin,
+			timeout: plugin.TimeoutSeconds, model: plugin.Model,
+		}, now)
+		return wire.Value{}, queueErr
+	})
+	if err != nil {
+		return core.Outcome{}, err
+	}
+	return handler.dispatch(workspace, directory, plugin, queued), nil
+}
+
+// dispatch hands a newly committed assignment and its join code to the worker and wakes
+// the room. A repeated launch of an existing assignment dispatches nothing (Core.dispatch).
+func (handler *Handler) dispatch(workspace, directory string, plugin *fresh.Plugin, queued queuedLaunch) core.Outcome {
+	outcome := core.Outcome{Result: queued.result}
+	if queued.code == "" {
+		return outcome
+	}
+	assignmentID, _ := queued.result.Get("assignment_id")
+	handler.freshRuns.Dispatch(fresh.Dispatch{
+		Workspace: workspace,
+		Plugin:    *plugin,
+		Start: fresh.StartArguments{
+			AssignmentID: assignmentID.Text, Workspace: directory, BridgeHome: handler.dataDir,
+			JoinCode: queued.code, Model: plugin.Model, TimeoutSeconds: plugin.TimeoutSeconds,
+			TokenCap: plugin.TokenCap, CostCapMicroUSD: plugin.CostCapMicroUSD,
+		},
+	})
+	outcome.Notify = []core.Room{{Workspace: workspace, Conversation: queued.room}}
+	return outcome
+}
+
+// freshRunsReady reports whether the worker accepts launches. A handler without a
+// worker never does.
+func (handler *Handler) freshRunsReady() bool {
+	return handler.freshRuns != nil && handler.freshRuns.Ready()
+}
+
+// wakeFreshRuns tells the worker that a write to the workspace may have stopped a run.
+func (handler *Handler) wakeFreshRuns(workspace string) {
+	if handler.freshRuns != nil {
+		handler.freshRuns.Wake(workspace)
+	}
 }
 
 // storeExists reports whether a workspace has a store, without creating one.

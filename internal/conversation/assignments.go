@@ -9,7 +9,7 @@ import (
 )
 
 // This file holds the assignment rows of fresh runs and the reads that do not need a
-// running plugin (assignments.py). Queueing and dispatch are milestone M4.
+// running plugin (assignments.py). Queueing is in assignment_queue.go.
 
 const selectActiveAssignment = `SELECT assignment.id 
 FROM assignment 
