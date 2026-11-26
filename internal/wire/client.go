@@ -22,7 +22,8 @@ const (
 	// coreVersionHelp follows an InvalidArguments rejection: the shim validated the
 	// request, so the running core is likely another version.
 	coreVersionHelp = "This shim built a valid request, so the running core is likely an older or newer " +
-		"version. Stop the process running agentcy.mcp.core and retry. The next call starts " +
+		"version. Stop the running core with 'make stop-core' in the agentcy clone, or stop the " +
+		"process running 'agentcy core', and retry. The next call starts " +
 		"the installed core. Join codes and conversations are kept."
 )
 

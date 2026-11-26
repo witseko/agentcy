@@ -2,7 +2,7 @@
 
 `bench/` is a Go program (build tag `bench`) that measures one shim and daemon
 implementation. Two environment variables select it, so the same driver measures the
-Python core now and the Go core later:
+Go core and the Python reference:
 
 - `AGENTCY_CORE_CMD`: the daemon command. The driver splits it on white space, without a
   shell, so no argument can contain a space.
@@ -19,20 +19,21 @@ Its unit tests run with `go test -tags bench ./bench`; plain `go test ./...` ski
 ## Run
 
 ```sh
-# Python baseline, default flags (100,000 messages, 1,000 samples, 20 listeners, 60 s)
-make bench BENCH_FLAGS="-json bench-python.json"
+# Go core in bin/, default flags (100,000 messages, 1,000 samples, 20 listeners, 60 s)
+make bench BENCH_FLAGS="-json bench-go.json"
 
-# Any implementation
-AGENTCY_CORE_CMD="$PWD/bin/agentcy core" AGENTCY_BIN="$PWD/bin/agentcy" \
-  go run -tags bench ./bench -json bench-go.json
+# Python reference (needs make plugin-deps)
+make bench AGENTCY_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core" \
+  AGENTCY_BIN="$PWD/.venv/bin/agentcy" BENCH_FLAGS="-json bench-python.json"
 
 # Quick smoke run
 make bench BENCH_FLAGS="-messages 2000 -samples 50 -listeners 3 -seconds 10 -coldruns 2"
 ```
 
-`make bench` defaults to `.venv/bin/python -I -m agentcy.mcp.core`, the command the Python
-shim itself runs. `uv run python ...` also works, but `uv` stays in the daemon's process
-group and adds its memory to the daemon numbers.
+`make bench` builds `bin/agentcy` and measures it as both shim and core. For the Python
+reference, use `.venv/bin/python -I -m agentcy.mcp.core`, the command the Python shim itself
+runs. `uv run python ...` also works, but `uv` stays in the daemon's process group and adds
+its memory to the daemon numbers.
 
 Flags: `-messages`, `-samples`, `-listeners`, `-seconds`, `-coldruns`, `-postevery`
 (seconds between writer posts), `-json FILE`. Run it on a quiet machine: other load shows

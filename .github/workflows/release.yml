@@ -24,12 +24,17 @@ jobs:
           cache: false
       - name: Check that the tag matches the project version
         run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          version="$(cat VERSION)"
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match version $version in pyproject.toml"
+            echo "Tag $GITHUB_REF_NAME does not match version $version in VERSION"
             exit 1
           fi
-      - name: Build the terminal UI binaries and SHA256SUMS from the tagged source
+          python_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          if [ "$python_version" != "$version" ]; then
+            echo "Version $python_version in pyproject.toml does not match version $version in VERSION"
+            exit 1
+          fi
+      - name: Build the agentcy and terminal UI binaries and SHA256SUMS from the tagged source
         run: make release-files
       - name: Create the release
         env:

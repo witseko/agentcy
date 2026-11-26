@@ -19,8 +19,8 @@ const (
 		"or set AGENTCY_TUI to the absolute path of a built agentcy-tui binary."
 )
 
-// tuiExecutable finds the UI binary from AGENTCY_TUI, beside this program (also in the
-// clone's .venv/bin, where `make setup` installs it), or on the absolute PATH entries.
+// tuiExecutable finds the UI binary from AGENTCY_TUI, beside this program (the clone's
+// bin/, where `make setup` installs both), or on the absolute PATH entries.
 func tuiExecutable() (string, error) {
 	if configured := os.Getenv(tuiVariable); configured != "" {
 		if !filepath.IsAbs(configured) || !isExecutableFile(configured) {
@@ -29,10 +29,8 @@ func tuiExecutable() (string, error) {
 		return configured, nil
 	}
 	directory := filepath.Dir(ownExecutable())
-	for _, candidate := range []string{filepath.Join(directory, tuiProgram), filepath.Join(directory, "..", ".venv", "bin", tuiProgram)} {
-		if isExecutableFile(candidate) {
-			return candidate, nil
-		}
+	if candidate := filepath.Join(directory, tuiProgram); isExecutableFile(candidate) {
+		return candidate, nil
 	}
 	pathValue, pathSet := os.LookupEnv("PATH")
 	if found := paths.FindOnPath(tuiProgram, pathValue, pathSet); found != "" {

@@ -45,9 +45,9 @@ for tool in ffmpeg ffprobe swiftc; do
     exit 1
   fi
 done
-for file in "$repo/.venv/bin/agentcy" "$repo/.venv/bin/agentcy-tui" "$ghostty"; do
+for file in "$repo/bin/agentcy" "$repo/bin/agentcy-tui" "$python" "$ghostty"; do
   if [[ ! -x "$file" ]]; then
-    echo "Missing $file: run make setup, and install Ghostty." >&2
+    echo "Missing $file: run make setup and make plugin-deps, and install Ghostty." >&2
     exit 1
   fi
 done
@@ -181,7 +181,7 @@ join_from_clipboard() {
 # Open the terminal UI for the sample in a Ghostty window with its own
 # config (no user config), placed at the fixed frame.
 start_tui() {
-  write_scene "exec \"$repo/.venv/bin/agentcy\" ui --workspace \"$sample\""
+  write_scene "exec \"$repo/bin/agentcy\" ui --workspace \"$sample\""
   open_window 15
 }
 
@@ -192,7 +192,7 @@ start_agent_beside_tui() {
   mkfifo -m 600 "$work/agent.fifo"
   mkdir -p "$work/tmux"
   local agent="\"$python\" \"$tools/stand_in_agent.py\" \"$episode/screens\" \"$work/agent.fifo\""
-  local tui="\"$repo/.venv/bin/agentcy\" ui --workspace \"$sample\""
+  local tui="\"$repo/bin/agentcy\" ui --workspace \"$sample\""
   write_scene "unset TMUX
 export TMUX_TMPDIR=\"$work/tmux\"
 exec tmux -f /dev/null new-session -s take '$agent' \\; set -g status off \\; split-window -h -l 64% '$tui' \\; select-pane -t 0"

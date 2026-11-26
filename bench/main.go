@@ -103,7 +103,7 @@ func parseConfig() (config, error) {
 func parseCoreCommand(value string) ([]string, error) {
 	words := strings.Fields(value)
 	if len(words) == 0 {
-		return nil, errors.New("set AGENTCY_CORE_CMD, for example: uv run python -I -m agentcy.mcp.core")
+		return nil, errors.New("set AGENTCY_CORE_CMD, for example: $PWD/bin/agentcy core")
 	}
 	program, err := exec.LookPath(words[0])
 	if err != nil {

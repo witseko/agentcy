@@ -22,7 +22,7 @@ const (
 	// The core answers this when a request does not match its schema. The UI sends only
 	// requests that match its own core version, so a mismatch means a stale core.
 	invalidArgumentsError = "Invalid bridge arguments"
-	coreVersionHelp       = "The running core is likely an older version. Stop agentcy.mcp.core and restart the UI"
+	coreVersionHelp       = "The running core is likely an older version. Stop it with 'make stop-core' in the agentcy clone and restart the UI"
 	maxKeyBytes           = 1024
 	// maxResponseBytes matches MAX_RESPONSE in the Python transport.
 	maxResponseBytes = 2 * 1024 * 1024

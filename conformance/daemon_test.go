@@ -56,7 +56,7 @@ func startDaemon(t *testing.T) *daemon {
 	arguments := strings.Fields(os.Getenv(coreCommandVariable))
 	if len(arguments) == 0 {
 		t.Skipf("set %s to the daemon command, for example %q", coreCommandVariable,
-			"uv run python -I -m agentcy.mcp.core")
+			"$PWD/bin/agentcy core")
 	}
 	return startDaemonCommand(t, arguments)
 }

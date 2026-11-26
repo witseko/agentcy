@@ -44,7 +44,7 @@ jobs:
             --config .semgrep-rules/ai/ai-best-practices/mcp-command-injection/mcp-command-injection.yaml \
             --config .semgrep-rules/ai/ai-best-practices/mcp-ssrf/mcp-ssrf.yaml \
             --error --strict --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore \
-            src/ plugins/
+            src/ plugins/ scripts/
 
   security:
     name: Dependency audit (pip-audit) and Ruff
@@ -84,10 +84,10 @@ jobs:
       - name: Run tests
         run: uv run --locked pytest --ignore=tests/e2e tests
 
-  tui:
-    name: Terminal UI (gofmt, vet, tests, govulncheck)
+  go:
+    name: Go (gofmt, vet, tests, race detector, govulncheck)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,16 +106,48 @@ jobs:
       - name: Vet
         run: |
           go vet ./...
-          go vet -tags e2e ./...
+          go vet -tags conformance,e2e,bench ./...
       - name: Run tests
         run: go test ./...
+      - name: Run the core packages under the race detector
+        run: go test -race ./internal/...
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  conformance:
+    name: Core conformance and differential walk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.1'
+          enable-cache: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Install the Python reference core
+        run: uv sync --locked
+      - name: Build bin/agentcy
+        run: make build
+      - name: Compare the Go core with the conformance goldens
+        run: make conformance
+      - name: Compare the Go core with the Python reference (differential walk)
+        # A short walk keeps CI fast. The full gate is 20 seeds of 2,000 steps (docs/development.md).
+        run: |
+          AGENTCY_REFERENCE_CORE_CMD="$PWD/.venv/bin/python -I -m agentcy.mcp.core" \
+            AGENTCY_CORE_CMD="$PWD/bin/agentcy core" \
+            go test -tags conformance ./conformance/... \
+            -run 'TestDifferentialWalk|TestExistingStoreCarriesOver' -seeds 4 -steps 500
 
   e2e:
     name: End-to-end tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -128,11 +160,17 @@ jobs:
         with:
           version: '0.13.1'
           enable-cache: false
-      - name: Run end-to-end tests
-        run: uv run --locked pytest tests/e2e
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.4'
           cache: false
-      - name: Run terminal UI end-to-end tests against a real core
-        run: uv run --locked go test -tags e2e ./...
+      - name: Build bin/agentcy
+        run: make build
+      - name: Run end-to-end tests on the Go shim and core
+        run: |
+          AGENTCY_BIN="$PWD/bin/agentcy" AGENTCY_CORE_CMD="$PWD/bin/agentcy core" \
+            uv run --locked pytest tests/e2e
+      - name: Run end-to-end tests on the Python reference shim and core
+        run: uv run --locked pytest tests/e2e
+      - name: Run terminal UI end-to-end tests against the Go core
+        run: AGENTCY_CORE_CMD="$PWD/bin/agentcy core" uv run --locked go test -tags e2e ./tui/...

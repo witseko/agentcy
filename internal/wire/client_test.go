@@ -85,7 +85,7 @@ func TestCoreRejectingAValidRequestReportsAVersionMismatch(t *testing.T) {
 	if !errors.As(err, &rejection) {
 		t.Fatalf("err = %v, want a CoreError", err)
 	}
-	if !strings.HasPrefix(err.Error(), InvalidArguments) || !strings.Contains(err.Error(), "Stop the process running agentcy.mcp.core") {
+	if !strings.HasPrefix(err.Error(), InvalidArguments) || !strings.Contains(err.Error(), "make stop-core") {
 		t.Errorf("error text %q", err.Error())
 	}
 	if strings.Contains(err.Error(), join.Code) {

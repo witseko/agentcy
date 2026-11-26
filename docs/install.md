@@ -5,11 +5,11 @@ Install the bridge from a clone, then register it in each app or CLI that should
 ## Requirements
 
 - macOS or Linux. Development and testing happen on macOS.
-- Python 3.12 or later.
-- [uv](https://docs.astral.sh/uv/).
-- Git, when you want linked worktrees of one repository to share conversations.
-- Go 1.26 or later, only when you want to build the terminal UI from source. Without Go, `make setup` downloads the terminal UI for macOS or Linux on arm64 or amd64 from the GitHub release. This needs network access and `curl`.
+- Go 1.26 or later, to build agentcy and the terminal UI from source. Without Go, `make setup` downloads both binaries for macOS or Linux on arm64 or amd64 from the GitHub release. This needs network access and `curl`.
 - `make`, which macOS and most Linux systems include.
+- `lsof` and `ps`, which `make setup` and `make stop-core` use to find a running core. macOS includes both.
+- Git, when you want linked worktrees of one repository to share conversations.
+- Python 3.12 or later and [uv](https://docs.astral.sh/uv/), only for the Z.ai and Gemini worker plugins and for `make migrate-stores`.
 
 ## Install
 
@@ -19,19 +19,27 @@ Install the bridge from a clone, then register it in each app or CLI that should
    git clone https://github.com/witseko/agentcy.git
    ```
 
-2. Run this command in the clone. It installs the Python dependencies and the terminal UI into `.venv`:
+2. Run this command in the clone. It installs `agentcy` and the terminal UI `agentcy-tui` into `bin/` and stops a core that still runs from an earlier install:
 
    ```bash
    make setup
    ```
 
-   With Go installed, it builds the terminal UI from source. Without Go, it downloads the terminal UI from the GitHub release that matches the installed version, checks its SHA-256 against the release's `SHA256SUMS` file, and installs it. A clone of a version that has no release yet gets no download. Install Go to build that version.
+   With Go installed, it builds both binaries from source. Without Go, it downloads them from the GitHub release that matches the `VERSION` file, checks each SHA-256 against the release's `SHA256SUMS` file, and installs them. A clone of a version that has no release yet gets no download. Install Go to build that version.
 
 3. Register the server in each app or CLI (next section).
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
-The background core and the Z.ai and Gemini monitors use the bridge's virtual environment. Both start in Python isolated mode, which ignores `PYTHONPATH` and skips the per-user package directory.
+`agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. Nothing else is installed, and no Python process runs unless you configure a Python plugin.
+
+To use the Z.ai or Gemini worker plugin, also install its Python dependencies into `.venv`:
+
+```bash
+make plugin-deps
+```
+
+To upgrade from a version that installed `.venv/bin/agentcy`, follow [Upgrade from a Python version](../README.md#upgrade-from-a-python-version).
 
 ## Register the server in your apps and CLIs
 
@@ -39,7 +47,7 @@ Each app or CLI needs a local stdio MCP server named `agentcy` with these values
 
 | Setting | Value |
 | --- | --- |
-| Command | Absolute path to `.venv/bin/agentcy` in the clone |
+| Command | Absolute path to `bin/agentcy` in the clone |
 | Arguments | `--workspace` and the absolute path to your project directory |
 
 Use the same workspace path in every app and CLI. Chats see each other only when their workspaces match. Each chat window or CLI session is one participant, so two sessions of the same CLI can join one conversation.
@@ -52,7 +60,7 @@ Add the server under `mcpServers` in the developer configuration, then restart C
 {
   "mcpServers": {
     "agentcy": {
-      "command": "/absolute/path/to/agentcy/.venv/bin/agentcy",
+      "command": "/absolute/path/to/agentcy/bin/agentcy",
       "args": ["--workspace", "/absolute/path/to/workspace"]
     }
   }
@@ -70,7 +78,7 @@ make register-claude WORKSPACE=/absolute/path/to/workspace
 Or run this in your project to register it there only:
 
 ```bash
-claude mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
+claude mcp add agentcy -- /absolute/path/to/agentcy/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
@@ -90,7 +98,7 @@ make register-codex WORKSPACE=/absolute/path/to/workspace
 Or run the command directly:
 
 ```bash
-codex mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
+codex mcp add agentcy -- /absolute/path/to/agentcy/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
@@ -104,7 +112,7 @@ codex mcp get agentcy
 Run the command below, or add `mcpServers.agentcy` in `~/.gemini/config/mcp_config.json`. [Antigravity MCP settings](https://antigravity.google/docs/mcp)
 
 ```bash
-agy mcp add agentcy -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
+agy mcp add agentcy -- /absolute/path/to/agentcy/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 Check the entry:
@@ -118,7 +126,7 @@ agy mcp list
 [OpenCode MCP settings](https://opencode.ai/docs/mcp-servers/)
 
 ```bash
-opencode mcp add agentcy --global -- /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace
+opencode mcp add agentcy --global -- /absolute/path/to/agentcy/bin/agentcy --workspace /absolute/path/to/workspace
 ```
 
 ```bash
@@ -144,7 +152,7 @@ A chat that runs in a provider's VM or hosted sandbox (for example a web chat wi
 
    ```bash
    export AGENTCY_HTTP_TOKEN="$(openssl rand -hex 32)"
-   /absolute/path/to/.venv/bin/agentcy --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
+   /absolute/path/to/agentcy/bin/agentcy --workspace /absolute/path/to/workspace --http 8765 --http-public-host bridge.example.com
    ```
 
    In the clone, this make target runs the same command. `HTTP_PORT` defaults to 8765:

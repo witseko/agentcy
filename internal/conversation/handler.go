@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
@@ -25,6 +26,7 @@ type Handler struct {
 	workspaceKeys *paths.WorkspaceKeyCache
 	freshRuns     FreshRuns
 	rooms         *roomCache
+	logger        *log.Logger
 }
 
 // FreshRuns is the fresh-run worker as the rules see it. *fresh.Worker implements it.
@@ -49,16 +51,37 @@ func NewHandler(dataDir string, environment []string, logger *log.Logger, freshR
 		workspaceKeys: paths.NewWorkspaceKeyCache(environment, nil),
 		freshRuns:     freshRuns,
 		rooms:         newRoomCache(),
+		logger:        logger,
 	}
 }
 
 // The handler must satisfy the daemon's interface.
 var _ core.Handler = (*Handler)(nil)
 
+// unsupportedStoreHelp is the core.log line for a store at another schema version. The
+// client gets only the Python core's message, store.ErrUnsupportedVersion, so the steps
+// that fix the store go to the log, where the user looks after a failed call.
+const unsupportedStoreHelp = "%s in %s.sqlite3: this core opens schema version %d only. " +
+	"If an older agentcy last opened the store, run 'make stop-core' and then " +
+	"'make migrate-stores' in the agentcy clone, then retry. If a newer agentcy wrote it, " +
+	"upgrade agentcy."
+
+// openStore opens the store of a workspace key. A store at another schema version is
+// refused with store.ErrUnsupportedVersion as the client's message, and logged with the
+// steps that fix it.
+func (handler *Handler) openStore(ctx context.Context, workspace string) (*store.Store, error) {
+	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
+	if errors.Is(err, store.ErrUnsupportedVersion) {
+		handler.logger.Printf(unsupportedStoreHelp, store.ErrUnsupportedVersion, workspace, store.SchemaVersion)
+		return nil, reject(store.ErrUnsupportedVersion.Error())
+	}
+	return workspaceStore, err
+}
+
 // writeResult runs work in a write transaction of a workspace store, creating the store
 // when it is missing, as Python's transaction() does.
 func (handler *Handler) writeResult(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
-	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
+	workspaceStore, err := handler.openStore(ctx, workspace)
 	if err != nil {
 		return wire.Value{}, err
 	}
@@ -77,7 +100,7 @@ func (handler *Handler) writeResult(ctx context.Context, workspace string, work 
 
 // readResult runs work in a read transaction of a workspace store that exists.
 func (handler *Handler) readResult(ctx context.Context, workspace string, work func(ctx context.Context, tx *sql.Tx) (wire.Value, error)) (wire.Value, error) {
-	workspaceStore, err := store.Open(ctx, handler.dataDir, workspace)
+	workspaceStore, err := handler.openStore(ctx, workspace)
 	if err != nil {
 		return wire.Value{}, err
 	}

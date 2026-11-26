@@ -1,11 +1,14 @@
-# Set up agentcy from a clone: Python dependencies, the terminal UI, and app registration.
+# Set up agentcy from a clone: the agentcy binary, the terminal UI, and app registration.
 
-BRIDGE := $(CURDIR)/.venv/bin/agentcy
-TUI_BINARY := $(CURDIR)/.venv/bin/agentcy-tui
-# The release version. pyproject.toml holds it; `make release VERSION=x.y.z` changes it.
-VERSION ?= $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
-# The platforms with a terminal UI binary in each GitHub release.
+BRIDGE := $(CURDIR)/bin/agentcy
+# `agentcy ui` looks for the terminal UI beside its own binary, so both live in bin/.
+TUI_BINARY := $(CURDIR)/bin/agentcy-tui
+# The release version. The VERSION file holds it; `make release VERSION=x.y.z` changes it.
+VERSION ?= $(shell cat "$(CURDIR)/VERSION")
+# The platforms with an agentcy binary and a terminal UI binary in each GitHub release.
 PLATFORMS := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64
+# The release programs as <asset name prefix>=<Go package>.
+RELEASE_PROGRAMS := agentcy=./cmd/agentcy agentcy-tui=./tui/cmd/agentcy-tui
 HOST_PLATFORM := $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 REPOSITORY_URL := https://github.com/witseko/agentcy
 RELEASE_URL = $(REPOSITORY_URL)/releases/download/v$(VERSION)
@@ -14,6 +17,10 @@ RELEASE_DIR := dist
 # These flags make the build reproducible: the same source, version, and Go release give the
 # same bytes on every machine, so anyone can check a release binary against its tagged source.
 GO_BUILD_FLAGS = -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$(VERSION)"
+# The bridge data directory, as the core finds it: AGENTCY_HOME, else ~/.agentcy.
+DATA_DIR = $(or $(AGENTCY_HOME),$(HOME)/.agentcy)
+# The Python environment of the Z.ai and Gemini plugins and of the Python reference core.
+PLUGIN_PYTHON := $(CURDIR)/.venv/bin/python
 # The project folder whose chats join each other. Pass it as WORKSPACE=/path/to/project.
 WORKSPACE ?=
 WORKSPACE_PATH = $(abspath $(WORKSPACE))
@@ -22,45 +29,73 @@ HTTP_PORT ?= 8765
 PUBLIC_HOST ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help setup deps tui build release-files release register-claude register-codex ui http check-workspace
+.PHONY: help setup agentcy tui build plugin-deps stop-core migrate-stores release-files release \
+	register-claude register-codex ui http check-workspace check-bridge check-plugin-deps
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
 
-setup: deps tui ## Install the bridge and the terminal UI
+# setup stops a running core last: the core stays alive while any conversation is open, so
+# without this an old core (Python or Go) would keep serving the new shims after an upgrade.
+setup: agentcy tui ## Install agentcy and the terminal UI into bin/, then stop a running core
+	@$(MAKE) --no-print-directory stop-core
 	@echo "Done. Next: make register-claude WORKSPACE=/path/to/project"
 
-deps: ## Install the Python dependencies into .venv
+agentcy: ## Install bin/agentcy: built with Go, else downloaded from the release
+	@if command -v go >/dev/null; then \
+		$(MAKE) --no-print-directory build; \
+	else \
+		mkdir -p "$(CURDIR)/bin"; \
+		echo "Go is missing. Downloading agentcy $(VERSION) for $(HOST_PLATFORM) from $(RELEASE_URL)"; \
+		sh scripts/install-release.sh "$(RELEASE_URL)" "agentcy-$(HOST_PLATFORM)" "$(BRIDGE)"; \
+	fi
+
+tui: ## Install the terminal UI into bin/: built with Go, else downloaded from the release
+	@mkdir -p "$(CURDIR)/bin"
+	@if command -v go >/dev/null; then \
+		echo "Building the terminal UI $(VERSION) from source"; \
+		CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./tui/cmd/agentcy-tui; \
+	else \
+		echo "Go is missing. Downloading the terminal UI $(VERSION) for $(HOST_PLATFORM) from $(RELEASE_URL)"; \
+		sh scripts/install-release.sh "$(RELEASE_URL)" "agentcy-tui-$(HOST_PLATFORM)" "$(TUI_BINARY)"; \
+	fi
+
+build: ## Build bin/agentcy from source with Go
+	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
+	@echo "Building agentcy $(VERSION) from source"
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o "$(BRIDGE)" ./cmd/agentcy
+
+plugin-deps: ## Install the Python dependencies of the Z.ai and Gemini plugins into .venv
 	@command -v uv >/dev/null || { echo "uv is missing: https://docs.astral.sh/uv/"; exit 1; }
 	uv sync --locked --no-dev
 
-tui: ## Install the terminal UI into .venv/bin: built with Go, else downloaded from the release
-	@test -d .venv/bin || { echo "Run make deps first."; exit 1; }
-	@if command -v go >/dev/null; then \
-		echo "Building the terminal UI $(VERSION) from source"; \
-		go build $(GO_BUILD_FLAGS) -o "$(TUI_BINARY)" ./tui/cmd/agentcy-tui; \
-	else \
-		echo "Go is missing. Downloading the terminal UI $(VERSION) for $(HOST_PLATFORM) from the GitHub release"; \
-		sh scripts/install-tui-release.sh "$(RELEASE_URL)" "$(HOST_PLATFORM)" "$(TUI_BINARY)"; \
-	fi
+check-plugin-deps:
+	@test -x "$(PLUGIN_PYTHON)" || { echo "This needs the Python environment. Run make plugin-deps first."; exit 1; }
 
-build: ## Build the Go shim into bin/agentcy (setup and the registrations still use Python)
-	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
-	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/bin/agentcy" ./cmd/agentcy
+stop-core: ## Stop the running core of AGENTCY_HOME (default ~/.agentcy), if any
+	@sh scripts/stop-core.sh "$(DATA_DIR)"
 
-release-files: ## Build the terminal UI for every platform and SHA256SUMS into dist/
+migrate-stores: check-plugin-deps ## Migrate stores of older versions with the Python code before the Go core opens them
+	@$(MAKE) --no-print-directory stop-core
+	"$(PLUGIN_PYTHON)" -I scripts/migrate_stores.py
+
+release-files: ## Build agentcy and the terminal UI for every platform and SHA256SUMS into dist/
 	@command -v go >/dev/null || { echo "Go is missing: https://go.dev/dl/"; exit 1; }
-	rm -f "$(RELEASE_DIR)"/agentcy-tui-* "$(RELEASE_DIR)/SHA256SUMS"
+	rm -f "$(RELEASE_DIR)"/agentcy-* "$(RELEASE_DIR)/SHA256SUMS"
 	@for platform in $(PLATFORMS); do \
-		echo "Building $(RELEASE_DIR)/agentcy-tui-$$platform $(VERSION)"; \
-		( CGO_ENABLED=0 GOOS=$${platform%-*} GOARCH=$${platform#*-} \
-			go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/$(RELEASE_DIR)/agentcy-tui-$$platform" ./tui/cmd/agentcy-tui ) || exit 1; \
+		for program in $(RELEASE_PROGRAMS); do \
+			asset="$${program%%=*}-$$platform"; \
+			echo "Building $(RELEASE_DIR)/$$asset $(VERSION)"; \
+			( CGO_ENABLED=0 GOOS=$${platform%-*} GOARCH=$${platform#*-} \
+				go build $(GO_BUILD_FLAGS) -o "$(CURDIR)/$(RELEASE_DIR)/$$asset" "$${program#*=}" ) || exit 1; \
+		done; \
 	done
-	cd "$(RELEASE_DIR)" && if command -v sha256sum >/dev/null; then sha256sum agentcy-tui-*; \
-		else shasum -a 256 agentcy-tui-*; fi > SHA256SUMS
+	cd "$(RELEASE_DIR)" && if command -v sha256sum >/dev/null; then sha256sum agentcy-*; \
+		else shasum -a 256 agentcy-*; fi > SHA256SUMS
 
-release: ## Prepare release VERSION=x.y.z: set the version in pyproject.toml and uv.lock
+release: ## Prepare release VERSION=x.y.z: set the version in VERSION, pyproject.toml and uv.lock
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "Pass VERSION=x.y.z"; exit 1; }
+	echo "$(VERSION)" > VERSION
 	sed 's/^version = ".*"/version = "$(VERSION)"/' pyproject.toml > pyproject.toml.new
 	mv pyproject.toml.new pyproject.toml
 	uv lock
@@ -71,26 +106,30 @@ check-workspace:
 	@test -n "$(WORKSPACE)" || { echo "Pass WORKSPACE=/path/to/project"; exit 1; }
 	@test -d "$(WORKSPACE_PATH)" || { echo "Not a directory: $(WORKSPACE_PATH)"; exit 1; }
 
-register-claude: check-workspace ## Register the server in Claude Code for all projects
+check-bridge:
+	@test -x "$(BRIDGE)" || { echo "$(BRIDGE) is missing. Run make setup first."; exit 1; }
+
+register-claude: check-workspace check-bridge ## Register the server in Claude Code for all projects
 	claude mcp add --scope user agentcy -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
 
-register-codex: check-workspace ## Register the server in Codex
+register-codex: check-workspace check-bridge ## Register the server in Codex
 	codex mcp add agentcy -- "$(BRIDGE)" --workspace "$(WORKSPACE_PATH)"
 
-ui: ## Open the terminal UI for WORKSPACE (default: the current folder)
+ui: check-bridge ## Open the terminal UI for WORKSPACE (default: the current folder)
 	"$(BRIDGE)" ui $(if $(WORKSPACE),--workspace "$(WORKSPACE_PATH)")
 
-http: check-workspace ## Serve WORKSPACE over HTTP for a remote chat (PUBLIC_HOST=tunnel host, HTTP_PORT=8765)
+http: check-workspace check-bridge ## Serve WORKSPACE over HTTP for a remote chat (PUBLIC_HOST=tunnel host, HTTP_PORT=8765)
 	"$(BRIDGE)" --workspace "$(WORKSPACE_PATH)" --http "$(HTTP_PORT)" \
 		$(if $(PUBLIC_HOST),--http-public-host "$(PUBLIC_HOST)")
 
 .PHONY: bench
-bench: ## Benchmark a core (default: Python). Set AGENTCY_CORE_CMD, AGENTCY_BIN, BENCH_FLAGS
-	AGENTCY_CORE_CMD="$${AGENTCY_CORE_CMD:-$(CURDIR)/.venv/bin/python -I -m agentcy.mcp.core}" \
+bench: build ## Benchmark a core (default: Go in bin/). Set AGENTCY_CORE_CMD, AGENTCY_BIN, BENCH_FLAGS
+	AGENTCY_CORE_CMD="$${AGENTCY_CORE_CMD:-$(BRIDGE) core}" \
 		AGENTCY_BIN="$${AGENTCY_BIN:-$(BRIDGE)}" go run -tags bench ./bench $(BENCH_FLAGS)
 
-# The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one.
-AGENTCY_CORE_CMD ?= uv run python -I -m agentcy.mcp.core
+# The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one,
+# for example the Python reference: AGENTCY_CORE_CMD="$(PLUGIN_PYTHON) -I -m agentcy.mcp.core".
+AGENTCY_CORE_CMD ?= $(BRIDGE) core
 .PHONY: conformance
-conformance: ## Compare the core daemon with the recorded conformance goldens
+conformance: build ## Compare the core daemon (default: Go in bin/) with the recorded conformance goldens
 	AGENTCY_CORE_CMD="$(AGENTCY_CORE_CMD)" go test -tags conformance ./conformance/...
