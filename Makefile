@@ -111,6 +111,14 @@ bench: build ## Benchmark a core (default: Go in bin/). Set AGENTCY_CORE_CMD, AG
 	AGENTCY_CORE_CMD="$${AGENTCY_CORE_CMD:-$(BRIDGE) core}" \
 		AGENTCY_BIN="$${AGENTCY_BIN:-$(BRIDGE)}" go run -tags bench ./bench $(BENCH_FLAGS)
 
+.PHONY: bench-http
+bench-http: build ## Run k6 HTTP MCP performance tests (K6_PROFILE=smoke|load, K6_ERA=both|2026-07-28|2025-11-25)
+	AGENTCY_BIN="$${AGENTCY_BIN:-$(BRIDGE)}" \
+		K6_PROFILE="$${K6_PROFILE:-smoke}" \
+		K6_ERA="$${K6_ERA:-both}" \
+		K6_SUMMARY_EXPORT="$${K6_SUMMARY_EXPORT:-}" \
+		sh bench/k6/run.sh $(K6_FLAGS)
+
 # The daemon that the conformance suite starts. Pass AGENTCY_CORE_CMD to test another one.
 AGENTCY_CORE_CMD ?= $(BRIDGE) core
 .PHONY: conformance
