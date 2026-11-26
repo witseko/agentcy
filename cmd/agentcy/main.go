@@ -1,5 +1,5 @@
-// Command agentcy is the per-chat MCP shim of the agentcy bridge, the fresh worker, and
-// the launcher of the terminal UI. It accepts the flags of the Python command
+// Command agentcy is the per-chat MCP shim of the agentcy bridge, the core daemon, the
+// fresh worker, and the launcher of the terminal UI. It accepts the flags of the Python command
 // (src/agentcy/tools/cli.py) so existing host registrations keep working.
 package main
 
@@ -30,6 +30,8 @@ func run(arguments []string) int {
 			return runUI(arguments[1:])
 		case "fresh-worker":
 			return runFreshWorker(arguments[1:])
+		case "core":
+			return runCore(arguments[1:])
 		}
 	}
 	return runShim(arguments)

@@ -24,23 +24,15 @@ const (
 // The startup errors. They never contain the configured value.
 var (
 	ErrInvalidCoreBin = errors.New("Bridge startup failed. AGENTCY_CORE_BIN must be an absolute path to a file.")
-	ErrNoPythonCore   = errors.New("Bridge startup failed. No Python core found beside this program; " +
-		"run 'make setup' in the agentcy clone or set AGENTCY_CORE_BIN.")
+	ErrNoExecutable   = errors.New("Bridge startup failed. The path of this program is unknown; set AGENTCY_CORE_BIN.")
 )
 
 // CoreCommand returns the argument list that starts the core daemon.
 //
 // AGENTCY_CORE_BIN (coreBin, when coreBinSet) must be an absolute path to an existing
 // regular file and runs as `<path> core`; anything else fails closed. Without it the
-// command is the Python core of the same installation, `<python> -I -m agentcy.mcp.core`,
-// where <python> is the virtual environment interpreter found from this program's own
-// path (executable, with symbolic links resolved):
-//
-//  1. `python` in the same directory, when the binary is installed into .venv/bin, or
-//  2. `../.venv/bin/python`, when the binary is the clone's bin/agentcy.
-//
-// The interpreter path itself is not resolved, so Python still finds its virtual
-// environment. Milestone M3 replaces the default with `<executable> core`.
+// command is this program itself, `<executable> core`, where executable is this
+// program's own path with symbolic links resolved.
 func CoreCommand(coreBin string, coreBinSet bool, executable string) ([]string, error) {
 	if coreBinSet {
 		info, err := os.Stat(coreBin)
@@ -49,17 +41,10 @@ func CoreCommand(coreBin string, coreBinSet bool, executable string) ([]string, 
 		}
 		return []string{coreBin, "core"}, nil
 	}
-	directory := filepath.Dir(executable)
-	candidates := []string{
-		filepath.Join(directory, "python"),
-		filepath.Join(directory, "..", ".venv", "bin", "python"),
+	if executable == "" {
+		return nil, ErrNoExecutable
 	}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-			return []string{candidate, "-I", "-m", "agentcy.mcp.core"}, nil
-		}
-	}
-	return nil, ErrNoPythonCore
+	return []string{executable, "core"}, nil
 }
 
 // Connector opens connections to the core in one data directory and starts the core on

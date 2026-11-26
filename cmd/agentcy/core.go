@@ -28,8 +28,8 @@ func connectCore() (net.Conn, error) {
 	return connector.Connect()
 }
 
-// coreCommand returns the daemon command: AGENTCY_CORE_BIN when set, else the Python
-// core of this installation (see wire.CoreCommand).
+// coreCommand returns the daemon command: AGENTCY_CORE_BIN when set, else this program
+// run as `agentcy core` (see wire.CoreCommand).
 func coreCommand() ([]string, error) {
 	coreBin, coreBinSet := os.LookupEnv(wire.CoreBinVariable)
 	return wire.CoreCommand(coreBin, coreBinSet, ownExecutable())

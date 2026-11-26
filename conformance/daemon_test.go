@@ -58,7 +58,20 @@ func startDaemon(t *testing.T) *daemon {
 		t.Skipf("set %s to the daemon command, for example %q", coreCommandVariable,
 			"uv run python -I -m agentcy.mcp.core")
 	}
-	home := shortTempDir(t, "agentcy-home-")
+	return startDaemonCommand(t, arguments)
+}
+
+// startDaemonCommand starts the daemon command given as an argument list, as startDaemon
+// does.
+func startDaemonCommand(t *testing.T, arguments []string) *daemon {
+	t.Helper()
+	return startDaemonInHome(t, arguments, shortTempDir(t, "agentcy-home-"))
+}
+
+// startDaemonInHome starts the daemon command with an existing AGENTCY_HOME, so a test
+// can stop one daemon and start another on the same stores.
+func startDaemonInHome(t *testing.T, arguments []string, home string) *daemon {
+	t.Helper()
 	command := exec.Command(arguments[0], arguments[1:]...)
 	command.Dir = repositoryRoot(t)
 	command.Env = daemonEnvironment(home)
@@ -73,7 +86,7 @@ func startDaemon(t *testing.T) *daemon {
 	command.Stdout = &server.output
 	command.Stderr = &server.output
 	if err := command.Start(); err != nil {
-		t.Fatalf("start %s: %v", coreCommandVariable, err)
+		t.Fatalf("start %s: %v", arguments[0], err)
 	}
 	go func() {
 		_ = command.Wait()

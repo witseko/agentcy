@@ -205,6 +205,11 @@ func DecodeRequest(line []byte) (Request, error) {
 	if !known {
 		return nil, ErrInvalidRequest
 	}
+	return decodeMember(object, decode)
+}
+
+// decodeMember reads and validates the fields of a parsed member request object.
+func decodeMember(object Value, decode func(*fieldReader) Request) (Request, error) {
 	reader := newFieldReader(object)
 	reader.take("action")
 	request := decode(reader)

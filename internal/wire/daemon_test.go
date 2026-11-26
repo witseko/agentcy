@@ -52,32 +52,17 @@ func shortHome(t *testing.T) string {
 	return home
 }
 
-func TestDaemonStartCommandDefaultsToThePythonCoreBesideTheBinary(t *testing.T) {
-	clone := t.TempDir()
-	binary := filepath.Join(clone, "bin", "agentcy")
-	python := filepath.Join(clone, ".venv", "bin", "python")
-	for _, path := range []string{binary, python} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, nil, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
+func TestDaemonStartCommandDefaultsToThisProgram(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "bin", "agentcy")
 	command, err := CoreCommand("", false, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{filepath.Join(clone, "bin", "..", ".venv", "bin", "python"), "-I", "-m", "agentcy.mcp.core"}
-	if strings.Join(command, " ") != strings.Join(want, " ") {
-		t.Errorf("command = %v, want %v", command, want)
+	if strings.Join(command, " ") != binary+" core" {
+		t.Errorf("command = %v, want [%s core]", command, binary)
 	}
-	installed, err := CoreCommand("", false, python)
-	if err != nil || installed[0] != python {
-		t.Errorf("binary inside .venv/bin: command = %v, err = %v", installed, err)
-	}
-	if _, err := CoreCommand("", false, filepath.Join(t.TempDir(), "agentcy")); !errors.Is(err, ErrNoPythonCore) {
-		t.Errorf("no Python core: err = %v", err)
+	if _, err := CoreCommand("", false, ""); !errors.Is(err, ErrNoExecutable) {
+		t.Errorf("unknown executable: err = %v", err)
 	}
 }
 

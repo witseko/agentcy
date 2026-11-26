@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// memberCase is one line of protocol/member.v1.cases.json. Request and Normalised stay
-// raw so that the test feeds the exact bytes to the decoder.
+// memberCase is one line of protocol/member.v1.cases.json or operator.v1.cases.json.
+// Request and Normalised stay raw so that the test feeds the exact bytes to the decoder.
 type memberCase struct {
 	Action     string          `json:"action"`
 	Name       string          `json:"name"`
@@ -19,12 +19,28 @@ type memberCase struct {
 	Raw        *string         `json:"raw"`
 	Valid      bool            `json:"valid"`
 	Normalised json.RawMessage `json:"normalised"`
+	// Error is the core's answer to a rejected operator case; member cases leave it out.
+	Error *string `json:"error"`
 }
 
-// loadMemberCases reads the case file, one case per line between "[" and "]".
+// loadMemberCases reads the member case file.
 func loadMemberCases(t *testing.T) []memberCase {
 	t.Helper()
-	file, err := os.Open("../../protocol/member.v1.cases.json")
+	return loadCases(t, "../../protocol/member.v1.cases.json")
+}
+
+// input returns the exact request bytes of a case.
+func (entry memberCase) input() []byte {
+	if entry.Raw != nil {
+		return []byte(*entry.Raw)
+	}
+	return []byte(entry.Request)
+}
+
+// loadCases reads a case file, one case per line between "[" and "]".
+func loadCases(t *testing.T, path string) []memberCase {
+	t.Helper()
+	file, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open cases: %v", err)
 	}
@@ -55,11 +71,7 @@ func TestDecodeRequestReplaysEveryMemberCase(t *testing.T) {
 		t.Fatalf("expected the full case file, got %d cases", len(cases))
 	}
 	for _, entry := range cases {
-		input := []byte(entry.Request)
-		if entry.Raw != nil {
-			input = []byte(*entry.Raw)
-		}
-		request, err := DecodeRequest(input)
+		request, err := DecodeRequest(entry.input())
 		if (err == nil) != entry.Valid {
 			t.Errorf("%s: valid=%v, decoder error=%v", entry.Name, entry.Valid, err)
 			continue
@@ -67,21 +79,27 @@ func TestDecodeRequestReplaysEveryMemberCase(t *testing.T) {
 		if !entry.Valid {
 			continue
 		}
-		// A given normalised dump pins the field order too; a request echo does not.
-		expected, got := entry.Normalised, request.Encode()
-		if expected == nil {
-			expected, got = entry.Request, sortedKeys(got)
-		}
-		want, err := Parse(expected)
-		if err != nil {
-			t.Fatalf("%s: parse expected: %v", entry.Name, err)
-		}
-		if entry.Normalised == nil {
-			want = sortedKeys(want)
-		}
-		if got.Compact() != want.Compact() {
-			t.Errorf("%s:\n got %s\nwant %s", entry.Name, got.Compact(), want.Compact())
-		}
+		checkNormalised(t, entry, request.Encode())
+	}
+}
+
+// checkNormalised compares an encoded request with the case's normalised dump. A given
+// normalised dump pins the field order too; a request echo does not.
+func checkNormalised(t *testing.T, entry memberCase, got Value) {
+	t.Helper()
+	expected := entry.Normalised
+	if expected == nil {
+		expected, got = entry.Request, sortedKeys(got)
+	}
+	want, err := Parse(expected)
+	if err != nil {
+		t.Fatalf("%s: parse expected: %v", entry.Name, err)
+	}
+	if entry.Normalised == nil {
+		want = sortedKeys(want)
+	}
+	if got.Compact() != want.Compact() {
+		t.Errorf("%s:\n got %s\nwant %s", entry.Name, got.Compact(), want.Compact())
 	}
 }
 
