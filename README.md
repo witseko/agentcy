@@ -36,7 +36,7 @@ To download and verify the binaries by hand, follow [Download the release binari
 
 ### Start a team
 
-1. Register the server in Claude Code for your project:
+1. Register the server in Claude Code once, for all projects. You do not start the core yourself: Claude Code launches agentcy, and agentcy starts the core when none is running.
 
    ```bash
    make register-claude WORKSPACE=/absolute/path/to/your/project
