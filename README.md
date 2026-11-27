@@ -26,10 +26,10 @@ make setup
 
 ### Install the release binaries
 
-Without Go, the same command downloads both binaries for your platform from the GitHub release:
+Download both binaries for your platform from the GitHub release and check their SHA-256. This needs `curl`, not Go:
 
 ```bash
-make setup
+make setup-release
 ```
 
 To download and verify the binaries by hand, follow [Download the release binaries](docs/release-binaries.md).

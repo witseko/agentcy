@@ -156,7 +156,7 @@ Versions before the Go core ran a Python core. The Go core gives the same respon
 
 ## Release binaries
 
-Each GitHub release holds two binaries for each platform, `agentcy-<os>-<arch>` and `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The repository holds no binaries. Without Go, `make setup` downloads the two for your machine with `scripts/install-release.sh`, which checks each SHA-256 against `SHA256SUMS`.
+Each GitHub release holds two binaries for each platform, `agentcy-<os>-<arch>` and `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The repository holds no binaries. `make setup-release`, and `make setup` without Go, download the two for your machine with `scripts/install-release.sh`, which checks each SHA-256 against `SHA256SUMS`.
 
 To build all of them locally into `dist/`, which Git ignores:
 

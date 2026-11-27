@@ -27,7 +27,7 @@ HTTP_PORT ?= 8765
 PUBLIC_HOST ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help setup agentcy tui build stop-core release-files release \
+.PHONY: help setup setup-release agentcy tui build stop-core release-files release \
 	register-claude register-codex ui http check-workspace check-bridge
 
 help: ## Show the targets
@@ -36,6 +36,14 @@ help: ## Show the targets
 # setup stops a running core last: the core stays alive while any conversation is open, so
 # without this an old core would keep serving the new shims after an upgrade.
 setup: agentcy tui ## Install agentcy and the terminal UI into bin/, then stop a running core
+	@$(MAKE) --no-print-directory stop-core
+	@echo "Done. Next: make register-claude WORKSPACE=/path/to/project"
+
+setup-release: ## Download agentcy and the terminal UI from the release into bin/, even with Go, then stop a running core
+	@mkdir -p "$(CURDIR)/bin"
+	@echo "Downloading agentcy and the terminal UI $(VERSION) for $(HOST_PLATFORM) from $(RELEASE_URL)"
+	@sh scripts/install-release.sh "$(RELEASE_URL)" "agentcy-$(HOST_PLATFORM)" "$(BRIDGE)"
+	@sh scripts/install-release.sh "$(RELEASE_URL)" "agentcy-tui-$(HOST_PLATFORM)" "$(TUI_BINARY)"
 	@$(MAKE) --no-print-directory stop-core
 	@echo "Done. Next: make register-claude WORKSPACE=/path/to/project"
 

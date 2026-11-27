@@ -1,6 +1,7 @@
 #!/bin/sh
 # Download one binary from a GitHub release, check its SHA-256 against the release's
-# SHA256SUMS file, and install it. `make agentcy` and `make tui` run this when Go is missing.
+# SHA256SUMS file, and install it. `make setup-release` runs this, and `make agentcy` and
+# `make tui` run it when Go is missing.
 #
 # Usage: install-release.sh RELEASE_URL ASSET DESTINATION
 #   RELEASE_URL  https://github.com/<owner>/<repo>/releases/download/v<version>

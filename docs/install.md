@@ -5,7 +5,7 @@ Install the bridge from a clone, then register it in each app or CLI that should
 ## Requirements
 
 - macOS or Linux. Development and testing happen on macOS.
-- Go 1.26 or later, to build agentcy and the terminal UI from source. Without Go, `make setup` downloads both binaries for macOS or Linux on arm64 or amd64 from the GitHub release. This needs network access and `curl`.
+- Go 1.26 or later, to build agentcy and the terminal UI from source. Without Go, `make setup` or `make setup-release` downloads both binaries for macOS or Linux on arm64 or amd64 from the GitHub release. This needs network access and `curl`.
 - `make`, which macOS and most Linux systems include.
 - `lsof` and `ps`, which `make setup` and `make stop-core` use to find a running core. macOS includes both.
 - Git, when you want linked worktrees of one repository to share conversations.

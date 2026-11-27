@@ -1,6 +1,6 @@
 # Download the release binaries
 
-Each [GitHub release](https://github.com/witseko/agentcy/releases) holds two binaries for each platform, `agentcy-<os>-<arch>` and `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The platforms are macOS and Linux on arm64 and amd64. `make setup` downloads both for you when Go is not installed. Use the commands below to download them without `make`. Run each command in the clone, in one shell session.
+Each [GitHub release](https://github.com/witseko/agentcy/releases) holds two binaries for each platform, `agentcy-<os>-<arch>` and `agentcy-tui-<os>-<arch>`, and a `SHA256SUMS` file. The platforms are macOS and Linux on arm64 and amd64. `make setup-release` downloads and checks both for you, and `make setup` does the same when Go is not installed. Use the commands below to download them without `make`. Run each command in the clone, in one shell session.
 
 1. Set the release version from the `VERSION` file, so the binaries match the clone:
 
