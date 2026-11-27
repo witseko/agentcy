@@ -151,7 +151,7 @@ Versions before the Go core ran a Python core. The Go core gives the same respon
 
 - **Fresh runs.** The assignment worker inspects a running fresh run every 5 seconds, not every second. A state change shows up to 5 seconds later. A stop or a cancel stays immediate.
 - **SIGTERM.** The Go core stops cleanly: it stops accepting, ends waiting reads, gives running requests 5 seconds, removes the socket, and closes the stores.
-- **Store versions.** The Go core opens only stores at schema version 15. It answers `Unsupported bridge database version` for any other store and logs the steps that fix it to `core.log`. An older store migrates with the Python code at commit `17eb9ce` (see [Upgrade from a Python version](../README.md#upgrade-from-a-python-version)).
+- **Store versions.** The Go core opens only stores at schema version 15. It answers `Unsupported bridge database version` for any other store and logs the steps that fix it to `core.log`. An older store migrates with the Python code at commit `17eb9ce` (see [Upgrade from a Python version](upgrade-from-python.md)).
 - **`listen`.** The Go core adds the member action `listen`, one exchange for a waiting read and its status (see the [protocol](../protocol/README.md#go-core-only-listen)).
 
 ## Release binaries

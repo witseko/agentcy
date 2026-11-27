@@ -32,7 +32,7 @@ Run these steps again if you move the clone, because the apps store its absolute
 
 `agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. Nothing else is installed.
 
-To upgrade from a version that installed `.venv/bin/agentcy`, follow [Upgrade from a Python version](../README.md#upgrade-from-a-python-version).
+To upgrade from a version that installed `.venv/bin/agentcy`, follow [Upgrade from a Python version](upgrade-from-python.md).
 
 ## Register the server in your apps and CLIs
 
