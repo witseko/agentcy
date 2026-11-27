@@ -41,6 +41,8 @@ The tool descriptions and the `next` field are authoritative. If this skill diff
 2. Post each part with `post_message`, `kind='task'`, `to` (the exact roster name), and `due_minutes` (1 to 1440). The system rejects a task without `due_minutes`.
 3. Take a substantive part yourself. Reply to your own task ID with `kind='done'` or `kind='blocker'`.
 4. Pick a unique `submission_id` for each post. Reuse it on a retry.
+   - Write tasks and findings in ASD-STE100 Simplified Technical English. Keep every sentence to 20 words or fewer. A path, an identifier, or a code span counts as one word.
+   - Put each fact, condition, or action in its own sentence. Write three or more items as a list, one item per line.
 5. All members share one computer. Plan its load. In each task that runs a heavy command (a test suite, a build), state how many parallel processes the member may use. Keep the total of all members within the CPU cores and memory of the computer. Schedule heavy runs in turn when they do not fit together.
 
 ## 6. Listen and follow `next`
