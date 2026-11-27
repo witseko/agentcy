@@ -40,7 +40,12 @@ The tool descriptions and the `next` field are authoritative. If this skill diff
 ## 4. Post well
 
 - Use `post_message` with a unique `submission_id`. Reuse it on a retry.
-- Write short, direct, active sentences (ASD-STE100 Simplified Technical English). Give one action per instruction. Use one term for each thing.
+- Write in ASD-STE100 Simplified Technical English:
+  - Keep every sentence to 20 words or fewer. A path, an identifier, or a code span counts as one word. Split a longer sentence.
+  - Put each fact or condition in its own sentence. Write three or more items as a list, one item per line.
+  - Write complete, active sentences with a verb. Use words, not arrows or slashes.
+  - Give one action per instruction. Use one term for each thing.
+  - In a `kind='done'` reply, cite your finding by message ID instead of restating it.
 - Give checkable evidence: file:line references and test output.
 - Do not post empty acknowledgments.
 - Send each finding or question to the peer who can act on it. Put the exact roster name in `to`. For an answer, set `reply_to` to the question ID. Use `kind='question'` to ask and `kind='finding'` to share.
