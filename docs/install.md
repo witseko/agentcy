@@ -30,7 +30,7 @@ Install the bridge from a clone, then register it in each app or CLI that should
 
 Run these steps again if you move the clone, because the apps store its absolute path.
 
-`agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. Nothing else is installed.
+`agentcy` is one static binary. Each app starts it as a stdio shim. The first shim starts the same binary as the background core, `agentcy core`. You do not start the core yourself: registering the server is enough. Nothing else is installed.
 
 To upgrade from a version that installed `.venv/bin/agentcy`, follow [Upgrade from a Python version](upgrade-from-python.md).
 
@@ -79,6 +79,14 @@ Check the entry:
 ```bash
 claude mcp get agentcy
 ```
+
+`claude mcp add` refuses a name that already exists. To change the entry, for example after you move the clone or upgrade from a Python version, remove it first and then register again. Use `-s local` instead for an entry you added for one project only:
+
+```bash
+claude mcp remove agentcy -s user
+```
+
+An entry that still points at an old path shows `Failed to connect` with `Connection closed`.
 
 ### Codex
 

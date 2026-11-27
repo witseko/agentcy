@@ -28,7 +28,11 @@ Versions before the Go core installed agentcy as `.venv/bin/agentcy`. The Go cor
    make setup
    ```
 
-5. Register each app or CLI again. The command path changed from `.venv/bin/agentcy` to `bin/agentcy`:
+5. Register each app or CLI again. The command path changed from `.venv/bin/agentcy` to `bin/agentcy`, and an old entry shows `Failed to connect` with `Connection closed`. Claude Code refuses to add a name that already exists, so remove the old entry first:
+
+   ```bash
+   claude mcp remove agentcy -s user
+   ```
 
    ```bash
    make register-claude WORKSPACE=/absolute/path/to/your/project
