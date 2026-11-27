@@ -27,7 +27,7 @@ The driver prints a table and, with `-json FILE`, writes the same numbers as JSO
 - **Shim start**: time to the first tool result, cold (no daemon running) and warm.
 - **Load**: CPU seconds, peak memory, `git` processes spawned, and wake latency while idle agents wait on `read_messages`.
 
-The reference numbers for an Apple M1 are in [Development: Performance](development.md#performance). The flags, the dataset, and how to compare two JSON reports are in [bench/README.md](../bench/README.md).
+The reference numbers for an Apple M1 are in [Development: Performance](development.md#performance). Results on macOS and Ubuntu are in [Performance results](performance-results.md). The flags, the dataset, and how to compare two JSON reports are in [bench/README.md](../bench/README.md).
 
 ## HTTP load test
 
@@ -36,6 +36,8 @@ Install k6 once:
 ```bash
 brew install k6
 ```
+
+On Linux, follow the [k6 install guide](https://grafana.com/docs/k6/latest/set-up/install-k6/). On arm64, use the binary from the [GitHub release](https://github.com/grafana/k6/releases), because the k6 apt repository has no arm64 package.
 
 Then run one of the profiles:
 

@@ -238,6 +238,25 @@ func buildRoomSnapshot(ctx context.Context, tx *sql.Tx, room string, lastMessage
 
 const selectRoomMessageCount = "SELECT count(*) AS count_1 \nFROM message \nWHERE message.room = ?"
 
+// roomMessageCount returns the number of messages in a room. It takes the count from a
+// snapshot that is current in this transaction (operator show builds one for its status
+// first) and counts the rows otherwise. It never builds a snapshot, so a transcript read,
+// such as one of a closed conversation, replays no tasks and adds no room to the cache.
+func roomMessageCount(ctx context.Context, tx *sql.Tx, room string) (int64, error) {
+	view, _ := ctx.Value(transactionRoomsKey{}).(*transactionRooms)
+	if view != nil {
+		lastMessage, err := lastRoomMessage(ctx, tx, room)
+		if err != nil {
+			return 0, err
+		}
+		if cached, _ := view.lookup(room); cached != nil && cached.snapshot.lastMessage == lastMessage {
+			return cached.snapshot.messages, nil
+		}
+	}
+	messages, err := firstInteger(ctx, tx, selectRoomMessageCount, room)
+	return messages.Int64, err
+}
+
 const selectMessagesAfter = `SELECT message.id, message.kind, message.author, message.recipient, message.reply_to, message.created, message.due_minutes
 FROM message
 WHERE message.room = ? AND message.id > ? ORDER BY message.id`
