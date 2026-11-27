@@ -1,12 +1,19 @@
 # Performance results
 
-These are the results of the [performance tests](performance.md) from 2026-11-27, on macOS and on Ubuntu. They also show the `operator_show` regression that the tests found, and the effect of its fix.
+These are the results of the performance tests from 2026-11-27, on macOS and on Ubuntu. To run the tests yourself, see [Performance tests](performance.md).
+
+## Summary
+
+- Every end-to-end test passes on Ubuntu, and the HTTP load test passes every threshold.
+- Every warm operation stays well below the 100 ms p95 target of the [design](../DESIGN.md). The slowest is `operator_search`, at 25 to 27 ms p95.
+- The Ubuntu VM is 2 to 6 times slower on socket operations. This comes from the VM, not from Linux.
+- The tests found an `operator_show` regression (about 7.6 ms p95 in place of about 1 ms). Commit `395ee2f` fixes it. See [The `operator_show` regression](#the-operator_show-regression).
 
 ## Environments
 
 | Name | System | Go |
 | --- | --- | --- |
-| macOS | A macOS arm64 host with nothing else running | 1.27.4 |
+| macOS | A macOS arm64 host | 1.27.4 |
 | Ubuntu VM | Ubuntu 24.04 LTS arm64 in a [Multipass](https://canonical.com/multipass) VM with 4 vCPUs, 4 GB RAM, and a 20 GB disk, on the macOS host | 1.26.11 |
 
 Every run used the default flags of `make bench`: one conversation of 100,000 messages (99,800 written with the `sqlite3` CLI, 200 posted through the socket), 1,000 warm samples per operation, and a 60 s load scenario with 20 listening shims, one 1 Hz `operator_show` poller, and one writer every 5 s. The VM was stopped during the macOS runs.
@@ -39,7 +46,7 @@ Commit `395ee2f`, which includes the `operator_show` fix.
 | Wakes observed / expected, errors | 240 / 240, 0 | 220 / 220, 0 |
 | Wake latency p50 / p95 (ms) | 2,014 / 2,021 | 2,084 / 2,139 |
 
-All warm latencies stay well below the 100 ms target of the [design](../DESIGN.md). In the VM, socket operations are 2 to 6 times slower and the cold shim start is about 60% slower. A macOS run of the same commit does not show these differences, so they come from the VM (fewer vCPUs, a virtual disk), not from a Linux code path. Wake latency starts at about 2 s because of the settle window.
+In the VM, socket operations are 2 to 6 times slower and the cold shim start is about 60% slower. A macOS run of the same commit does not show these differences, so they come from the VM (fewer vCPUs, a virtual disk), not from a Linux code path. Wake latency starts at about 2 s because of the settle window.
 
 ## HTTP load test on Ubuntu
 
@@ -63,15 +70,3 @@ The first runs showed `operator_show` tail p95 at about 7.6 ms on macOS and 8.2 
 | Load CPU seconds, total | 1.82 | 1.17 | 2.71 | 1.59 |
 
 The load CPU also drops, because the load scenario polls `operator_show` once a second.
-
-## Reproduce
-
-```bash
-make bench BENCH_FLAGS="-json $TMPDIR/bench-go.json"
-```
-
-```bash
-make bench-http K6_PROFILE=load
-```
-
-On Ubuntu arm64, install k6 from its [GitHub release](https://github.com/grafana/k6/releases): the k6 apt repository has no arm64 package.

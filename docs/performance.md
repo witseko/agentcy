@@ -37,6 +37,8 @@ Install k6 once:
 brew install k6
 ```
 
+On Linux, follow the [k6 install guide](https://grafana.com/docs/k6/latest/set-up/install-k6/). On arm64, use the binary from the [GitHub release](https://github.com/grafana/k6/releases), because the k6 apt repository has no arm64 package.
+
 Then run one of the profiles:
 
 ```bash
