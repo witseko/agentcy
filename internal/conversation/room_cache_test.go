@@ -385,3 +385,49 @@ func TestRoomCacheDropsTheLeastRecentlyUsedRoom(t *testing.T) {
 		t.Error("the least recently used room was kept")
 	}
 }
+
+// roomMessageTotal counts the messages of the harness room straight from the store.
+func (h *cacheHarness) roomMessageTotal() int64 {
+	h.t.Helper()
+	opened, err := h.shared.Stores.Open(h.ctx, h.workspace)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var total int64
+	err = opened.Read(h.ctx, func(tx *sql.Tx) error {
+		return tx.QueryRowContext(h.ctx, selectRoomMessageCount, h.room).Scan(&total)
+	})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return total
+}
+
+// Reading a closed conversation reports every message in total_messages, also when the
+// cached snapshot is behind the store, and never replays the room or caches it.
+func TestReadClosedCountsMessagesWithoutBuildingASnapshot(t *testing.T) {
+	h := newCacheHarness(t, wire.Create{Invitees: []wire.Slot{{Name: "Worker A"}}}, "Worker A")
+	h.post("Lead", wire.Post{})
+	h.post("Worker A", wire.Post{})
+	h.member(&wire.Close{Workspace: h.workspace, Token: h.tokens["Lead"], Summary: pointer("Closed")})
+	h.writeStore(`INSERT INTO message (room, author, body, created, kind)
+		SELECT room, id, 'Written outside the handler', ?, 'note' FROM participant WHERE label = 'Lead'`, h.now)
+	want := h.roomMessageTotal()
+
+	for _, handler := range []*Handler{h.handler, h.newHandler()} {
+		builds, extensions, size := handler.rooms.builds.Load(), handler.rooms.extensions.Load(), handler.rooms.size()
+		outcome, err := handler.Member(h.ctx, &wire.ReadClosed{Workspace: h.workspace, Conversation: h.room}, time.Unix(h.now, 0))
+		if err != nil {
+			t.Fatalf("read closed: %v", err)
+		}
+		if got, _ := field(outcome.Result, "total_messages").IntOf(); got != want {
+			t.Errorf("total_messages = %d, want %d", got, want)
+		}
+		if handler.rooms.builds.Load() != builds || handler.rooms.extensions.Load() != extensions {
+			t.Error("reading a closed conversation replayed the room")
+		}
+		if handler.rooms.size() != size {
+			t.Errorf("cache size = %d, want %d", handler.rooms.size(), size)
+		}
+	}
+}
