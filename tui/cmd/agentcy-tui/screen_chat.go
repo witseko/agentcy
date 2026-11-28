@@ -171,7 +171,9 @@ func (m model) openChatMode(conversation string, mode showMode, target int64) (t
 	m.status = ""
 	for index, item := range m.list.items {
 		if item.Conversation == conversation {
-			m.list.selected = index
+			m.selectEntry(index)
+			// Opening a closed chat shows it in the CLOSED section.
+			m.list.closedExpanded = m.list.closedExpanded || !item.Open
 		}
 	}
 	focus := m.chat.input.Focus()

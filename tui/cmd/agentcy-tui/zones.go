@@ -217,8 +217,11 @@ func (m model) hoverAt(x int, y int) string {
 	case regionRightDivider:
 		return "divider:right"
 	case regionList:
-		if index, found := m.listItemAt(row, bodyHeight); found {
-			return fmt.Sprintf("chat:%d", index)
+		if entry, found := m.listEntryAt(row, bodyHeight); found {
+			if entry == closedHeader {
+				return closedHoverID
+			}
+			return fmt.Sprintf("chat:%d", entry)
 		}
 	case regionCenter:
 		if index, found := m.searchHitAt(row, bodyHeight); found && m.screen == screenSearch {

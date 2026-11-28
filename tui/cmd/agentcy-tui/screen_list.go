@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -11,9 +12,19 @@ import (
 type listState struct {
 	items    []ConversationSummary
 	selected int
-	loaded   bool
-	archived bool
+	// onClosedHeader puts the selection on the CLOSED section header instead of a chat.
+	onClosedHeader bool
+	// closedExpanded shows the closed chats under the CLOSED header of the active view.
+	closedExpanded bool
+	loaded         bool
+	archived       bool
 }
+
+// closedHeader stands for the CLOSED section header in the list of sidebar entries.
+const closedHeader = -1
+
+// closedHoverID is the hover id of the CLOSED section header in the chat list.
+const closedHoverID = "chats-closed"
 
 // homeKey handles a key while no conversation is open.
 func (m model) homeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -34,16 +45,107 @@ func (m model) homeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) listNavigate(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "up", "k":
-		m.list.selected = max(m.list.selected-1, 0)
+		m.moveListSelection(-1)
 	case "down", "j":
-		m.list.selected = min(m.list.selected+1, max(len(m.list.items)-1, 0))
+		m.moveListSelection(1)
 	case "enter":
-		if len(m.list.items) == 0 {
+		if m.list.onClosedHeader {
+			return m.toggleClosed(), nil
+		}
+		item, found := m.selectedChat()
+		if !found {
 			return m, nil
 		}
-		return m.openChat(m.list.items[m.list.selected].Conversation)
+		return m.openChat(item.Conversation)
 	}
 	return m, nil
+}
+
+// listEntries returns the sidebar entries in drawing order: the open chats, then the CLOSED
+// header and, while that section is expanded, the closed chats. The archive draws every chat
+// without a section. An entry is an index into m.list.items or closedHeader.
+func (m model) listEntries() []int {
+	var entries, closed []int
+	for index, item := range m.list.items {
+		if item.Open || m.list.archived {
+			entries = append(entries, index)
+		} else {
+			closed = append(closed, index)
+		}
+	}
+	if len(closed) == 0 {
+		return entries
+	}
+	entries = append(entries, closedHeader)
+	if m.list.closedExpanded {
+		entries = append(entries, closed...)
+	}
+	return entries
+}
+
+// selectedEntry returns the position of the selection in entries.
+func (m model) selectedEntry(entries []int) int {
+	target := m.list.selected
+	if m.list.onClosedHeader {
+		target = closedHeader
+	}
+	for position, entry := range entries {
+		if entry == target {
+			return position
+		}
+	}
+	return 0
+}
+
+// selectEntry puts the selection on a chat or on the CLOSED header.
+func (m *model) selectEntry(entry int) {
+	m.list.onClosedHeader = entry == closedHeader
+	if entry != closedHeader {
+		m.list.selected = entry
+	}
+}
+
+// moveListSelection moves the selection by step entries and stops at both ends.
+func (m *model) moveListSelection(step int) {
+	entries := m.listEntries()
+	if len(entries) == 0 {
+		return
+	}
+	position := min(max(m.selectedEntry(entries)+step, 0), len(entries)-1)
+	m.selectEntry(entries[position])
+}
+
+// selectedChat returns the selected chat, or false when the selection is on the CLOSED header
+// or the list is empty.
+func (m model) selectedChat() (ConversationSummary, bool) {
+	if m.list.onClosedHeader || m.list.selected < 0 || m.list.selected >= len(m.list.items) {
+		return ConversationSummary{}, false
+	}
+	return m.list.items[m.list.selected], true
+}
+
+// toggleClosed collapses or expands the CLOSED section and selects its header.
+func (m model) toggleClosed() model {
+	m.list.closedExpanded = !m.list.closedExpanded
+	m.list.onClosedHeader = true
+	return m
+}
+
+// hideClosedSelection moves the selection to the CLOSED header when the selected chat sits in
+// the collapsed section, and back to a chat when no closed chat is left.
+func (m *model) hideClosedSelection() {
+	entries := m.listEntries()
+	hasHeader := slices.Contains(entries, closedHeader)
+	chatVisible := slices.Contains(entries, m.list.selected)
+	switch {
+	case m.list.onClosedHeader && !hasHeader:
+		m.list.onClosedHeader = false
+		if !chatVisible && len(entries) > 0 {
+			m.selectEntry(entries[len(entries)-1])
+		}
+	case !m.list.onClosedHeader && !chatVisible && hasHeader:
+		m.list.onClosedHeader = true
+	}
 }
 
 // listAction runs the search, archive, rename and view keys that work wherever the chat list has
@@ -74,10 +176,10 @@ func (m model) showArchive(archived bool) (tea.Model, tea.Cmd) {
 // archiveSelected archives the selected closed chat, or returns it to the active list when
 // the archive shows.
 func (m model) archiveSelected() (tea.Model, tea.Cmd) {
-	if len(m.list.items) == 0 {
+	item, found := m.selectedChat()
+	if !found {
 		return m, nil
 	}
-	item := m.list.items[m.list.selected]
 	if item.Open {
 		return m.showError("Close the chat before archiving it."), nil
 	}
@@ -129,13 +231,14 @@ func (m model) onList(msg listMsg) model {
 	}
 	firstLoad := !m.list.loaded
 	selectedID := ""
-	if !firstLoad && m.list.selected >= 0 && m.list.selected < len(m.list.items) {
-		selectedID = m.list.items[m.list.selected].Conversation
+	if item, found := m.selectedChat(); found && !firstLoad {
+		selectedID = item.Conversation
 	}
 	m.list.items = msg.list.Conversations
 	m.list.loaded = true
 	m.restoreListSelection(firstLoad, selectedID)
 	m.syncOpenChatInList()
+	m.hideClosedSelection()
 	if m.status == "Refreshing." {
 		m.status = ""
 		m.statusTicks = 0
@@ -161,7 +264,8 @@ func (m *model) restoreListSelection(firstLoad bool, previousID string) {
 }
 
 // syncOpenChatInList updates the sidebar summary of the open conversation from its latest
-// loaded status so the sidebar and open view never disagree.
+// loaded status so the sidebar and open view never disagree. A chat that closes moves into the
+// CLOSED section.
 func (m *model) syncOpenChatInList() {
 	if m.chat.id == "" || !m.chat.loaded {
 		return
@@ -181,6 +285,7 @@ func (m *model) syncOpenChatInList() {
 			m.list.items[index].Open = m.chat.view.Status.Open
 			m.list.items[index].Members = members
 			m.list.items[index].Joined = joined
+			m.hideClosedSelection()
 			return
 		}
 	}
@@ -204,10 +309,13 @@ func (m model) sidebarView(width int, height int) []string {
 	case len(m.list.items) == 0:
 		lines = append(lines, " "+dimStyle.Render("No chats yet."))
 	}
-	rows := max((height-len(lines)-2)/3, 1)
-	first := max(m.list.selected-rows+1, 0)
 	now := m.now()
-	for index := first; index < len(m.list.items) && index < first+rows; index++ {
+	for _, row := range m.listLayout(height) {
+		if row.entry == closedHeader {
+			lines = append(lines, m.closedHeaderLine(width), "")
+			continue
+		}
+		index := row.entry
 		item := m.list.items[index]
 		title := ansi.Truncate(cleanLine(item.Title), width-2, "…")
 		detail := dimStyle.Render("closed · " + age(item.Created, now))
@@ -220,7 +328,7 @@ func (m model) sidebarView(width int, height int) []string {
 		}
 		openHere := item.Conversation == m.chat.id && m.screen == screenChat
 		switch {
-		case index == m.list.selected && m.listFocused():
+		case index == m.list.selected && !m.list.onClosedHeader && m.listFocused():
 			lines = append(lines,
 				fill(accentStyle.Render("▎")+brightStyle.Render(title), width, colorSelect),
 				fill(accentStyle.Render("▎")+detail, width, colorSelect))
@@ -242,6 +350,80 @@ func (m model) sidebarView(width int, height int) []string {
 	}
 	actions, _ := m.listButtons()
 	return append(lines[:max(height-1, 0)], " "+actions)
+}
+
+// listRow places one sidebar entry, a chat index or closedHeader, at its first body row.
+type listRow struct {
+	entry int
+	top   int
+}
+
+// listEntrySize returns the rows an entry takes with its blank separator: three for a chat,
+// two for the CLOSED header.
+func listEntrySize(entry int) int {
+	if entry == closedHeader {
+		return 2
+	}
+	return 3
+}
+
+// listLayout returns the entries sidebarView draws under its two header rows, scrolled so the
+// selection is visible. The last row of the body holds the list buttons.
+func (m model) listLayout(height int) []listRow {
+	entries := m.listEntries()
+	if !m.list.loaded || len(entries) == 0 {
+		return nil
+	}
+	available := height - 4
+	first := m.selectedEntry(entries)
+	used := listEntrySize(entries[first])
+	for first > 0 && used+listEntrySize(entries[first-1]) <= available {
+		first--
+		used += listEntrySize(entries[first])
+	}
+	var rows []listRow
+	top := 2
+	for _, entry := range entries[first:] {
+		if len(rows) > 0 && top-2+listEntrySize(entry) > available {
+			break
+		}
+		rows = append(rows, listRow{entry: entry, top: top})
+		top += listEntrySize(entry)
+	}
+	return rows
+}
+
+// listEntryAt returns the sidebar entry drawn at a body row: a chat index or closedHeader.
+func (m model) listEntryAt(row int, height int) (int, bool) {
+	for _, placed := range m.listLayout(height) {
+		lastRow := placed.top + listEntrySize(placed.entry) - 2
+		if row >= placed.top && row <= lastRow {
+			return placed.entry, true
+		}
+	}
+	return 0, false
+}
+
+// closedHeaderLine draws the clickable CLOSED section header with its collapse marker.
+func (m model) closedHeaderLine(width int) string {
+	closed := 0
+	for _, item := range m.list.items {
+		if !item.Open {
+			closed++
+		}
+	}
+	marker := "▸"
+	if m.list.closedExpanded {
+		marker = "▾"
+	}
+	title := headStyle.Render(fmt.Sprintf("%s CLOSED (%d)", marker, closed))
+	switch {
+	case m.list.onClosedHeader && m.listFocused():
+		return fill(accentStyle.Render("▎")+title, width, colorSelect)
+	case m.hover == closedHoverID:
+		return fill(dimStyle.Render("▎")+title, width, colorBand)
+	}
+	return " " + title
 }
 
 // viewButtons draws the switch between active and archived chats above the list.

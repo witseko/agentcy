@@ -42,10 +42,10 @@ func (m model) startRename(conversation string, title string) (tea.Model, tea.Cm
 
 // renameSelected opens the rename dialog for the chat selected in the list.
 func (m model) renameSelected() (tea.Model, tea.Cmd) {
-	if len(m.list.items) == 0 {
+	item, found := m.selectedChat()
+	if !found {
 		return m, nil
 	}
-	item := m.list.items[m.list.selected]
 	return m.startRename(item.Conversation, item.Title)
 }
 
