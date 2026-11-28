@@ -471,9 +471,9 @@ func (m model) formGeneralMenuItems() []contextItem {
 
 // rightClickList opens a context menu for a conversation in the sidebar or the chat list itself.
 func (m model) rightClickList(x int, y int, row int, bodyHeight int) model {
-	if index, found := m.listItemAt(row, bodyHeight); found {
-		m.list.selected = index
-		item := m.list.items[index]
+	if entry, found := m.listEntryAt(row, bodyHeight); found && entry != closedHeader {
+		m.selectEntry(entry)
+		item := m.list.items[entry]
 		return m.openContextMenu(item.Title, x, y, m.listItemMenuItems(item))
 	}
 	return m.openContextMenu("Chats", x, y, m.listEmptyMenuItems())

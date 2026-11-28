@@ -272,7 +272,8 @@ func TestResizeBeforeAnyScreenOpens(t *testing.T) {
 
 func TestListNavigationOpensTheSelectedChat(t *testing.T) {
 	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
-		{Conversation: "a", Title: "first"}, {Conversation: "b", Title: "second"}, {Conversation: "c", Title: "third"},
+		{Conversation: "a", Title: "first", Open: true}, {Conversation: "b", Title: "second", Open: true},
+		{Conversation: "c", Title: "third", Open: true},
 	}}}
 	m := drive(t, newModel(fake, "/work"), newModel(fake, "/work").loadList())
 
@@ -608,7 +609,7 @@ func sized(m model, width int, height int) model {
 
 func TestClickingAChatInTheListOpensIt(t *testing.T) {
 	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
-		{Conversation: "first", Title: "First"}, {Conversation: testConversation, Title: "Second"},
+		{Conversation: "first", Title: "First", Open: true}, {Conversation: testConversation, Title: "Second", Open: true},
 	}}}
 	m := sized(newModel(fake, "/work"), 120, 30)
 	m = drive(t, m, m.loadList())
@@ -618,6 +619,53 @@ func TestClickingAChatInTheListOpensIt(t *testing.T) {
 	m = drive(t, m, command)
 	if m.screen != screenChat || m.chat.id != testConversation {
 		t.Fatalf("screen %v chat %q, want the second chat", m.screen, m.chat.id)
+	}
+}
+
+func TestClosedChatsStayInACollapsedClosedSection(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
+		{Conversation: "old", Title: "Old work"}, {Conversation: "live", Title: "Live work", Open: true},
+	}}}
+	m := sized(newModel(fake, "/work"), 120, 30)
+	m = drive(t, m, m.loadList())
+
+	content := ansi.Strip(m.View().Content)
+	if !strings.Contains(content, "▸ CLOSED (1)") || strings.Contains(content, "Old work") {
+		t.Fatalf("closed chat is not collapsed under its header:\n%s", content)
+	}
+	if strings.Index(content, "Live work") > strings.Index(content, "CLOSED") {
+		t.Fatalf("open chat is not above the CLOSED section:\n%s", content)
+	}
+
+	// The header sits under the open chat: rows 2-4 hold the chat, row 5 the header.
+	m, _ = click(t, m, 4, 1+2+3)
+	content = ansi.Strip(m.View().Content)
+	if !strings.Contains(content, "▾ CLOSED (1)") || !strings.Contains(content, "Old work") {
+		t.Fatalf("clicking the header did not expand the section:\n%s", content)
+	}
+	m, command := click(t, m, 4, 1+2+3+2)
+	m = drive(t, m, command)
+	if m.screen != screenChat || m.chat.id != "old" {
+		t.Fatalf("screen %v chat %q, want the closed chat", m.screen, m.chat.id)
+	}
+}
+
+func TestClosingTheOpenChatMovesItIntoTheCollapsedSection(t *testing.T) {
+	fake := &fakeOperator{list: ConversationList{Conversations: []ConversationSummary{
+		{Conversation: testConversation, Title: "Review the retry rule.", Open: true},
+	}}}
+	m := sized(chatModel(t, fake), 140, 30)
+	m = drive(t, m, m.loadList())
+
+	fake.view.Status.Open = false
+	fake.list.Conversations[0].Open = false
+	m, command := m.pollChat()
+	m = drive(t, m, command)
+	m = drive(t, m, m.loadList())
+
+	content := ansi.Strip(m.View().Content)
+	if !strings.Contains(content, "▸ CLOSED (1)") || !m.list.onClosedHeader {
+		t.Fatalf("closed chat did not move into the collapsed section (header selected %v):\n%s", m.list.onClosedHeader, content)
 	}
 }
 
@@ -832,6 +880,8 @@ func TestRenameKeySendsTheEditedTitleAndUpdatesTheList(t *testing.T) {
 	m = drive(t, m, m.loadList())
 
 	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "enter")
+	m, _ = press(t, m, "down")
 	m, _ = press(t, m, "e")
 	if !m.rename.open || m.rename.input.Value() != "Done" {
 		t.Fatalf("rename dialog open %v with %q", m.rename.open, m.rename.input.Value())
@@ -864,6 +914,8 @@ func TestRenameEscCancelsAndAnEmptyTitleClearsIt(t *testing.T) {
 	m := sized(newModel(fake, "/work"), 120, 30)
 	m = drive(t, m, m.loadList())
 
+	m, _ = press(t, m, "enter")
+	m, _ = press(t, m, "down")
 	m, _ = press(t, m, "e")
 	m = typeText(t, m, "x")
 	m, command := press(t, m, "esc")
@@ -899,6 +951,8 @@ func TestArchiveKeyMovesAClosedChatAndVSwitchesTheList(t *testing.T) {
 	if len(fake.archives) != 0 || !strings.Contains(m.popup.text, "Close the chat") {
 		t.Fatalf("archived an open chat: %+v, status %q", fake.archives, m.popup.text)
 	}
+	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "enter")
 	m, _ = press(t, m, "down")
 	m, command = press(t, m, "a")
 	m = drive(t, m, command)
@@ -1923,9 +1977,11 @@ func TestRightClickChatListItemArchivesOrOpensConversation(t *testing.T) {
 	}}}
 	m := sized(newModel(fake, "/work"), 120, 30)
 	m = drive(t, m, m.loadList())
+	m, _ = press(t, m, "down")
+	m, _ = press(t, m, "enter")
 
-	// Right-click the second (closed) chat in the sidebar list.
-	m, cmd := rightClick(t, m, 5, 1+2+3)
+	// Right-click the closed chat under the CLOSED header: open chat rows 2-4, header rows 5-6.
+	m, cmd := rightClick(t, m, 5, 1+2+3+2)
 	m = drive(t, m, cmd)
 	if !m.contextMenu.open || m.list.selected != 1 {
 		t.Fatalf("expected context menu on second chat, got open=%v selected=%d", m.contextMenu.open, m.list.selected)
@@ -2351,6 +2407,8 @@ func TestArchiveWithOpenTasksAlertsAndDeprecates(t *testing.T) {
 	}
 	m := sized(newModel(fake, "/work"), 120, 30)
 	m = drive(t, m, m.loadList())
+	m, _ = press(t, m, "enter")
+	m, _ = press(t, m, "down")
 
 	m, command := press(t, m, "a")
 	m = drive(t, m, command)

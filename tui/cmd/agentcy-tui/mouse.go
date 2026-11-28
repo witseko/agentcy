@@ -121,35 +121,21 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickList opens the clicked chat. The buttons above and below the list are zones.
+// clickList opens the clicked chat, or collapses or expands the CLOSED section on its header.
+// The buttons above and below the list are zones.
 func (m model) clickList(row int, height int) (tea.Model, tea.Cmd) {
-	index, found := m.listItemAt(row, height)
+	entry, found := m.listEntryAt(row, height)
 	if !found {
 		return m, nil
 	}
-	m.list.selected = index
-	if m.screen == screenChat && m.list.items[index].Conversation == m.chat.id {
+	if entry == closedHeader {
+		return m.toggleClosed(), nil
+	}
+	m.selectEntry(entry)
+	if m.screen == screenChat && m.list.items[entry].Conversation == m.chat.id {
 		return m.setChatFocus(focusInput)
 	}
-	return m.openChat(m.list.items[index].Conversation)
-}
-
-// listItemAt returns the chat drawn at a body row. It follows the layout of sidebarView:
-// two header rows, then three rows per chat.
-func (m model) listItemAt(row int, height int) (int, bool) {
-	if !m.list.loaded || len(m.list.items) == 0 || row < 2 {
-		return 0, false
-	}
-	rows := max((height-4)/3, 1)
-	first := max(m.list.selected-rows+1, 0)
-	if (row-2)%3 == 2 {
-		return 0, false
-	}
-	index := first + (row-2)/3
-	if index >= len(m.list.items) || index >= first+rows {
-		return 0, false
-	}
-	return index, true
+	return m.openChat(m.list.items[entry].Conversation)
 }
 
 // clickTeam selects the clicked member, copies its join prompt on the copy line, collapses
@@ -287,7 +273,7 @@ func (m model) onWheel(mouse tea.Mouse) (model, tea.Cmd) {
 	}
 	switch m.regionAt(mouse.X) {
 	case regionList:
-		m.list.selected = min(max(m.list.selected+step, 0), max(len(m.list.items)-1, 0))
+		m.moveListSelection(step)
 	case regionCenter:
 		switch m.screen {
 		case screenChat:

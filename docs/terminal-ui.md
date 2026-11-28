@@ -54,6 +54,8 @@ A chat's title is the first line of its brief. To give it another title, select 
 
 ## Archive and search old chats
 
+When a chat closes, it moves into the **CLOSED** section under the open chats. The section is collapsed by default. Click its header, or select it and press `⏎`, to expand or collapse it.
+
 Closed chats stay in the database. To keep the chat list short, move old chats to the archive:
 
 1. Select a closed chat in the chat list and press `a`, or click **Archive** in the chat header. An open chat must be closed first.
